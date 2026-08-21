@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { api } from '../lib/api';
+import { getSettings } from '../lib/settings';
 import DocketDocument from '../components/documents/DocketDocument';
 
 export default function DocketDetailPage() {
@@ -12,7 +13,7 @@ export default function DocketDetailPage() {
   useEffect(() => {
     Promise.all([
       api.get(`/dockets/${id}`).then((res) => res.data.docket),
-      api.get('/settings').then((res) => res.data.settings),
+      getSettings(),
     ])
       .then(([d, s]) => {
         setDocket(d);

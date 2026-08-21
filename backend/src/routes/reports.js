@@ -11,9 +11,36 @@ const router = Router();
  */
 const ACTIVE = { status: 'ACTIVE' };
 
-// Super simple in-memory cache for Vercel instances
-// This makes navigating back to the dashboard instantly fast.
+/**
+ * Small in-process cache so flicking between date ranges doesn't re-query.
+ * It is per-instance and short-lived by design — this is a latency smoother,
+ * not a source of truth. Bounded because the key includes an arbitrary date
+ * range: without eviction, a user dragging the date picker grows it forever.
+ */
+const CACHE_TTL_MS = 15_000;
+const CACHE_MAX_ENTRIES = 50;
 const dashboardCache = new Map();
+
+function cacheGet(key) {
+  const hit = dashboardCache.get(key);
+  if (!hit) return null;
+  if (Date.now() >= hit.expires) {
+    dashboardCache.delete(key);
+    return null;
+  }
+  return hit.data;
+}
+
+function cacheSet(key, data) {
+  // Drop anything already expired, then the oldest, to keep the map bounded.
+  for (const [k, v] of dashboardCache) {
+    if (Date.now() >= v.expires) dashboardCache.delete(k);
+  }
+  while (dashboardCache.size >= CACHE_MAX_ENTRIES) {
+    dashboardCache.delete(dashboardCache.keys().next().value);
+  }
+  dashboardCache.set(key, { data, expires: Date.now() + CACHE_TTL_MS });
+}
 
 function parseRange(query) {
   const now = new Date();
@@ -103,14 +130,29 @@ router.get(
     const invoiceWhere = { ...ACTIVE, date: dateRange };
 
     const cacheKey = `${from.toISOString()}_${to.toISOString()}_${granularity}`;
-    const cached = dashboardCache.get(cacheKey);
-    if (cached && Date.now() < cached.expires) {
-      return res.json(cached.data);
+    const cached = cacheGet(cacheKey);
+    if (cached) {
+      res.setHeader('Cache-Control', 'private, no-store');
+      return res.json(cached);
     }
 
-    // Run in small batches (2-3) to fit in Vercel's Prisma connection pool (size=3)
-    // while minimizing network round trips.
-    const [purchaseAgg, salesAgg, voidCount] = await Promise.all([
+    // One wave, not six. Every query is a network round trip, so issuing these
+    // sequentially cost ~6x the latency for no benefit — none of them depend on
+    // each other. Prisma queues internally to its own connection limit, so this
+    // does not overwhelm the pgBouncer pool.
+    const [
+      purchaseAgg,
+      salesAgg,
+      voidCount,
+      docketRows,
+      invoiceRows,
+      topBought,
+      topSold,
+      topSuppliers,
+      topConsignees,
+      recentDockets,
+      recentInvoices,
+    ] = await Promise.all([
       prisma.docket.aggregate({
         where: docketWhere,
         _count: { _all: true },
@@ -122,14 +164,8 @@ router.get(
         _sum: { totalAud: true, subtotalAud: true, gstAud: true, discountAmount: true },
       }),
       prisma.docket.count({ where: { status: 'VOID', date: dateRange } }),
-    ]);
-
-    const [docketRows, invoiceRows] = await Promise.all([
       prisma.docket.findMany({ where: docketWhere, select: { date: true, total: true } }),
       prisma.exportInvoice.findMany({ where: invoiceWhere, select: { date: true, totalAud: true } }),
-    ]);
-
-    const [topBought, topSold] = await Promise.all([
       prisma.docketLineItem.groupBy({
         by: ['materialId'],
         _sum: { netWeight: true, value: true },
@@ -144,9 +180,6 @@ router.get(
         orderBy: { _sum: { totalAud: 'desc' } },
         take: 8,
       }),
-    ]);
-
-    const [topSuppliers, topConsignees] = await Promise.all([
       prisma.docket.groupBy({
         by: ['supplierId'],
         _sum: { total: true },
@@ -163,9 +196,6 @@ router.get(
         orderBy: { _sum: { totalAud: 'desc' } },
         take: 8,
       }),
-    ]);
-
-    const [recentDockets, recentInvoices] = await Promise.all([
       prisma.docket.findMany({
         where: ACTIVE,
         orderBy: { date: 'desc' },
@@ -180,14 +210,24 @@ router.get(
       }),
     ]);
 
-    // Resolve the grouped ids to names in one round trip each.
+    // Second wave — these genuinely depend on the groupBy results above, so they
+    // cannot join the first. Skipped entirely when there is nothing to resolve.
+    const materialIds = [...new Set([...topBought, ...topSold].map((r) => r.materialId))];
+    const supplierIds = topSuppliers.map((r) => r.supplierId);
+    const consigneeIds = topConsignees.map((r) => r.consigneeId);
+
     const [materials, suppliers, consignees] = await Promise.all([
-      prisma.material.findMany({
-        where: { id: { in: [...topBought, ...topSold].map((r) => r.materialId) } },
-      }),
-      prisma.supplier.findMany({ where: { id: { in: topSuppliers.map((r) => r.supplierId) } } }),
-      prisma.consignee.findMany({ where: { id: { in: topConsignees.map((r) => r.consigneeId) } } }),
+      materialIds.length
+        ? prisma.material.findMany({ where: { id: { in: materialIds } } })
+        : [],
+      supplierIds.length
+        ? prisma.supplier.findMany({ where: { id: { in: supplierIds } } })
+        : [],
+      consigneeIds.length
+        ? prisma.consignee.findMany({ where: { id: { in: consigneeIds } } })
+        : [],
     ]);
+
     const byId = (rows) => Object.fromEntries(rows.map((r) => [r.id, r]));
     const materialMap = byId(materials);
     const supplierMap = byId(suppliers);
@@ -196,10 +236,12 @@ router.get(
     const purchasesTotal = sumOf(purchaseAgg, 'total');
     const salesTotal = sumOf(salesAgg, 'totalAud');
 
-    // Instruct Vercel Edge Network to cache this heavy dashboard request.
-    // It caches for 5 seconds, and serves stale data for up to 60 seconds
-    // while revalidating in the background. This makes the dashboard INSTANT.
-    res.setHeader('Cache-Control', 's-maxage=5, stale-while-revalidate=60');
+    // Deliberately NOT s-maxage. This response is per-account financial data
+    // behind requireAuth, and a shared CDN keys its cache on the URL, not on the
+    // Authorization header — so an edge-cached copy could be served to a request
+    // that never presented a token. The in-process cache above provides the speed
+    // without publishing the figures to a shared cache.
+    res.setHeader('Cache-Control', 'private, no-store');
 
     const responseData = {
       range: { from, to, granularity },
@@ -259,7 +301,7 @@ router.get(
     };
 
     // Cache in-memory for 15 seconds to prevent spamming the database
-    dashboardCache.set(cacheKey, { data: responseData, expires: Date.now() + 15000 });
+    cacheSet(cacheKey, responseData);
 
     res.json(responseData);
   })
@@ -276,39 +318,45 @@ router.get(
 
     const inRange = { ...ACTIVE, supplierId: supplier.id, date: { gte: from, lte: to } };
 
-    const rangeAgg = await prisma.docket.aggregate({
-      where: inRange,
-      _count: { _all: true },
-      _sum: { total: true, gst: true },
-    });
-    const lifetimeAgg = await prisma.docket.aggregate({
-      where: { ...ACTIVE, supplierId: supplier.id },
-      _count: { _all: true },
-      _sum: { total: true },
-    });
-    const materials = await prisma.docketLineItem.groupBy({
-      by: ['materialId'],
-      _sum: { netWeight: true, value: true },
-      _count: { _all: true },
-      where: { docket: inRange },
-      orderBy: { _sum: { value: 'desc' } },
-    });
-    const rows = await prisma.docket.findMany({ where: inRange, select: { date: true, total: true } });
-    const dockets = await prisma.docket.findMany({
-      where: { supplierId: supplier.id },
-      include: { lineItems: { include: { material: true } } },
-      orderBy: { date: 'desc' },
-      take: 50,
-    });
-    const firstDocket = await prisma.docket.findFirst({
-      where: { ...ACTIVE, supplierId: supplier.id },
-      orderBy: { date: 'asc' },
-      select: { date: true },
-    });
+    // Issued together rather than one after another — these were six separate
+    // round trips, which on a remote database is six times the latency for no
+    // reason, since none of them depend on each other.
+    const [rangeAgg, lifetimeAgg, materials, rows, dockets, firstDocket] = await Promise.all([
+      prisma.docket.aggregate({
+        where: inRange,
+        _count: { _all: true },
+        _sum: { total: true, gst: true },
+      }),
+      prisma.docket.aggregate({
+        where: { ...ACTIVE, supplierId: supplier.id },
+        _count: { _all: true },
+        _sum: { total: true },
+      }),
+      prisma.docketLineItem.groupBy({
+        by: ['materialId'],
+        _sum: { netWeight: true, value: true },
+        _count: { _all: true },
+        where: { docket: inRange },
+        orderBy: { _sum: { value: 'desc' } },
+      }),
+      prisma.docket.findMany({ where: inRange, select: { date: true, total: true } }),
+      prisma.docket.findMany({
+        where: { supplierId: supplier.id },
+        include: { lineItems: { include: { material: true } } },
+        orderBy: { date: 'desc' },
+        take: 50,
+      }),
+      prisma.docket.findFirst({
+        where: { ...ACTIVE, supplierId: supplier.id },
+        orderBy: { date: 'asc' },
+        select: { date: true },
+      }),
+    ]);
 
-    const materialRows = await prisma.material.findMany({
-      where: { id: { in: materials.map((m) => m.materialId) } },
-    });
+    const materialIds = materials.map((m) => m.materialId);
+    const materialRows = materialIds.length
+      ? await prisma.material.findMany({ where: { id: { in: materialIds } } })
+      : [];
     const materialMap = Object.fromEntries(materialRows.map((m) => [m.id, m]));
 
     res.json({
@@ -351,34 +399,38 @@ router.get(
 
     const inRange = { ...ACTIVE, consigneeId: consignee.id, date: { gte: from, lte: to } };
 
-    const rangeAgg = await prisma.exportInvoice.aggregate({
-      where: inRange,
-      _count: { _all: true },
-      _sum: { totalAud: true, gstAud: true },
-    });
-    const lifetimeAgg = await prisma.exportInvoice.aggregate({
-      where: { ...ACTIVE, consigneeId: consignee.id },
-      _count: { _all: true },
-      _sum: { totalAud: true },
-    });
-    const materials = await prisma.invoiceLineItem.groupBy({
-      by: ['materialId'],
-      _sum: { weightTonnes: true, totalAud: true },
-      _count: { _all: true },
-      where: { invoice: inRange },
-      orderBy: { _sum: { totalAud: 'desc' } },
-    });
-    const rows = await prisma.exportInvoice.findMany({ where: inRange, select: { date: true, totalAud: true } });
-    const invoices = await prisma.exportInvoice.findMany({
-      where: { consigneeId: consignee.id },
-      include: { lineItems: { include: { material: true } } },
-      orderBy: { date: 'desc' },
-      take: 50,
-    });
+    // One wave rather than five sequential round trips — see the supplier route.
+    const [rangeAgg, lifetimeAgg, materials, rows, invoices] = await Promise.all([
+      prisma.exportInvoice.aggregate({
+        where: inRange,
+        _count: { _all: true },
+        _sum: { totalAud: true, gstAud: true },
+      }),
+      prisma.exportInvoice.aggregate({
+        where: { ...ACTIVE, consigneeId: consignee.id },
+        _count: { _all: true },
+        _sum: { totalAud: true },
+      }),
+      prisma.invoiceLineItem.groupBy({
+        by: ['materialId'],
+        _sum: { weightTonnes: true, totalAud: true },
+        _count: { _all: true },
+        where: { invoice: inRange },
+        orderBy: { _sum: { totalAud: 'desc' } },
+      }),
+      prisma.exportInvoice.findMany({ where: inRange, select: { date: true, totalAud: true } }),
+      prisma.exportInvoice.findMany({
+        where: { consigneeId: consignee.id },
+        include: { lineItems: { include: { material: true } } },
+        orderBy: { date: 'desc' },
+        take: 50,
+      }),
+    ]);
 
-    const materialRows = await prisma.material.findMany({
-      where: { id: { in: materials.map((m) => m.materialId) } },
-    });
+    const materialIds = materials.map((m) => m.materialId);
+    const materialRows = materialIds.length
+      ? await prisma.material.findMany({ where: { id: { in: materialIds } } })
+      : [];
     const materialMap = Object.fromEntries(materialRows.map((m) => [m.id, m]));
 
     res.json({

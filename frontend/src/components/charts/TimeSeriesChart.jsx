@@ -1,11 +1,15 @@
 import { useState } from 'react';
-import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
+import {
+  AreaChart,
+  Area,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+} from 'recharts';
+import { SERIES, CHART_INK, formatAxisMoney } from './palette';
 import { formatAud } from '../../lib/format';
-
-const SERIES = {
-  purchases: '#587485', // steel-600
-  sales: '#d97736', // copper-500
-};
 
 function periodLabel(period, granularity) {
   const [y, m, d] = period.split('-').map(Number);
@@ -15,13 +19,108 @@ function periodLabel(period, granularity) {
   return new Date(y, m - 1, d).toLocaleDateString('en-AU', { day: 'numeric', month: 'short' });
 }
 
+function Tip({ active, payload, label, series }) {
+  if (!active || !payload?.length) return null;
+  const row = payload[0].payload;
+  return (
+    <div className="rounded-lg border border-steel-200 bg-white px-3 py-2 shadow-lg">
+      <div className="mb-1 text-xs font-semibold text-steel-900">{label}</div>
+      <div className="flex items-center gap-2 text-xs">
+        <span
+          className="inline-block h-2 w-2 rounded-sm"
+          style={{ background: series.color }}
+          aria-hidden="true"
+        />
+        <span className="text-steel-500">{series.label}</span>
+        <span className="num ml-auto font-medium text-steel-900">
+          {formatAud(row[series.key])}
+        </span>
+        <span className="num text-steel-400">({row[`${series.key}Count`] ?? 0})</span>
+      </div>
+    </div>
+  );
+}
+
+/** One panel of the small multiple — its own y-scale, shared x-axis below. */
+function Panel({ data, series, granularity, showAxis }) {
+  const gradientId = `grad-${series.key}`;
+  return (
+    <div>
+      <div className="mb-1 flex items-baseline gap-2">
+        <span
+          className="inline-block h-2.5 w-2.5 rounded-sm"
+          style={{ background: series.color }}
+          aria-hidden="true"
+        />
+        <span className="text-[11px] font-semibold uppercase tracking-wider text-steel-600">
+          {series.label}
+        </span>
+        <span className="num text-xs text-steel-500">{formatAud(series.total)}</span>
+      </div>
+      <ResponsiveContainer width="100%" height={showAxis ? 150 : 128}>
+        <AreaChart data={data} margin={{ top: 4, right: 8, left: 0, bottom: showAxis ? 0 : 4 }}>
+          <defs>
+            <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor={series.color} stopOpacity={0.18} />
+              <stop offset="100%" stopColor={series.color} stopOpacity={0.02} />
+            </linearGradient>
+          </defs>
+          <CartesianGrid stroke={CHART_INK.grid} strokeWidth={1} vertical={false} />
+          <XAxis
+            dataKey="formattedPeriod"
+            hide={!showAxis}
+            tick={{ fontSize: 10, fill: CHART_INK.label }}
+            axisLine={{ stroke: CHART_INK.axis }}
+            tickLine={false}
+            minTickGap={24}
+          />
+          <YAxis
+            width={54}
+            tick={{ fontSize: 10, fill: CHART_INK.label, fontFamily: 'IBM Plex Mono, monospace' }}
+            axisLine={false}
+            tickLine={false}
+            tickCount={3}
+            tickFormatter={formatAxisMoney}
+          />
+          <Tooltip
+            content={<Tip series={series} />}
+            cursor={{ stroke: CHART_INK.axis, strokeWidth: 1 }}
+          />
+          <Area
+            type="monotone"
+            dataKey={series.key}
+            name={series.label}
+            stroke={series.color}
+            strokeWidth={2}
+            fill={`url(#${gradientId})`}
+            // Off by default: the sweep-in made the dashboard look empty for a
+            // beat on every load, which reads as "still loading".
+            isAnimationActive={false}
+            activeDot={{ r: 4, strokeWidth: 2, stroke: CHART_INK.surface, fill: series.color }}
+          />
+        </AreaChart>
+      </ResponsiveContainer>
+    </div>
+  );
+}
+
+/**
+ * Purchases and sales over time, as small multiples.
+ *
+ * These are both AUD but live at completely different magnitudes: the yard writes
+ * a hundred small dockets a month and ships a handful of containers worth six
+ * figures each. On one shared scale the purchases flatten to a smear along the
+ * baseline — measured at 3% of the plot height against 94% for sales — so the
+ * main business becomes invisible. Two y-axes in one frame would be worse: it
+ * would imply the two heights are comparable when they are not. Each series gets
+ * its own panel and its own scale, stacked on a shared time axis.
+ */
 export default function TimeSeriesChart({ data, granularity }) {
   const [showTable, setShowTable] = useState(false);
 
-  // Format data for Recharts
-  const chartData = data.map(d => ({
+  const chartData = data.map((d) => ({
     ...d,
-    formattedPeriod: periodLabel(d.period, granularity)
+    formattedPeriod: periodLabel(d.period, granularity),
   }));
 
   const totals = data.reduce(
@@ -29,129 +128,57 @@ export default function TimeSeriesChart({ data, granularity }) {
     { purchases: 0, sales: 0 }
   );
 
-  const CustomTooltip = ({ active, payload, label }) => {
-    if (active && payload && payload.length) {
-      return (
-        <div className="rounded-lg border border-steel-200 bg-white/95 p-3 shadow-xl backdrop-blur-sm">
-          <p className="mb-2 text-sm font-semibold text-steel-900">{label}</p>
-          {payload.map((entry, index) => (
-            <div key={index} className="flex items-center gap-3 text-sm">
-              <span
-                className="h-2.5 w-2.5 rounded-full"
-                style={{ backgroundColor: entry.color }}
-              />
-              <span className="capitalize text-steel-600">{entry.name}:</span>
-              <span className="ml-auto font-bold text-steel-900">
-                {formatAud(entry.value)}
-              </span>
-            </div>
-          ))}
-        </div>
-      );
-    }
-    return null;
-  };
+  const panels = [
+    { key: 'purchases', label: 'Purchases', color: SERIES.purchases, total: totals.purchases },
+    { key: 'sales', label: 'Sales', color: SERIES.sales, total: totals.sales },
+  ];
 
   return (
-    <div className="flex flex-col h-[450px]">
-      <div className="mb-6 flex items-center justify-between gap-4">
-        <div className="flex items-center gap-6">
-          <div className="flex items-center gap-2">
-            <span className="h-3 w-3 rounded bg-copper-500 shadow-sm" />
-            <span className="text-sm font-medium text-steel-700">Total Sales</span>
-            <span className="font-bold text-steel-900 ml-1">{formatAud(totals.sales)}</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="h-3 w-3 rounded bg-steel-600 shadow-sm" />
-            <span className="text-sm font-medium text-steel-700">Total Purchases</span>
-            <span className="font-bold text-steel-900 ml-1">{formatAud(totals.purchases)}</span>
-          </div>
-        </div>
-        
+    <div>
+      <div className="mb-3 flex items-center justify-between gap-4">
+        <span className="text-[11px] text-steel-400">
+          Each panel has its own scale — heights are not comparable between them
+        </span>
         <button
           onClick={() => setShowTable((v) => !v)}
-          className="rounded-md border border-steel-200 bg-white px-3 py-1.5 text-xs font-medium text-steel-600 shadow-sm transition hover:bg-steel-50 hover:text-copper-600"
+          className="text-xs font-medium text-steel-500 hover:text-copper-600"
         >
-          {showTable ? 'Switch to Chart View' : 'Switch to Data Table'}
+          {showTable ? 'Show chart' : 'Show table'}
         </button>
       </div>
 
       {showTable ? (
-        <div className="flex-1 overflow-y-auto rounded-lg border border-steel-100 shadow-inner">
+        <div className="max-h-[320px] overflow-y-auto">
           <table className="w-full text-sm">
-            <thead className="sticky top-0 z-10 bg-steel-50 shadow-sm">
-              <tr className="text-left text-xs uppercase tracking-wider text-steel-500">
-                <th className="py-3 px-4 font-semibold">Period</th>
-                <th className="py-3 px-4 text-right font-semibold">Purchases</th>
-                <th className="py-3 px-4 text-right font-semibold">Sales</th>
+            <thead className="sticky top-0 bg-white">
+              <tr className="border-b border-steel-200 text-left text-xs uppercase tracking-wider text-steel-500">
+                <th className="py-2 font-medium">Period</th>
+                <th className="py-2 text-right font-medium">Purchases</th>
+                <th className="py-2 text-right font-medium">Sales</th>
               </tr>
             </thead>
-            <tbody className="bg-white divide-y divide-steel-100">
-              {chartData.map((d) => (
-                <tr key={d.period} className="hover:bg-steel-50/50 transition-colors">
-                  <td className="py-2.5 px-4 font-medium text-steel-800">{d.formattedPeriod}</td>
-                  <td className="py-2.5 px-4 text-right font-mono text-steel-600">{formatAud(d.purchases)}</td>
-                  <td className="py-2.5 px-4 text-right font-mono font-medium text-copper-700">{formatAud(d.sales)}</td>
+            <tbody>
+              {data.map((d) => (
+                <tr key={d.period} className="border-b border-steel-100 last:border-0">
+                  <td className="py-1.5 text-steel-700">{periodLabel(d.period, granularity)}</td>
+                  <td className="num py-1.5 text-right text-steel-900">{formatAud(d.purchases)}</td>
+                  <td className="num py-1.5 text-right text-steel-900">{formatAud(d.sales)}</td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
       ) : (
-        <div className="flex-1 w-full relative">
-          <ResponsiveContainer width="100%" height="100%">
-            <AreaChart
+        <div className="space-y-3">
+          {panels.map((series, i) => (
+            <Panel
+              key={series.key}
               data={chartData}
-              margin={{ top: 10, right: 10, left: 20, bottom: 0 }}
-            >
-              <defs>
-                <linearGradient id="colorSales" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor={SERIES.sales} stopOpacity={0.3} />
-                  <stop offset="95%" stopColor={SERIES.sales} stopOpacity={0} />
-                </linearGradient>
-                <linearGradient id="colorPurchases" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor={SERIES.purchases} stopOpacity={0.2} />
-                  <stop offset="95%" stopColor={SERIES.purchases} stopOpacity={0} />
-                </linearGradient>
-              </defs>
-              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E2E8F0" />
-              <XAxis 
-                dataKey="formattedPeriod" 
-                tick={{ fontSize: 12, fill: '#64748b' }}
-                tickLine={false}
-                axisLine={{ stroke: '#cbd5e1' }}
-                dy={10}
-              />
-              <YAxis 
-                tickFormatter={(value) => `$${value >= 1000 ? (value / 1000).toFixed(0) + 'k' : value}`}
-                tick={{ fontSize: 12, fill: '#64748b' }}
-                tickLine={false}
-                axisLine={false}
-                dx={-10}
-              />
-              <Tooltip content={<CustomTooltip />} />
-              <Area 
-                type="monotone" 
-                dataKey="sales" 
-                name="Sales"
-                stroke={SERIES.sales} 
-                strokeWidth={3}
-                fillOpacity={1} 
-                fill="url(#colorSales)" 
-                activeDot={{ r: 6, strokeWidth: 0, fill: SERIES.sales }}
-              />
-              <Area 
-                type="monotone" 
-                dataKey="purchases" 
-                name="Purchases"
-                stroke={SERIES.purchases} 
-                strokeWidth={2}
-                fillOpacity={1} 
-                fill="url(#colorPurchases)" 
-                activeDot={{ r: 5, strokeWidth: 0, fill: SERIES.purchases }}
-              />
-            </AreaChart>
-          </ResponsiveContainer>
+              series={series}
+              granularity={granularity}
+              showAxis={i === panels.length - 1}
+            />
+          ))}
         </div>
       )}
     </div>

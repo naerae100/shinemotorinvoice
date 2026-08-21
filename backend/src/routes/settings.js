@@ -11,7 +11,10 @@ import crypto from 'crypto';
 // Local file storage is completely disabled for serverless (Vercel) deployments.
 // Images are instead encoded as Base64 Data URIs and stored directly in the database.
 
-const MAX_UPLOAD_BYTES = 5 * 1024 * 1024; // 5 MB — a logo or stamp is far smaller
+// 1 MB. Base64 inflates by ~33%, and the encoded string is stored in the database
+// and travels in JSON bodies, so this must stay comfortably under the express.json
+// limit below it. A logo or stamp is a few tens of KB in practice.
+const MAX_UPLOAD_BYTES = 1024 * 1024;
 
 // Extension is chosen by us from the detected mime type, never taken from the
 // uploaded filename: express.static sets Content-Type from the extension, so an
@@ -59,6 +62,25 @@ const settingsSchema = z.object({
   bankAddress: z.string().optional().nullable(),
   beneficiary: z.string().optional().nullable(),
 });
+
+/**
+ * GET /api/settings/public — unauthenticated, deliberately.
+ *
+ * The sign-in screen needs the trading name and contact line to identify itself,
+ * but nobody is signed in yet. Only fields that already appear on every printed
+ * invoice are exposed here — no bank details, no logo payload, nothing private.
+ */
+router.get(
+  '/public',
+  asyncHandler(async (req, res) => {
+    const settings = await prisma.companySettings.findUnique({
+      where: { id: 'singleton' },
+      select: { companyName: true, address: true, abn: true, phone: true },
+    });
+    res.setHeader('Cache-Control', 'public, max-age=300');
+    res.json({ branding: settings ?? null });
+  })
+);
 
 // GET — any logged-in user can read (needed to render logo on docket/invoice screens)
 router.get(

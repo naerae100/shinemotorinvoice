@@ -59,6 +59,65 @@ npm run demo:clear   # remove every one of them again
 Everything it creates is named `DEMO …` or `DEMO-…`, and `demo:clear` matches on exactly that
 prefix — your own records are never touched.
 
+## Performance — read this before optimising anything else
+
+Response time here is dominated by **where the function runs relative to the
+database**, not by query efficiency or data volume. Measured against the live
+database while it held 3 dockets and 0 invoices:
+
+| | |
+|---|---|
+| Round trip to the database | ~178 ms |
+| Dashboard, six sequential query waves | 6037 ms |
+| Dashboard, one wave (current) | 1215 ms |
+
+A 4 KB response took 2.5 seconds. No index or query rewrite fixes that — it is
+latency multiplied by the number of round trips. So:
+
+1. **Keep the functions in the database's region.** `vercel.json` pins `hnd1`
+   (Tokyo) because the Supabase project is in `ap-northeast-1`. If either moves,
+   move the other. Co-located, a round trip is ~1-5 ms instead of ~178 ms.
+2. **Issue independent queries in one `Promise.all`, not one after another.**
+   Each extra wave costs a full round trip. The dashboard and both per-client
+   reports each collapsed from five or six waves to one.
+3. **Ideal end state:** database in `ap-southeast-2` (Sydney) and `regions:
+   ["syd1"]`, which also shortens the hop from the yard itself.
+
+Company settings are cached in the browser for the tab's lifetime
+(`frontend/src/lib/settings.js`) — they carry the logo and stamp as base64 and
+were being refetched on every docket and invoice screen.
+
+## Tests
+
+```bash
+npm test                       # money unit tests always run
+```
+
+The 42 API integration tests need a scratch PostgreSQL database, because that is
+what the schema targets:
+
+```bash
+docker run --rm -d -p 5433:5432 -e POSTGRES_PASSWORD=test --name shine-test postgres:16
+export TEST_DATABASE_URL="postgresql://postgres:test@localhost:5433/postgres"
+npm test
+```
+
+Without `TEST_DATABASE_URL` those tests **skip loudly** and the run reports a
+skip — deliberately, so a green run can never mean "42 tests silently did not
+execute". The harness refuses any non-local URL, since it drops and recreates
+the schema on every run.
+
+## Migrations
+
+`prisma/migrations/0_init/migration.sql` is a baseline generated from the current
+schema. The live database was built with `db push`, so mark the baseline as
+already applied once, then use normal migrations from then on:
+
+```bash
+npx prisma migrate resolve --applied 0_init
+npx prisma migrate deploy
+```
+
 ## Behaviour worth knowing
 
 - **Money maths lives in one place**, `src/lib/money.js`, shared by purchases and sales so the
@@ -80,6 +139,14 @@ prefix — your own records are never touched.
   next number, so concurrent entry on multiple terminals is safe.
 - **Bank details are snapshotted** onto each export invoice as JSON at creation time, and are
   deliberately *not* updated by `PATCH` — the buyer may already have paid against them.
+- **The dashboard response is `private, no-store`.** It is per-account financial
+  data behind `requireAuth`, and a shared CDN keys its cache on the URL rather
+  than the `Authorization` header — an `s-maxage` here could hand the figures to
+  a request that never presented a token. The in-process cache gives the speed
+  without that risk.
+- **Uploads are capped at 1 MB.** Images are stored as base64 data URIs, which
+  inflates them by a third and puts them inside JSON bodies, so the cap has to
+  stay well under the `express.json` limit.
 - **Every route handler is wrapped in `asyncHandler`.** Express 4 does not catch rejected
   promises from async handlers; without the wrapper a single failed query terminates the
   process. Add new routes the same way.

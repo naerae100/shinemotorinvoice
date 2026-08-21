@@ -32,7 +32,12 @@ export function errorHandler(err, req, res, _next) {
 
   // Multer surfaces upload problems with a `code` string
   if (err?.code === 'LIMIT_FILE_SIZE') {
-    return res.status(413).json({ error: 'File is too large (max 5 MB)' });
+    return res.status(413).json({ error: 'That image is too large (max 1 MB)' });
+  }
+  // body-parser uses a different shape, and without this an oversized JSON body
+  // fell through to a bare 500 that told the user nothing.
+  if (err?.type === 'entity.too.large' || err?.status === 413) {
+    return res.status(413).json({ error: 'That request was too large to process' });
   }
   if (err?.code === 'LIMIT_UNEXPECTED_FILE') {
     return res.status(400).json({ error: 'Unexpected file field' });

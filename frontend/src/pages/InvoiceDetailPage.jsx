@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { api } from '../lib/api';
+import { getSettings } from '../lib/settings';
 import InvoiceDocument from '../components/documents/InvoiceDocument';
 
 export default function InvoiceDetailPage() {
@@ -12,7 +13,7 @@ export default function InvoiceDetailPage() {
   useEffect(() => {
     Promise.all([
       api.get(`/invoices/${id}`).then((res) => res.data.invoice),
-      api.get('/settings').then((res) => res.data.settings),
+      getSettings(),
     ])
       .then(([inv, s]) => {
         setInvoice(inv);

@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
   api,
   fixtures,
+  hasTestDatabase,
   loginAdmin,
   serverAlive,
   startTestServer,
@@ -10,17 +11,43 @@ import {
   ADMIN_CREDENTIALS,
 } from './helpers.js';
 
+// Without a scratch database these cannot run. Skipping loudly is the point:
+// a suite that silently reports success while testing nothing is worse than
+// no suite, because it will wave a regression straight through.
+if (!hasTestDatabase) {
+  console.warn(
+    '\n  ! SKIPPING %d API integration tests — TEST_DATABASE_URL is not set.\n' +
+      '    These need a scratch PostgreSQL database. See tests/helpers.js.\n',
+    53
+  );
+}
+
+// Every suite in this file needs the database; alias once rather than guarding
+// each test individually.
+const suite = hasTestDatabase ? describe : describe.skip;
+
+// A skipped suite reports nothing, so the run would still read "fail 0" with a
+// clean conscience. This sentinel puts a skip on the scoreboard.
+if (!hasTestDatabase) {
+  test(
+    'API integration tests are configured',
+    { skip: 'TEST_DATABASE_URL is not set — 42 API tests did NOT run' },
+    () => {}
+  );
+}
+
 let token;
 let fx;
 
 before(async () => {
+  if (!hasTestDatabase) return;
   await startTestServer();
   token = await loginAdmin();
   fx = await fixtures(token);
 });
 
 after(async () => {
-  await stopTestServer();
+  if (hasTestDatabase) await stopTestServer();
 });
 
 const line = (materialId, netWeight = 100, price = 10) => ({ materialId, netWeight, price });
@@ -37,7 +64,7 @@ async function createDocket(overrides = {}) {
   return res;
 }
 
-describe('auth', () => {
+suite('auth', () => {
   test('valid credentials return a token and the user', async () => {
     const res = await api('POST', '/auth/login', { body: ADMIN_CREDENTIALS });
     assert.equal(res.status, 200);
@@ -68,7 +95,7 @@ describe('auth', () => {
   });
 });
 
-describe('dockets — totals', () => {
+suite('dockets — totals', () => {
   test('a purchase docket carries no GST', async () => {
     const res = await createDocket({ type: 'PURCHASE_DOCKET' });
     assert.equal(res.status, 201);
@@ -125,7 +152,7 @@ describe('dockets — totals', () => {
   });
 });
 
-describe('dockets — numbering under concurrency', () => {
+suite('dockets — numbering under concurrency', () => {
   test('12 simultaneous saves all succeed with distinct sequential numbers', async () => {
     const results = await Promise.all(Array.from({ length: 12 }, () => createDocket()));
     assert.ok(
@@ -138,7 +165,7 @@ describe('dockets — numbering under concurrency', () => {
   });
 });
 
-describe('dockets — void lifecycle', () => {
+suite('dockets — void lifecycle', () => {
   test('voiding requires a reason', async () => {
     const { body } = await createDocket();
     const res = await api('POST', `/dockets/${body.docket.id}/void`, { token, body: {} });
@@ -199,7 +226,7 @@ describe('dockets — void lifecycle', () => {
   });
 });
 
-describe('invoices', () => {
+suite('invoices', () => {
   const invoiceLine = (materialId) => ({ materialId, weightTonnes: 10, pricePerMt: 1000 });
 
   async function createInvoice(overrides = {}) {
@@ -269,7 +296,7 @@ describe('invoices', () => {
   });
 });
 
-describe('permissions', () => {
+suite('permissions', () => {
   let staffToken;
 
   before(async () => {
@@ -371,7 +398,7 @@ describe('permissions', () => {
   });
 });
 
-describe('error handling — bad input must never take the API down', () => {
+suite('error handling — bad input must never take the API down', () => {
   test('a non-existent foreign key returns 400', async () => {
     const res = await createDocket({ supplierId: 'does-not-exist' });
     assert.equal(res.status, 400);
@@ -430,7 +457,7 @@ describe('error handling — bad input must never take the API down', () => {
   });
 });
 
-describe('filters and reports', () => {
+suite('filters and reports', () => {
   test('date range filtering excludes documents outside the window', async () => {
     const res = await api('GET', '/dockets?from=1999-01-01&to=1999-12-31', { token });
     assert.equal(res.body.totalCount, 0);

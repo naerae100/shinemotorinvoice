@@ -1,22 +1,32 @@
+import { lazy, Suspense } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext';
 import ProtectedRoute from './components/ProtectedRoute';
 import ErrorBoundary from './components/ErrorBoundary';
 import AppLayout from './components/AppLayout';
+
+// Login is eager — it is the first paint and must not wait on anything.
 import LoginPage from './pages/LoginPage';
-import DashboardPage from './pages/DashboardPage';
-import NewDocketPage from './pages/NewDocketPage';
-import DocketHistoryPage from './pages/DocketHistoryPage';
-import DocketDetailPage from './pages/DocketDetailPage';
-import InvoicesPage from './pages/InvoicesPage';
-import NewInvoicePage from './pages/NewInvoicePage';
-import InvoiceDetailPage from './pages/InvoiceDetailPage';
-import MaterialsPage from './pages/MaterialsPage';
-import SettingsPage from './pages/SettingsPage';
-import ClientsPage from './pages/ClientsPage';
-import BuyersPage from './pages/BuyersPage';
-import PartyDetailPage from './pages/PartyDetailPage';
-import UsersPage from './pages/UsersPage';
+
+// Everything behind the login is split out. The charting library alone is most
+// of the bundle, and none of it is needed to render the sign-in screen.
+const DashboardPage = lazy(() => import('./pages/DashboardPage'));
+const NewDocketPage = lazy(() => import('./pages/NewDocketPage'));
+const DocketHistoryPage = lazy(() => import('./pages/DocketHistoryPage'));
+const DocketDetailPage = lazy(() => import('./pages/DocketDetailPage'));
+const InvoicesPage = lazy(() => import('./pages/InvoicesPage'));
+const NewInvoicePage = lazy(() => import('./pages/NewInvoicePage'));
+const InvoiceDetailPage = lazy(() => import('./pages/InvoiceDetailPage'));
+const MaterialsPage = lazy(() => import('./pages/MaterialsPage'));
+const SettingsPage = lazy(() => import('./pages/SettingsPage'));
+const ClientsPage = lazy(() => import('./pages/ClientsPage'));
+const BuyersPage = lazy(() => import('./pages/BuyersPage'));
+const PartyDetailPage = lazy(() => import('./pages/PartyDetailPage'));
+const UsersPage = lazy(() => import('./pages/UsersPage'));
+
+function PageFallback() {
+  return <div className="px-8 py-8 text-sm text-steel-500">Loading…</div>;
+}
 
 export default function App() {
   return (
@@ -29,7 +39,9 @@ export default function App() {
               path="/"
               element={
                 <ProtectedRoute>
-                  <AppLayout />
+                  <Suspense fallback={<PageFallback />}>
+                    <AppLayout />
+                  </Suspense>
                 </ProtectedRoute>
               }
             >

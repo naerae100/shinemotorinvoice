@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api, uploadSettingsImage } from '../lib/api';
+import { getSettings, setCachedSettings } from '../lib/settings';
 
 const FIELD_GROUPS = [
   {
@@ -32,9 +33,10 @@ export default function SettingsPage() {
   const [settings, setSettings] = useState(null);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [error, setError] = useState('');
 
   useEffect(() => {
-    api.get('/settings').then((res) => setSettings(res.data.settings));
+    getSettings().then(setSettings);
   }, []);
 
   function update(field, value) {
@@ -44,9 +46,17 @@ export default function SettingsPage() {
 
   async function handleSave() {
     setSaving(true);
+    setError('');
     try {
-      await api.patch('/settings', settings);
+      // logoUrl and stampUrl are base64 data URIs owned by the upload endpoint.
+      // Sending them back here pushed the JSON body past the 2 MB limit and the
+      // save failed with a bare "Internal server error".
+      const { id, logoUrl, stampUrl, ...editable } = settings;
+      const res = await api.patch('/settings', editable);
+      setCachedSettings(res.data.settings);
       setSaved(true);
+    } catch (err) {
+      setError(err.response?.data?.error || 'Could not save settings.');
     } finally {
       setSaving(false);
     }
@@ -57,9 +67,9 @@ export default function SettingsPage() {
     try {
       const data = await uploadSettingsImage(type, file);
       setSettings(data.settings);
+      setCachedSettings(data.settings);
     } catch (err) {
-      console.error('Failed to upload', err);
-      alert('Failed to upload image.');
+      setError(err.response?.data?.error || 'Could not upload that image.');
     }
   }
 
@@ -145,6 +155,7 @@ export default function SettingsPage() {
           {saving ? 'Saving…' : 'Save settings'}
         </button>
         {saved && <span className="text-sm text-working-green">Saved.</span>}
+        {error && <span className="text-sm text-working-red">{error}</span>}
       </div>
     </div>
   );

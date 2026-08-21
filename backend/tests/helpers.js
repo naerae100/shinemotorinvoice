@@ -1,5 +1,4 @@
 import { spawn, execFileSync } from 'node:child_process';
-import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -8,16 +7,33 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 export const PORT = 4123;
 export const BASE = `http://localhost:${PORT}/api`;
 
-const TEST_DB_FILE = path.join(ROOT, 'prisma', 'test.db');
 const ADMIN_PASSWORD = 'TestAdmin12345';
 
 /**
- * Tests run against a throwaway SQLite database, never prisma/dev.db, so a test
- * run can never touch real trading records.
+ * The API tests need a real PostgreSQL database, because that is what the schema
+ * targets — a SQLite file will not do. Point TEST_DATABASE_URL at a scratch
+ * database; it is wiped and recreated on every run, so it must never be the
+ * production one.
+ *
+ *   docker run --rm -d -p 5433:5432 -e POSTGRES_PASSWORD=test --name shine-test postgres:16
+ *   export TEST_DATABASE_URL="postgresql://postgres:test@localhost:5433/postgres"
+ *   npm test
  */
+export const TEST_DATABASE_URL = process.env.TEST_DATABASE_URL || '';
+export const hasTestDatabase = Boolean(TEST_DATABASE_URL);
+
+if (hasTestDatabase && /supabase|amazonaws|\.com/.test(TEST_DATABASE_URL) &&
+    !/localhost|127\.0\.0\.1/.test(TEST_DATABASE_URL)) {
+  throw new Error(
+    'TEST_DATABASE_URL looks like a hosted database. Tests DROP AND RECREATE the ' +
+      'schema — point it at a local scratch database only.'
+  );
+}
+
 const env = {
   ...process.env,
-  DATABASE_URL: 'file:./test.db',
+  DATABASE_URL: TEST_DATABASE_URL,
+  DIRECT_URL: TEST_DATABASE_URL,
   JWT_SECRET: 'test-secret-that-is-definitely-long-enough-for-the-check',
   SEED_ADMIN_PASSWORD: ADMIN_PASSWORD,
   NODE_ENV: 'test',
@@ -27,15 +43,14 @@ const env = {
 let server;
 
 export async function startTestServer() {
-  for (const suffix of ['', '-journal']) {
-    fs.rmSync(TEST_DB_FILE + suffix, { force: true });
-  }
+  if (!hasTestDatabase) throw new Error('TEST_DATABASE_URL is not set');
 
-  execFileSync('npx', ['prisma', 'db', 'push', '--skip-generate', '--accept-data-loss'], {
-    cwd: ROOT,
-    env,
-    stdio: 'pipe',
-  });
+  // --force-reset drops everything first, so each run starts from a known state.
+  execFileSync(
+    'npx',
+    ['prisma', 'db', 'push', '--skip-generate', '--accept-data-loss', '--force-reset'],
+    { cwd: ROOT, env, stdio: 'pipe' }
+  );
   execFileSync('node', ['prisma/seed.js'], { cwd: ROOT, env, stdio: 'pipe' });
 
   server = spawn('node', ['src/index.js'], { cwd: ROOT, env, stdio: 'pipe' });
@@ -58,9 +73,6 @@ export async function startTestServer() {
 
 export async function stopTestServer() {
   server?.kill('SIGKILL');
-  for (const suffix of ['', '-journal']) {
-    fs.rmSync(TEST_DB_FILE + suffix, { force: true });
-  }
 }
 
 /** True while the process is still answering — used to prove errors don't kill it. */
