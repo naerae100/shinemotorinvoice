@@ -31,3 +31,43 @@
     transition-duration: 0.01ms !important;
   }
 }
+
+@layer base {
+  /* One focus treatment for every control in the app. Pages had drifted into a
+     mix of focus:border-only, ring-only and nothing at all, which is much of
+     why the UI felt inconsistent rather than designed. Base-layer rules, so any
+     utility class on a specific element still wins. */
+  input,
+  select,
+  textarea {
+    @apply rounded-lg transition-colors duration-150;
+  }
+
+  input:focus-visible,
+  select:focus-visible,
+  textarea:focus-visible {
+    @apply border-copper-500 outline-none ring-2 ring-copper-500/20;
+  }
+
+  /* Checkboxes and radios keep the brand accent rather than the browser blue */
+  input[type='checkbox'],
+  input[type='radio'] {
+    @apply accent-copper-500;
+  }
+
+  button {
+    @apply transition-colors duration-150;
+  }
+
+  /* Date inputs render a tiny low-contrast picker icon by default */
+  input[type='date']::-webkit-calendar-picker-indicator {
+    @apply cursor-pointer opacity-50 transition-opacity hover:opacity-100;
+  }
+}
+
+@layer components {
+  /* Tables share one row rhythm so lists feel like one system */
+  .data-row {
+    @apply border-b border-steel-100 transition-colors last:border-0 hover:bg-paper/60;
+  }
+}

@@ -3,10 +3,15 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { api } from '../lib/api';
 import { formatAud } from '../lib/format';
 import DiscountField, { applyDiscount } from '../components/DiscountField';
+import ComboField from '../components/ComboField';
 
-const SHIPPING_TERMS = ['FAS', 'FOB', 'CFR', 'CIF', 'EXW', 'DAP'];
-const CONTAINER_TYPES = ['20ft GP', '40ft GP', '20ft HC', '40ft HC', 'Bulk'];
-const TRANSPORT_MODES = ['Sea', 'Air', 'Road', 'Rail'];
+// Suggestions, not restrictions — every one of these fields accepts free text.
+const SHIPPING_TERMS = ['FAS', 'FOB', 'CFR', 'CIF', 'EXW', 'DAP', 'DDP', 'CPT', 'CIP', 'FCA'];
+const CONTAINER_TYPES = [
+  '20ft GP', '40ft GP', '20ft HC', '40ft HC', '45ft HC',
+  '20ft Reefer', '40ft Reefer', 'Flat rack', 'Open top', 'Bulk', 'Break bulk',
+];
+const TRANSPORT_MODES = ['Sea', 'Air', 'Road', 'Rail', 'Multimodal'];
 
 const emptyLine = { materialId: '', description: '', weightTonnes: '', pricePerMt: '' };
 
@@ -282,51 +287,34 @@ export default function NewInvoicePage() {
           </div>
 
           <div className="grid grid-cols-3 gap-4 border-b border-steel-100 px-6 py-5">
-            <div>
-              <label className={labelCls}>Shipping term</label>
-              <select
-                value={shipping.shippingTerm}
-                onChange={(e) => setShipping({ ...shipping, shippingTerm: e.target.value })}
-                className={field}
-              >
-                {SHIPPING_TERMS.map((t) => (
-                  <option key={t}>{t}</option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className={labelCls}>Port</label>
-              <input
-                value={shipping.fasPort}
-                onChange={(e) => setShipping({ ...shipping, fasPort: e.target.value })}
-                placeholder="e.g. Port Botany"
-                className={field}
-              />
-            </div>
-            <div>
-              <label className={labelCls}>Mode of transport</label>
-              <select
-                value={shipping.modeOfTransport}
-                onChange={(e) => setShipping({ ...shipping, modeOfTransport: e.target.value })}
-                className={field}
-              >
-                {TRANSPORT_MODES.map((t) => (
-                  <option key={t}>{t}</option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className={labelCls}>Container type</label>
-              <select
-                value={shipping.containerType}
-                onChange={(e) => setShipping({ ...shipping, containerType: e.target.value })}
-                className={field}
-              >
-                {CONTAINER_TYPES.map((t) => (
-                  <option key={t}>{t}</option>
-                ))}
-              </select>
-            </div>
+            <ComboField
+              label="Shipping term"
+              value={shipping.shippingTerm}
+              onChange={(v) => setShipping({ ...shipping, shippingTerm: v })}
+              options={SHIPPING_TERMS}
+              placeholder="e.g. FOB — or type your own"
+            />
+            <ComboField
+              label="Port"
+              value={shipping.fasPort}
+              onChange={(v) => setShipping({ ...shipping, fasPort: v })}
+              options={['Port Botany, Sydney', 'Port of Melbourne', 'Port of Brisbane', 'Fremantle', 'Port Adelaide']}
+              placeholder="e.g. Port Botany"
+            />
+            <ComboField
+              label="Mode of transport"
+              value={shipping.modeOfTransport}
+              onChange={(v) => setShipping({ ...shipping, modeOfTransport: v })}
+              options={TRANSPORT_MODES}
+              placeholder="e.g. Sea"
+            />
+            <ComboField
+              label="Container type"
+              value={shipping.containerType}
+              onChange={(v) => setShipping({ ...shipping, containerType: v })}
+              options={CONTAINER_TYPES}
+              placeholder="e.g. 40ft HC — or type your own"
+            />
             <div>
               <label className={labelCls}>Container no.</label>
               <input

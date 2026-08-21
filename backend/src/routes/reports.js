@@ -129,6 +129,14 @@ router.get(
     const docketWhere = { ...ACTIVE, date: dateRange };
     const invoiceWhere = { ...ACTIVE, date: dateRange };
 
+    // The equivalent window immediately before this one, so every headline
+    // number can be read as a movement rather than a bare figure. A total means
+    // little on its own; "up 18% on the previous 21 days" means something.
+    const spanMs = to.getTime() - from.getTime();
+    const prevTo = new Date(from.getTime() - 1);
+    const prevFrom = new Date(prevTo.getTime() - spanMs);
+    const prevRange = { gte: prevFrom, lte: prevTo };
+
     const cacheKey = `${from.toISOString()}_${to.toISOString()}_${granularity}`;
     const cached = cacheGet(cacheKey);
     if (cached) {
@@ -152,6 +160,8 @@ router.get(
       topConsignees,
       recentDockets,
       recentInvoices,
+      prevPurchaseAgg,
+      prevSalesAgg,
     ] = await Promise.all([
       prisma.docket.aggregate({
         where: docketWhere,
@@ -208,6 +218,16 @@ router.get(
         take: 6,
         include: { consignee: { select: { id: true, name: true } } },
       }),
+      prisma.docket.aggregate({
+        where: { ...ACTIVE, date: prevRange },
+        _count: { _all: true },
+        _sum: { total: true },
+      }),
+      prisma.exportInvoice.aggregate({
+        where: { ...ACTIVE, date: prevRange },
+        _count: { _all: true },
+        _sum: { totalAud: true },
+      }),
     ]);
 
     // Second wave — these genuinely depend on the groupBy results above, so they
@@ -263,6 +283,21 @@ router.get(
       // figure, not accounting profit — stock bought this month may not be sold
       // until next, so a negative number is normal in a buying month.
       grossMargin: Math.round((salesTotal - purchasesTotal) * 100) / 100,
+      previous: {
+        from: prevFrom,
+        to: prevTo,
+        purchases: {
+          count: prevPurchaseAgg._count._all,
+          total: sumOf(prevPurchaseAgg, 'total'),
+        },
+        sales: {
+          count: prevSalesAgg._count._all,
+          total: sumOf(prevSalesAgg, 'totalAud'),
+        },
+        grossMargin:
+          Math.round((sumOf(prevSalesAgg, 'totalAud') - sumOf(prevPurchaseAgg, 'total')) * 100) /
+          100,
+      },
       voidedInRange: voidCount,
       series: buildSeries(from, to, granularity, {
         purchases: docketRows.map((d) => ({ date: d.date, value: d.total })),

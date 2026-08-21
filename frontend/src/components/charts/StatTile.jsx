@@ -1,10 +1,82 @@
-import { formatAud } from '../../lib/format';
+import { CHART_INK } from './palette';
 
 /**
- * A headline number. Deliberately not a one-bar chart — a single current value
- * reads faster as a figure than as a plot.
+ * A headline figure with its movement against the previous period, and a
+ * sparkline for shape. Deliberately not a one-bar chart — a single current
+ * value reads faster as a figure, but a figure with no context is just a
+ * number, so the delta and the shape earn their place.
  */
-export default function StatTile({ label, value, sub, accent, tone = 'default', hero = false }) {
+
+function Sparkline({ points, color }) {
+  const values = (points || []).map((p) => Number(p) || 0);
+  if (values.length < 2 || values.every((v) => v === 0)) return null;
+
+  const W = 100;
+  const H = 26;
+  const max = Math.max(...values);
+  const min = Math.min(...values);
+  const span = max - min || 1;
+  const step = W / (values.length - 1);
+
+  const path = values
+    .map((v, i) => `${i === 0 ? 'M' : 'L'}${(i * step).toFixed(2)},${(H - ((v - min) / span) * H).toFixed(2)}`)
+    .join(' ');
+  const last = values[values.length - 1];
+
+  return (
+    <svg viewBox={`0 0 ${W} ${H + 4}`} className="h-7 w-full" preserveAspectRatio="none" aria-hidden="true">
+      <path d={path} fill="none" stroke={color} strokeWidth="1.75" strokeLinejoin="round" strokeLinecap="round"
+        vectorEffect="non-scaling-stroke" opacity="0.85" />
+      <circle cx={W} cy={H - ((last - min) / span) * H} r="2.5" fill={color}
+        stroke={CHART_INK.surface} strokeWidth="1.5" vectorEffect="non-scaling-stroke" />
+    </svg>
+  );
+}
+
+function Delta({ current, previous, invert }) {
+  // No prior activity to compare against — say so rather than inventing "+100%".
+  if (previous === null || previous === undefined) return null;
+  if (previous === 0) {
+    return current === 0 ? (
+      <span className="text-xs text-steel-400">No change</span>
+    ) : (
+      <span className="text-xs text-steel-500">No prior activity</span>
+    );
+  }
+
+  const pct = ((current - previous) / Math.abs(previous)) * 100;
+  const flat = Math.abs(pct) < 0.5;
+  const good = invert ? pct < 0 : pct > 0;
+
+  return (
+    <span
+      className={`inline-flex items-center gap-1 text-xs font-medium ${
+        flat ? 'text-steel-400' : good ? 'text-working-green' : 'text-working-red'
+      }`}
+    >
+      {!flat && (
+        <svg viewBox="0 0 10 10" className="h-2.5 w-2.5" fill="currentColor" aria-hidden="true">
+          <path d={pct > 0 ? 'M5 0l5 7H0z' : 'M5 10L0 3h10z'} />
+        </svg>
+      )}
+      {flat ? 'Level' : `${Math.abs(pct).toFixed(pct >= 100 ? 0 : 1)}%`}
+      <span className="font-normal text-steel-400">vs previous</span>
+    </span>
+  );
+}
+
+export default function StatTile({
+  label,
+  value,
+  sub,
+  accent,
+  tone = 'default',
+  current,
+  previous,
+  invertDelta = false,
+  spark,
+  sparkColor,
+}) {
   const toneClass =
     tone === 'positive'
       ? 'text-working-green'
@@ -15,14 +87,25 @@ export default function StatTile({ label, value, sub, accent, tone = 'default', 
           : 'text-steel-900';
 
   return (
-    <div className="rounded-xl border border-steel-200 bg-white p-5 shadow-ticket">
-      <div className="text-xs font-medium uppercase tracking-wider text-steel-500">{label}</div>
-      <div className={`num mt-2 font-semibold ${hero ? 'text-4xl' : 'text-3xl'} ${toneClass}`}>
+    <div className="group relative overflow-hidden rounded-xl border border-steel-200 bg-white p-5 shadow-ticket transition-shadow hover:shadow-md">
+      <div className="text-[11px] font-semibold uppercase tracking-wider text-steel-500">
+        {label}
+      </div>
+      <div className={`num mt-1.5 text-[26px] font-semibold leading-none tracking-tight ${toneClass}`}>
         {value}
       </div>
-      {sub && <div className="mt-1 text-sm text-steel-500">{sub}</div>}
+
+      <div className="mt-2 flex min-h-[18px] items-center gap-2">
+        <Delta current={current} previous={previous} invert={invertDelta} />
+      </div>
+
+      {sub && <div className="mt-0.5 text-xs text-steel-500">{sub}</div>}
+
+      {spark && (
+        <div className="-mx-1 mt-3">
+          <Sparkline points={spark} color={sparkColor || CHART_INK.axis} />
+        </div>
+      )}
     </div>
   );
 }
-
-export const money = formatAud;

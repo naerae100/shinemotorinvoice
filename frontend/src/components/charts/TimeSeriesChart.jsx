@@ -44,19 +44,41 @@ function Tip({ active, payload, label, series }) {
 /** One panel of the small multiple — its own y-scale, shared x-axis below. */
 function Panel({ data, series, granularity, showAxis }) {
   const gradientId = `grad-${series.key}`;
+  const hasData = series.hasData ?? data.some((d) => Number(d[series.key]) > 0);
+
+  const header = (
+    <div className="mb-1 flex items-baseline gap-2">
+      <span
+        className="inline-block h-2.5 w-2.5 rounded-sm"
+        style={{ background: series.color }}
+        aria-hidden="true"
+      />
+      <span className="text-[11px] font-semibold uppercase tracking-wider text-steel-600">
+        {series.label}
+      </span>
+      <span className="num text-xs text-steel-500">{formatAud(series.total)}</span>
+    </div>
+  );
+
+  // Plotting nothing produced a full-height panel with a meaningless $0-$1-$2
+  // axis, which reads as a broken chart rather than an empty period. Say it
+  // plainly and give the space back to the series that does have data.
+  if (!hasData) {
+    return (
+      <div>
+        {header}
+        <div className="flex h-[60px] items-center justify-center rounded-lg border border-dashed border-steel-200 bg-paper/50">
+          <span className="text-xs text-steel-400">
+            No {series.label.toLowerCase()} recorded in this period
+          </span>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div>
-      <div className="mb-1 flex items-baseline gap-2">
-        <span
-          className="inline-block h-2.5 w-2.5 rounded-sm"
-          style={{ background: series.color }}
-          aria-hidden="true"
-        />
-        <span className="text-[11px] font-semibold uppercase tracking-wider text-steel-600">
-          {series.label}
-        </span>
-        <span className="num text-xs text-steel-500">{formatAud(series.total)}</span>
-      </div>
+      {header}
       <ResponsiveContainer width="100%" height={showAxis ? 150 : 128}>
         <AreaChart data={data} margin={{ top: 4, right: 8, left: 0, bottom: showAxis ? 0 : 4 }}>
           <defs>
@@ -131,7 +153,12 @@ export default function TimeSeriesChart({ data, granularity }) {
   const panels = [
     { key: 'purchases', label: 'Purchases', color: SERIES.purchases, total: totals.purchases },
     { key: 'sales', label: 'Sales', color: SERIES.sales, total: totals.sales },
-  ];
+  ].map((p) => ({ ...p, hasData: data.some((d) => Number(d[p.key]) > 0) }));
+
+  // The shared date axis belongs to the last panel that actually draws a chart.
+  // Pinning it to the last panel outright meant an empty series at the bottom
+  // silently removed the axis from the whole figure.
+  const axisPanelKey = [...panels].reverse().find((p) => p.hasData)?.key ?? null;
 
   return (
     <div>
@@ -176,7 +203,7 @@ export default function TimeSeriesChart({ data, granularity }) {
               data={chartData}
               series={series}
               granularity={granularity}
-              showAxis={i === panels.length - 1}
+              showAxis={series.key === axisPanelKey}
             />
           ))}
         </div>
