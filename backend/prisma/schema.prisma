@@ -1,0 +1,260 @@
+// Shine Metals — Docket & Invoice System
+// Data model v1 — SQLite version for local development
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+// ─────────────────────────────────────────────
+// Users / Auth
+// ─────────────────────────────────────────────
+// Role values: "ADMIN" | "STAFF"
+
+model User {
+  id           String   @id @default(cuid())
+  name         String
+  email        String   @unique
+  passwordHash String
+  role         String   @default("STAFF")
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+
+  docketsCreated  Docket[]        @relation("DocketCreatedBy")
+  docketsEdited   Docket[]        @relation("DocketEditedBy")
+  docketsVoided   Docket[]        @relation("DocketVoidedBy")
+  invoicesCreated ExportInvoice[] @relation("InvoiceCreatedBy")
+  invoicesEdited  ExportInvoice[] @relation("InvoiceEditedBy")
+  invoicesVoided  ExportInvoice[] @relation("InvoiceVoidedBy")
+}
+
+// ─────────────────────────────────────────────
+// Materials master list (the 33-item price list)
+// ─────────────────────────────────────────────
+// MaterialUnit values: "KG" | "TONNE" | "UNIT"
+
+model Material {
+  id           String   @id @default(cuid())
+  code         Int?     @unique
+  description  String
+  category     String?
+  unit         String   @default("KG")
+  currentPrice Decimal
+  active       Boolean  @default(true)
+  updatedAt    DateTime @updatedAt
+  createdAt    DateTime @default(now())
+
+  docketLines  DocketLineItem[]
+  invoiceLines InvoiceLineItem[]
+}
+
+// ─────────────────────────────────────────────
+// Suppliers (sellers bringing scrap in)
+// ─────────────────────────────────────────────
+// SaleType values: "PRIVATE" | "BUSINESS"
+
+model Supplier {
+  id        String   @id @default(cuid())
+  name      String
+  address   String?
+  suburb    String?
+  postcode  String?
+  phone     String?
+  saleType  String   @default("PRIVATE")
+  abn       String?
+  licenceNo String?
+  createdAt DateTime @default(now())
+
+  dockets Docket[]
+
+  @@index([name])
+}
+
+// ─────────────────────────────────────────────
+// Purchase Dockets (replaces the paper pad)
+// ─────────────────────────────────────────────
+// DocketType values: "TAX_INVOICE" | "PURCHASE_DOCKET"
+// PaygStatement values: "PRIVATE_HOBBY" | "TAX_EXEMPT" | "SCRAP_CODE_NO_ABN" | "NOT_APPLICABLE"
+
+model Docket {
+  id           String   @id @default(cuid())
+  docketNumber Int      @unique // managed in application code (max + 1)
+  type         String   @default("PURCHASE_DOCKET")
+  date         DateTime @default(now())
+
+  supplierId String
+  supplier   Supplier @relation(fields: [supplierId], references: [id])
+
+  vehicleReg   String?
+  vehicleModel String?
+  vehicleVin   String?
+
+  paygStatement String?
+
+  // Status values: "ACTIVE" | "VOID". Voided records keep their docket number and
+  // stay in history for the audit trail, but are excluded from every total.
+  status     String    @default("ACTIVE")
+  voidReason String?
+  voidedAt   DateTime?
+  voidedById String?
+  voidedBy   User?     @relation("DocketVoidedBy", fields: [voidedById], references: [id])
+
+  subtotal Decimal @default(0)
+
+  // DiscountType values: "NONE" | "PERCENT" | "FIXED"
+  discountType   String  @default("NONE")
+  discountValue  Decimal @default(0) // the percentage, or the fixed dollar amount
+  discountAmount Decimal @default(0) // resolved dollar value, snapshotted
+
+  gst   Decimal @default(0)
+  total Decimal @default(0)
+
+  supplierSignedAt  DateTime?
+  buyerSignedAt     DateTime?
+  signatureImageUrl String?
+
+  notes String?
+
+  createdById String
+  createdBy   User    @relation("DocketCreatedBy", fields: [createdById], references: [id])
+  editedById  String?
+  editedBy    User?   @relation("DocketEditedBy", fields: [editedById], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  lineItems DocketLineItem[]
+
+  @@index([date])
+  @@index([supplierId])
+  @@index([status])
+}
+
+model DocketLineItem {
+  id         String   @id @default(cuid())
+  docketId   String
+  docket     Docket   @relation(fields: [docketId], references: [id], onDelete: Cascade)
+  materialId String
+  material   Material @relation(fields: [materialId], references: [id])
+
+  netWeight Decimal
+  price     Decimal
+  value     Decimal
+
+  @@index([docketId])
+}
+
+// ─────────────────────────────────────────────
+// Export Invoices (container shipments)
+// ─────────────────────────────────────────────
+
+model Consignee {
+  id      String  @id @default(cuid())
+  name    String
+  address String?
+  email   String?
+  phone   String?
+  country String?
+
+  invoices ExportInvoice[]
+}
+
+model ExportInvoice {
+  id            String   @id @default(cuid())
+  invoiceNumber String   @unique
+  date          DateTime @default(now())
+
+  consigneeId String
+  consignee   Consignee @relation(fields: [consigneeId], references: [id])
+
+  shippingTerm    String?
+  fasPort         String?
+  poNumber        String?
+  containerNo     String?
+  seal            String?
+  modeOfTransport String?
+  containerType   String?
+
+  // Status values: "ACTIVE" | "VOID"
+  status     String    @default("ACTIVE")
+  voidReason String?
+  voidedAt   DateTime?
+  voidedById String?
+  voidedBy   User?     @relation("InvoiceVoidedBy", fields: [voidedById], references: [id])
+
+  subtotalAud Decimal @default(0)
+
+  // DiscountType values: "NONE" | "PERCENT" | "FIXED"
+  discountType   String  @default("NONE")
+  discountValue  Decimal @default(0)
+  discountAmount Decimal @default(0)
+
+  // Exports are GST-free, but the same document is used for local sales, where
+  // 10% applies. The operator chooses per invoice rather than it being implied.
+  applyGst Boolean @default(false)
+  gstAud   Decimal @default(0)
+
+  totalAud Decimal @default(0)
+
+  bankSnapshot String?
+
+  createdById String
+  createdBy   User    @relation("InvoiceCreatedBy", fields: [createdById], references: [id])
+  editedById  String?
+  editedBy    User?   @relation("InvoiceEditedBy", fields: [editedById], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  lineItems InvoiceLineItem[]
+
+  @@index([date])
+  @@index([consigneeId])
+  @@index([status])
+}
+
+model InvoiceLineItem {
+  id         String        @id @default(cuid())
+  invoiceId  String
+  invoice    ExportInvoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  materialId String
+  material   Material      @relation(fields: [materialId], references: [id])
+
+  description  String?
+  weightTonnes Decimal
+  pricePerMt   Decimal
+  totalAud     Decimal
+
+  @@index([invoiceId])
+}
+
+// ─────────────────────────────────────────────
+// Company settings (single row) — logo, stamp, bank details
+// ─────────────────────────────────────────────
+
+model CompanySettings {
+  id          String  @id @default("singleton")
+  companyName String  @default("Shine Motor Corporation Pty Ltd")
+  abn         String?
+  acn         String?
+  address     String?
+  phone       String?
+  mobile      String?
+  fax         String?
+  email       String?
+  website     String?
+  logoUrl     String?
+  stampUrl    String?
+
+  bankName      String?
+  bankSwift     String?
+  bankAccountNo String?
+  bankBsb       String?
+  bankAddress   String?
+  beneficiary   String?
+}

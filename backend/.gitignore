@@ -1,0 +1,22 @@
+node_modules/
+
+# Real secrets — JWT_SECRET, DB credentials, seed admin password.
+# .env.example is the committed template.
+.env
+.env.*
+!.env.example
+
+# Local SQLite database and its journals — contains live purchase records
+*.db
+*.db-journal
+prisma/*.db
+prisma/*.db-journal
+
+# Uploaded logo/stamp images are runtime data, not source
+uploads/
+
+.DS_Store
+*.log
+
+# Local database backups
+backups/

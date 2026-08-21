@@ -1,0 +1,78 @@
+/* ─────────────────────────────────────────────────────────────
+   Print rules for dockets and export invoices.
+   Scoped to @media print so the on-screen layout is unaffected.
+   ───────────────────────────────────────────────────────────── */
+
+@page {
+  size: A4;
+  /* Bottom margin leaves room for the footer line */
+  margin: 12mm 12mm 14mm;
+}
+
+@media print {
+  html,
+  body {
+    background: #fff !important;
+  }
+
+  /* Browsers drop background fills when printing by default, which would turn
+     the table header band and the totals block into invisible white-on-white. */
+  *,
+  *::before,
+  *::after {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  /* Repeat column headers when a long line-item table spills onto page 2 */
+  thead {
+    display: table-header-group;
+  }
+
+  /* But do NOT repeat the footer. The UA default for <tfoot> is
+     table-footer-group, which prints the totals row at the foot of every page —
+     so a 24-line invoice showed "Total 24 items · $1,111,226.80" on page 1
+     directly under the 11 rows that fit there, reading as a maths error.
+     Treating it as an ordinary row group prints it once, after the last line. */
+  tfoot {
+    display: table-row-group;
+  }
+
+  /* Never split a line item, an image or a signature block across a page break */
+  tr,
+  img,
+  .avoid-break {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  h1,
+  h2,
+  h3 {
+    break-after: avoid;
+    page-break-after: avoid;
+  }
+
+  .print-hidden {
+    display: none !important;
+  }
+
+  /* On screen the document is a card floating on a tinted background; on paper
+     it is the page itself, so the card chrome comes off. */
+  .print-sheet {
+    border: none !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    max-width: none !important;
+    width: 100% !important;
+    font-size: 10.5pt;
+    line-height: 1.35;
+  }
+
+  a {
+    text-decoration: none;
+    color: inherit;
+  }
+}
