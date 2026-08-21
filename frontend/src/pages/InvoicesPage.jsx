@@ -12,8 +12,11 @@ const PAGE_SIZE = 25;
 export default function InvoicesPage() {
   const { isAdmin } = useAuth();
   const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const consigneeId = searchParams.get('consigneeId');
+  // Carried in the URL so the dashboard can link straight to a period.
+  const from = searchParams.get('from') || '';
+  const to = searchParams.get('to') || '';
 
   const [invoices, setInvoices] = useState([]);
   const [totalCount, setTotalCount] = useState(0);
@@ -29,7 +32,13 @@ export default function InvoicesPage() {
   const load = useCallback(() => {
     setLoading(true);
     return api
-      .get('/invoices', { params: { search, status, consigneeId, page, pageSize: PAGE_SIZE } })
+      .get('/invoices', {
+        params: Object.fromEntries(
+          Object.entries({ search, status, consigneeId, from, to, page, pageSize: PAGE_SIZE }).filter(
+            ([, v]) => v !== '' && v != null
+          )
+        ),
+      })
       .then((res) => {
         setInvoices(res.data.invoices);
         setTotalCount(res.data.totalCount);
@@ -38,7 +47,7 @@ export default function InvoicesPage() {
       })
       .catch(() => setError('Could not load invoices.'))
       .finally(() => setLoading(false));
-  }, [search, status, consigneeId, page]);
+  }, [search, status, consigneeId, from, to, page]);
 
   useEffect(() => {
     const t = setTimeout(load, 200);
@@ -77,6 +86,27 @@ export default function InvoicesPage() {
           + New sales invoice
         </Link>
       </div>
+
+      {(from || to) && (
+        <div className="mb-3 flex flex-wrap items-center gap-2 rounded-lg border border-copper-300 bg-copper-100/50 px-3 py-2 text-sm text-steel-700">
+          <span>
+            Showing invoices dated{' '}
+            <span className="num font-medium">{from || '…'}</span> to{' '}
+            <span className="num font-medium">{to || '…'}</span>
+          </span>
+          <button
+            onClick={() => {
+              const next = new URLSearchParams(searchParams);
+              next.delete('from');
+              next.delete('to');
+              setSearchParams(next, { replace: true });
+            }}
+            className="ml-auto rounded-md border border-steel-300 bg-white px-2 py-1 text-xs font-semibold text-steel-600 hover:bg-paper"
+          >
+            Clear dates
+          </button>
+        </div>
+      )}
 
       <div className="mb-4 flex flex-wrap items-center gap-2">
         <input

@@ -164,6 +164,8 @@ export default function DashboardPage() {
               previous={prev?.purchases.total}
               spark={sparks.purchases}
               sparkColor={SERIES.purchases}
+              to={`/purchases?from=${range.from}&to=${range.to}`}
+              linkLabel="See these purchases"
             />
             <StatTile
               label="Scrap sold"
@@ -174,6 +176,8 @@ export default function DashboardPage() {
               previous={prev?.sales.total}
               spark={sparks.sales}
               sparkColor={SERIES.sales}
+              to={`/export-invoices?from=${range.from}&to=${range.to}`}
+              linkLabel="See these invoices"
             />
             <StatTile
               label="Net movement"
@@ -187,6 +191,8 @@ export default function DashboardPage() {
               label={data.sales.gst - data.purchases.gst >= 0 ? 'GST payable' : 'GST refundable'}
               value={formatAud(Math.abs(data.sales.gst - data.purchases.gst))}
               sub={`${formatAud(data.sales.gst)} collected · ${formatAud(data.purchases.gst)} paid`}
+              to={`/purchases?type=TAX_INVOICE&from=${range.from}&to=${range.to}`}
+              linkLabel="See GST documents"
             />
           </div>
 
@@ -217,7 +223,10 @@ export default function DashboardPage() {
                 </EmptyState>
               ) : (
                 <BarList
-                  items={data.topMaterialsBought.map((m) => materialItem(m, 'kg'))}
+                  items={data.topMaterialsBought.map((m) => ({
+                    ...materialItem(m, 'kg'),
+                    to: `/purchases?materialId=${m.material.id}&from=${range.from}&to=${range.to}`,
+                  }))}
                   color={SERIES.purchases}
                 />
               )}
@@ -258,7 +267,7 @@ export default function DashboardPage() {
               {data.topSuppliers.length === 0 ? (
                 <EmptyState>No suppliers in this period.</EmptyState>
               ) : (
-                <BarList items={data.topSuppliers.map(clientItem)} color={SERIES.purchases} />
+                <BarList items={data.topSuppliers.map((c) => ({ ...clientItem(c), to: `/clients/${c.client.id}` }))} color={SERIES.purchases} />
               )}
             </Card>
             <Card
@@ -273,7 +282,7 @@ export default function DashboardPage() {
               {data.topConsignees.length === 0 ? (
                 <EmptyState>No buyers in this period.</EmptyState>
               ) : (
-                <BarList items={data.topConsignees.map(clientItem)} color={SERIES.sales} />
+                <BarList items={data.topConsignees.map((c) => ({ ...clientItem(c), to: `/buyers/${c.client.id}` }))} color={SERIES.sales} />
               )}
             </Card>
           </div>

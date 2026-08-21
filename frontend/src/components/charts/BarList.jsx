@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { CHART_INK } from './palette';
 import { formatAud, formatNumber } from '../../lib/format';
 
@@ -23,6 +24,13 @@ export default function BarList({ items, color, emptyLabel = 'No data in this pe
       {items.map((item) => {
         const pct = (item.value / max) * 100;
         const isHover = hover === item.key;
+        // Every row here answers a question the reader is about to ask
+        // ("which purchases were those?"), so it links to that answer.
+        const Row = item.to ? Link : 'div';
+        const rowProps = item.to
+          ? { to: item.to, className: 'block rounded-md -mx-1.5 px-1.5 py-0.5 hover:bg-paper' }
+          : {};
+
         return (
           <li
             key={item.key}
@@ -30,8 +38,15 @@ export default function BarList({ items, color, emptyLabel = 'No data in this pe
             onMouseLeave={() => setHover(null)}
             className="group"
           >
+           <Row {...rowProps}>
             <div className="mb-1 flex items-baseline justify-between gap-3">
-              <span className="truncate text-[13px] font-medium text-steel-800">{item.label}</span>
+              <span
+                className={`truncate text-[13px] font-medium text-steel-800 ${
+                  item.to ? 'group-hover:text-copper-700' : ''
+                }`}
+              >
+                {item.label}
+              </span>
               {/* Value labelled at the tip of every bar: a short ranked list is
                   exactly the case where labelling each one stays readable. */}
               <span className="num shrink-0 text-[13px] font-semibold text-steel-900">
@@ -54,6 +69,7 @@ export default function BarList({ items, color, emptyLabel = 'No data in this pe
             {item.sub && (
               <div className="num mt-0.5 text-[11px] text-steel-400">{item.sub}</div>
             )}
+           </Row>
           </li>
         );
       })}

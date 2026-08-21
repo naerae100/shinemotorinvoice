@@ -9,10 +9,8 @@ const NAV_GROUPS = [
   { items: [{ to: '/', label: 'Dashboard', end: true }] },
   {
     title: 'Buying',
-    items: [
-      { to: '/purchases', label: 'Purchases' },
-      { to: '/tax-invoices', label: 'Tax invoices' },
-    ],
+    // Dockets and tax invoices live in one history, filtered on the page.
+    items: [{ to: '/purchases', label: 'Purchases' }],
   },
   { title: 'Selling', items: [{ to: '/export-invoices', label: 'Sales invoices' }] },
   {

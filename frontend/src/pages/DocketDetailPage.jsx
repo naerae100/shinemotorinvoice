@@ -31,11 +31,8 @@ export default function DocketDetailPage() {
     <div className="mx-auto max-w-[860px] px-3 py-5 sm:px-6 lg:px-8 lg:py-8 print:max-w-none print:p-0">
       <div className="print-hidden mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <Link
-            to={isTaxInvoice ? '/tax-invoices' : '/purchases'}
-            className="text-sm text-steel-500 hover:text-copper-600"
-          >
-            ← {isTaxInvoice ? 'Tax invoices' : 'Purchases'}
+          <Link to="/purchases" className="text-sm text-steel-500 hover:text-copper-600">
+            ← Purchases
           </Link>
           <h1 className="font-display text-2xl font-semibold text-steel-900">
             {isTaxInvoice ? 'Tax invoice' : 'Docket'} #{docket.docketNumber}

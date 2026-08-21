@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom';
 import { CHART_INK } from './palette';
 
 /**
@@ -76,6 +77,8 @@ export default function StatTile({
   invertDelta = false,
   spark,
   sparkColor,
+  to,
+  linkLabel,
 }) {
   const toneClass =
     tone === 'positive'
@@ -86,10 +89,36 @@ export default function StatTile({
           ? 'text-copper-600'
           : 'text-steel-900';
 
+  // A headline figure is a question ("34 dockets — which ones?"), so where there
+  // is an answer to show, the whole tile is the way through to it.
+  const Wrapper = to ? Link : 'div';
+  const wrapperProps = to ? { to } : {};
+
   return (
-    <div className="group relative overflow-hidden rounded-xl border border-steel-200 bg-white p-5 shadow-ticket transition-shadow hover:shadow-md">
-      <div className="text-[11px] font-semibold uppercase tracking-wider text-steel-500">
-        {label}
+    <Wrapper
+      {...wrapperProps}
+      className={`group relative block overflow-hidden rounded-xl border border-steel-200 bg-white p-5 shadow-ticket transition-all ${
+        to
+          ? 'hover:-translate-y-0.5 hover:border-copper-300 hover:shadow-md focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-copper-500'
+          : 'hover:shadow-md'
+      }`}
+    >
+      <div className="flex items-start justify-between gap-2">
+        <div className="text-[11px] font-semibold uppercase tracking-wider text-steel-500">
+          {label}
+        </div>
+        {to && (
+          <svg
+            viewBox="0 0 16 16"
+            className="mt-0.5 h-3.5 w-3.5 shrink-0 text-steel-300 transition-colors group-hover:text-copper-500"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            aria-hidden="true"
+          >
+            <path d="M6 3l5 5-5 5" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        )}
       </div>
       <div className={`num mt-1.5 text-[26px] font-semibold leading-none tracking-tight ${toneClass}`}>
         {value}
@@ -106,6 +135,12 @@ export default function StatTile({
           <Sparkline points={spark} color={sparkColor || CHART_INK.axis} />
         </div>
       )}
-    </div>
+
+      {to && linkLabel && (
+        <div className="mt-2 text-xs font-medium text-copper-600 opacity-0 transition-opacity group-hover:opacity-100">
+          {linkLabel} →
+        </div>
+      )}
+    </Wrapper>
   );
 }

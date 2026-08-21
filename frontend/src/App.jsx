@@ -12,7 +12,7 @@ import LoginPage from './pages/LoginPage';
 // of the bundle, and none of it is needed to render the sign-in screen.
 const DashboardPage = lazy(() => import('./pages/DashboardPage'));
 const NewDocketPage = lazy(() => import('./pages/NewDocketPage'));
-const DocketHistoryPage = lazy(() => import('./pages/DocketHistoryPage'));
+const PurchasesPage = lazy(() => import('./pages/PurchasesPage'));
 const DocketDetailPage = lazy(() => import('./pages/DocketDetailPage'));
 const InvoicesPage = lazy(() => import('./pages/InvoicesPage'));
 const NewInvoicePage = lazy(() => import('./pages/NewInvoicePage'));
@@ -53,10 +53,9 @@ export default function App() {
                 path="purchases/new"
                 element={<NewDocketPage key="purchase" defaultType="PURCHASE_DOCKET" />}
               />
-              <Route
-                path="purchases"
-                element={<DocketHistoryPage key="purchase" typeFilter="PURCHASE_DOCKET" />}
-              />
+              {/* One purchase history covering both document types, narrowed
+                  by the filters on the page rather than by separate routes. */}
+              <Route path="purchases" element={<PurchasesPage />} />
               <Route path="purchases/:id" element={<DocketDetailPage />} />
               <Route
                 path="purchases/:id/edit"
@@ -66,9 +65,10 @@ export default function App() {
                 path="tax-invoices/new"
                 element={<NewDocketPage key="tax" defaultType="TAX_INVOICE" />}
               />
+              {/* Kept so old links and bookmarks still land somewhere sensible */}
               <Route
                 path="tax-invoices"
-                element={<DocketHistoryPage key="tax" typeFilter="TAX_INVOICE" />}
+                element={<Navigate to="/purchases?type=TAX_INVOICE" replace />}
               />
               <Route path="tax-invoices/:id" element={<DocketDetailPage />} />
               <Route
