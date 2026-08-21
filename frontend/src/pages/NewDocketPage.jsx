@@ -231,9 +231,7 @@ export default function NewDocketPage({ defaultType = 'PURCHASE_DOCKET' }) {
 
       const res = await api.post('/dockets', payload);
       const newDocket = res.data.docket;
-      setSuccessPath(pathPrefix);
-      setSuccess(newDocket);
-      window.open(`/${pathPrefix}/${newDocket.id}`, '_blank');
+      navigate(`/${pathPrefix}/${newDocket.id}`);
     } catch (err) {
       const apiError = err.response?.data?.error;
       setError(
@@ -257,36 +255,6 @@ export default function NewDocketPage({ defaultType = 'PURCHASE_DOCKET' }) {
 
   if (loadingDocket) {
     return <div className="px-8 py-8 text-sm text-steel-500">Loading…</div>;
-  }
-
-  if (success) {
-    return (
-      <div className="mx-auto max-w-2xl px-8 py-16 text-center">
-        <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-working-greenDim">
-          <svg viewBox="0 0 24 24" className="h-7 w-7 text-working-green" fill="none">
-            <path d="M5 13l4 4L19 7" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
-        </div>
-        <h1 className="font-display text-2xl font-semibold text-steel-900">
-          Docket #{success.docketNumber} saved
-        </h1>
-        <p className="num mt-2 text-lg text-copper-600">{formatCurrency(success.total)}</p>
-        <div className="mt-8 flex justify-center gap-3">
-          <button
-            onClick={resetForm}
-            className="rounded-md bg-copper-500 px-5 py-2.5 text-sm font-semibold text-steel-950 hover:bg-copper-400"
-          >
-            New docket
-          </button>
-          <button
-            onClick={() => navigate(`/${successPath}/${success.id}`)}
-            className="rounded-md border border-steel-300 bg-white px-5 py-2.5 text-sm font-semibold text-steel-700 hover:bg-paper"
-          >
-            View & print
-          </button>
-        </div>
-      </div>
-    );
   }
 
   return (

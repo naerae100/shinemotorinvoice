@@ -13,7 +13,7 @@ export default function InvoiceDocument({ invoice, settings }) {
   const totalWeight = invoice.lineItems.reduce((s, li) => s + Number(li.weightTonnes), 0);
 
   return (
-    <div className="print-sheet relative mx-auto border border-steel-300 bg-white p-10 shadow-ticket">
+    <div className="print-sheet relative mx-auto flex min-h-[297mm] flex-col border border-steel-300 bg-white p-10 shadow-ticket">
       {invoice.status === 'VOID' && <VoidStamp reason={invoice.voidReason} />}
       <Masthead settings={settings} roleLabel="Exporter / Seller" />
 
@@ -176,11 +176,13 @@ export default function InvoiceDocument({ invoice, settings }) {
         </div>
       </section>
 
-      <DocumentFooter
-        settings={settings}
-        reference={`Invoice ${invoice.invoiceNumber}`}
-        date={invoice.date}
-      />
+      <div className="mt-auto pt-6">
+        <DocumentFooter
+          settings={settings}
+          reference={`Invoice ${invoice.invoiceNumber}`}
+          date={invoice.date}
+        />
+      </div>
     </div>
   );
 }

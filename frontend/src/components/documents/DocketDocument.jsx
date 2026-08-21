@@ -21,7 +21,7 @@ export default function DocketDocument({ docket, settings }) {
   const totalWeight = docket.lineItems.reduce((sum, li) => sum + Number(li.netWeight), 0);
 
   return (
-    <div className="print-sheet relative mx-auto border border-steel-300 bg-white p-10 shadow-ticket">
+    <div className="print-sheet relative mx-auto flex min-h-[297mm] flex-col border border-steel-300 bg-white p-10 shadow-ticket">
       {docket.status === 'VOID' && <VoidStamp reason={docket.voidReason} />}
       <Masthead settings={settings} />
 
@@ -167,11 +167,13 @@ export default function DocketDocument({ docket, settings }) {
         </div>
       </section>
 
-      <DocumentFooter
-        settings={settings}
-        reference={`${title} #${docket.docketNumber}`}
-        date={docket.date}
-      />
+      <div className="mt-auto pt-6">
+        <DocumentFooter
+          settings={settings}
+          reference={`${title} #${docket.docketNumber}`}
+          date={docket.date}
+        />
+      </div>
     </div>
   );
 }
