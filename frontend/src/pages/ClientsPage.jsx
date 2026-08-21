@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../lib/api';
+import ExportButton from '../components/ExportButton';
 
-const BLANK = { name: '', saleType: 'PRIVATE', address: '', suburb: '', postcode: '', phone: '', abn: '', licenceNo: '' };
+const BLANK = { name: '', saleType: 'PRIVATE', address: '', suburb: '', postcode: '', phone: '', email: '', abn: '', licenceNo: '' };
 
 export default function ClientsPage() {
   const [clients, setClients] = useState([]);
@@ -53,12 +54,15 @@ export default function ClientsPage() {
           <h1 className="font-display text-2xl font-semibold text-steel-900">Clients</h1>
           <p className="mt-0.5 text-sm text-steel-500">People and businesses who sell scrap to us</p>
         </div>
-        <button
-          onClick={() => setForm({ ...BLANK })}
-          className="rounded-md bg-copper-500 px-4 py-2.5 text-sm font-semibold text-steel-950 hover:bg-copper-400"
-        >
-          + Add client
-        </button>
+        <div className="flex flex-wrap gap-2">
+          <ExportButton endpoint="/suppliers/export" params={search ? { search } : {}} />
+          <button
+            onClick={() => setForm({ ...BLANK })}
+            className="rounded-lg bg-copper-500 px-4 py-2.5 text-sm font-semibold text-steel-950 hover:bg-copper-400"
+          >
+            + Add client
+          </button>
+        </div>
       </div>
 
       {error && (
@@ -85,6 +89,8 @@ export default function ClientsPage() {
               onChange={(e) => setForm({ ...form, postcode: e.target.value })} className={field} />
             <input placeholder="Phone" value={form.phone || ''}
               onChange={(e) => setForm({ ...form, phone: e.target.value })} className={field} />
+            <input type="email" placeholder="Email" value={form.email || ''}
+              onChange={(e) => setForm({ ...form, email: e.target.value })} className={field} />
             <input placeholder="ABN (if business)" value={form.abn || ''}
               onChange={(e) => setForm({ ...form, abn: e.target.value })} className={field} />
             <input placeholder="Driver licence no." value={form.licenceNo || ''}
@@ -117,7 +123,7 @@ export default function ClientsPage() {
             <tr className="border-b border-steel-100 bg-paper text-left text-xs uppercase tracking-wider text-steel-500">
               <th className="px-5 py-3 font-medium">Name</th>
               <th className="px-5 py-3 font-medium">Type</th>
-              <th className="px-5 py-3 font-medium">Phone</th>
+              <th className="px-5 py-3 font-medium">Contact</th>
               <th className="px-5 py-3 font-medium">Address</th>
               <th className="px-5 py-3 text-right font-medium">Actions</th>
             </tr>
@@ -140,7 +146,16 @@ export default function ClientsPage() {
                     </Link>
                   </td>
                   <td className="px-5 py-3 text-steel-500">{c.saleType === 'BUSINESS' ? 'Business' : 'Private'}</td>
-                  <td className="px-5 py-3 text-steel-500">{c.phone || '—'}</td>
+                  <td className="px-5 py-3 text-steel-500">
+                    {c.phone || c.email ? (
+                      <div className="leading-tight">
+                        {c.phone && <div className="num">{c.phone}</div>}
+                        {c.email && <div className="text-xs text-steel-400">{c.email}</div>}
+                      </div>
+                    ) : (
+                      '—'
+                    )}
+                  </td>
                   <td className="px-5 py-3 text-steel-500">
                     {[c.address, c.suburb].filter(Boolean).join(', ') || '—'}
                   </td>

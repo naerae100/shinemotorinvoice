@@ -8,6 +8,7 @@ import { useUrlFilters } from '../lib/useUrlFilters';
 import DateRangePicker, { toISODate } from '../components/DateRangePicker';
 import RowActions from '../components/RowActions';
 import ConfirmDialog from '../components/ConfirmDialog';
+import ExportButton from '../components/ExportButton';
 
 const PAGE_SIZE = 25;
 
@@ -129,7 +130,16 @@ export default function PurchasesPage() {
             )}
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
+          {/* Same filters the list is using, so the file matches the screen */}
+          <ExportButton
+            endpoint="/dockets/export"
+            params={Object.fromEntries(Object.entries(filters).filter(([k, v]) => k !== 'page' && v))}
+            options={[
+              { label: 'One row per document', hint: 'Totals, supplier, GST', params: {} },
+              { label: 'One row per material line', hint: 'Weights and rates by material', params: { detail: 'lines' } },
+            ]}
+          />
           <Link
             to="/purchases/new"
             className="rounded-lg bg-copper-500 px-4 py-2.5 text-sm font-semibold text-steel-950 hover:bg-copper-400"

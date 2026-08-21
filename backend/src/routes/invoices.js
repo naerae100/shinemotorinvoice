@@ -6,6 +6,7 @@ import { asyncHandler } from '../middleware/asyncHandler.js';
 import { contains } from '../lib/search.js';
 import { computeTotals, round2, discountSchema } from '../lib/money.js';
 import { dateFilter, pagination } from '../lib/query.js';
+import { sendCsv, money, isoDate } from '../lib/csv.js';
 
 const router = Router();
 
@@ -98,6 +99,27 @@ function withParsedSnapshot(invoice) {
   return { ...invoice, bankSnapshot };
 }
 
+/** Shared by the list, its totals and the CSV export. */
+function buildInvoiceWhere(query) {
+  const { search, consigneeId, materialId, from, to, status } = query;
+  return {
+    ...(consigneeId ? { consigneeId: String(consigneeId) } : {}),
+    ...(status === 'ALL' ? {} : { status: status ? String(status) : 'ACTIVE' }),
+    ...(materialId ? { lineItems: { some: { materialId: String(materialId) } } } : {}),
+    ...(dateFilter(from, to) ? { date: dateFilter(from, to) } : {}),
+    ...(search
+      ? {
+          OR: [
+            { invoiceNumber: contains(String(search)) },
+            { containerNo: contains(String(search)) },
+            { poNumber: contains(String(search)) },
+            { consignee: { name: contains(String(search)) } },
+          ],
+        }
+      : {}),
+  };
+}
+
 router.get(
   '/',
   requireAuth,
@@ -114,22 +136,7 @@ router.get(
     } = req.query;
     const { take, skip, page: currentPage } = pagination(page, pageSize);
 
-    const where = {
-      ...(consigneeId ? { consigneeId: String(consigneeId) } : {}),
-      ...(status === 'ALL' ? {} : { status: status ? String(status) : 'ACTIVE' }),
-      ...(materialId ? { lineItems: { some: { materialId: String(materialId) } } } : {}),
-      ...(dateFilter(from, to) ? { date: dateFilter(from, to) } : {}),
-      ...(search
-        ? {
-            OR: [
-              { invoiceNumber: contains(String(search)) },
-              { containerNo: contains(String(search)) },
-              { poNumber: contains(String(search)) },
-              { consignee: { name: contains(String(search)) } },
-            ],
-          }
-        : {}),
-    };
+    const where = buildInvoiceWhere(req.query);
 
     const [invoices, totalCount, sum] = await Promise.all([
       prisma.exportInvoice.findMany({
@@ -157,6 +164,67 @@ router.get(
         gst: Number(sum._sum.gstAud ?? 0),
       },
     });
+  })
+);
+
+// Declared before '/:id' so Express does not read "export" as an invoice id.
+router.get(
+  '/export',
+  requireAuth,
+  asyncHandler(async (req, res) => {
+    const where = buildInvoiceWhere(req.query);
+    const byLine = String(req.query.detail) === 'lines';
+
+    const invoices = await prisma.exportInvoice.findMany({
+      where,
+      include: {
+        consignee: true,
+        lineItems: { include: { material: true } },
+        createdBy: { select: { name: true } },
+      },
+      orderBy: { date: 'asc' },
+      take: 20000,
+    });
+
+    if (byLine) {
+      const rows = invoices.flatMap((i) => i.lineItems.map((li) => ({ i, li })));
+      return sendCsv(res, 'shine-sales-by-material', [
+        { label: 'Invoice no.', get: (r) => r.i.invoiceNumber },
+        { label: 'Status', get: (r) => r.i.status },
+        { label: 'Date', get: (r) => isoDate(r.i.date) },
+        { label: 'Buyer', get: (r) => r.i.consignee?.name },
+        { label: 'Country', get: (r) => r.i.consignee?.country ?? '' },
+        { label: 'Material', get: (r) => r.li.material?.description },
+        { label: 'Description', get: (r) => r.li.description ?? '' },
+        { label: 'Weight (MT)', get: (r) => money(r.li.weightTonnes) },
+        { label: 'Price/MT (AUD)', get: (r) => money(r.li.pricePerMt) },
+        { label: 'Line total (AUD)', get: (r) => money(r.li.totalAud) },
+      ], rows);
+    }
+
+    sendCsv(res, 'shine-sales', [
+      { label: 'Invoice no.', get: (i) => i.invoiceNumber },
+      { label: 'Status', get: (i) => i.status },
+      { label: 'Date', get: (i) => isoDate(i.date) },
+      { label: 'Buyer', get: (i) => i.consignee?.name },
+      { label: 'Country', get: (i) => i.consignee?.country ?? '' },
+      { label: 'Buyer email', get: (i) => i.consignee?.email ?? '' },
+      { label: 'PO number', get: (i) => i.poNumber ?? '' },
+      { label: 'Shipping term', get: (i) => i.shippingTerm ?? '' },
+      { label: 'Port', get: (i) => i.fasPort ?? '' },
+      { label: 'Transport', get: (i) => i.modeOfTransport ?? '' },
+      { label: 'Container type', get: (i) => i.containerType ?? '' },
+      { label: 'Container no.', get: (i) => i.containerNo ?? '' },
+      { label: 'Seal', get: (i) => i.seal ?? '' },
+      { label: 'Lines', get: (i) => i.lineItems.length },
+      { label: 'Total weight (MT)', get: (i) => money(i.lineItems.reduce((s, li) => s + Number(li.weightTonnes), 0)) },
+      { label: 'Subtotal (AUD)', get: (i) => money(i.subtotalAud) },
+      { label: 'Discount (AUD)', get: (i) => money(i.discountAmount) },
+      { label: 'GST (AUD)', get: (i) => money(i.gstAud) },
+      { label: 'Total (AUD)', get: (i) => money(i.totalAud) },
+      { label: 'Raised by', get: (i) => i.createdBy?.name ?? '' },
+      { label: 'Void reason', get: (i) => i.voidReason ?? '' },
+    ], invoices);
   })
 );
 

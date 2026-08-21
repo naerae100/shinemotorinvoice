@@ -4,6 +4,7 @@ import { prisma } from '../config/prisma.js';
 import { requireAuth } from '../middleware/auth.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { contains } from '../lib/search.js';
+import { sendCsv, money, isoDate } from '../lib/csv.js';
 
 const router = Router();
 
@@ -25,6 +26,34 @@ router.get(
       orderBy: { name: 'asc' },
     });
     res.json({ consignees });
+  })
+);
+
+router.get(
+  '/export',
+  requireAuth,
+  asyncHandler(async (req, res) => {
+    const consignees = await prisma.consignee.findMany({
+      orderBy: { name: 'asc' },
+      include: { invoices: { where: { status: 'ACTIVE' }, select: { totalAud: true, date: true } } },
+      take: 20000,
+    });
+    const total = (c) => c.invoices.reduce((a, i) => a + Number(i.totalAud), 0);
+    const last = (c) =>
+      c.invoices.length
+        ? new Date(Math.max(...c.invoices.map((i) => new Date(i.date))))
+        : null;
+
+    sendCsv(res, 'shine-buyers', [
+      { label: 'Name', get: (c) => c.name },
+      { label: 'Country', get: (c) => c.country ?? '' },
+      { label: 'Email', get: (c) => c.email ?? '' },
+      { label: 'Phone', get: (c) => c.phone ?? '' },
+      { label: 'Address', get: (c) => c.address ?? '' },
+      { label: 'Invoices', get: (c) => c.invoices.length },
+      { label: 'Lifetime value (AUD)', get: (c) => money(total(c)) },
+      { label: 'Last sale', get: (c) => isoDate(last(c)) },
+    ], consignees);
   })
 );
 

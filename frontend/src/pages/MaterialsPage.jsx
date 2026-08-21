@@ -4,6 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import { formatAud } from '../lib/format';
 import ComboField from '../components/ComboField';
 import ConfirmDialog from '../components/ConfirmDialog';
+import ExportButton from '../components/ExportButton';
 
 const UNITS = [
   { value: 'KG', label: 'per kg' },
@@ -135,14 +136,21 @@ export default function MaterialsPage() {
               : 'Current buy rates. Contact an admin to update pricing.'}
           </p>
         </div>
-        {isAdmin && (
-          <button
-            onClick={() => setForm({ ...BLANK })}
-            className="shrink-0 rounded-lg bg-copper-500 px-4 py-2.5 text-sm font-semibold text-steel-950 shadow-sm transition-colors hover:bg-copper-400"
-          >
-            + Add material
-          </button>
-        )}
+        <div className="flex shrink-0 flex-wrap gap-2">
+          <ExportButton
+            endpoint="/materials/export"
+            label="Export price list"
+            params={showInactive ? { includeInactive: 'true' } : {}}
+          />
+          {isAdmin && (
+            <button
+              onClick={() => setForm({ ...BLANK })}
+              className="rounded-lg bg-copper-500 px-4 py-2.5 text-sm font-semibold text-steel-950 shadow-sm transition-colors hover:bg-copper-400"
+            >
+              + Add material
+            </button>
+          )}
+        </div>
       </div>
 
       <div className="mb-4 flex flex-wrap items-center gap-3">

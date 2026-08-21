@@ -6,6 +6,7 @@ import { asyncHandler } from '../middleware/asyncHandler.js';
 import { contains } from '../lib/search.js';
 import { computeTotals, round2, discountSchema } from '../lib/money.js';
 import { dateFilter, numberFilter, pagination } from '../lib/query.js';
+import { sendCsv, money, isoDate, isoDateTime } from '../lib/csv.js';
 
 const router = Router();
 
@@ -61,6 +62,34 @@ const totalsFor = (lines, type, data) =>
     applyGst: appliesGst(type),
   });
 
+/**
+ * The filter used by the list, the totals and the CSV export alike. Sharing it
+ * is the point: an export that quietly returned a different set from the list
+ * you were looking at would be worse than no export.
+ */
+function buildDocketWhere(query) {
+  const { search, type, supplierId, materialId, from, to, status, minTotal, maxTotal } = query;
+  return {
+    ...(type ? { type: String(type) } : {}),
+    ...(supplierId ? { supplierId: String(supplierId) } : {}),
+    // Default view hides voided records; pass status=ALL or status=VOID to see them.
+    ...(status === 'ALL' ? {} : { status: status ? String(status) : 'ACTIVE' }),
+    ...(materialId ? { lineItems: { some: { materialId: String(materialId) } } } : {}),
+    ...(dateFilter(from, to) ? { date: dateFilter(from, to) } : {}),
+    ...(numberFilter(minTotal, maxTotal) ? { total: numberFilter(minTotal, maxTotal) } : {}),
+    ...(search
+      ? {
+          OR: [
+            { supplier: { name: contains(String(search)) } },
+            { supplier: { phone: contains(String(search)) } },
+            { notes: contains(String(search)) },
+            ...(Number.isFinite(Number(search)) ? [{ docketNumber: Number(search) }] : []),
+          ],
+        }
+      : {}),
+  };
+}
+
 // GET /api/dockets?search=&type=&supplierId=&materialId=&from=&to=&status=&page=&pageSize=
 router.get(
   '/',
@@ -80,25 +109,7 @@ router.get(
       pageSize = '25',
     } = req.query;
 
-    const where = {
-      ...(type ? { type: String(type) } : {}),
-      ...(supplierId ? { supplierId: String(supplierId) } : {}),
-      // Default view hides voided records; pass status=ALL or status=VOID to see them.
-      ...(status === 'ALL' ? {} : { status: status ? String(status) : 'ACTIVE' }),
-      ...(materialId ? { lineItems: { some: { materialId: String(materialId) } } } : {}),
-      ...(dateFilter(from, to) ? { date: dateFilter(from, to) } : {}),
-      ...(numberFilter(minTotal, maxTotal) ? { total: numberFilter(minTotal, maxTotal) } : {}),
-      ...(search
-        ? {
-            OR: [
-              { supplier: { name: contains(String(search)) } },
-              { supplier: { phone: contains(String(search)) } },
-              { notes: contains(String(search)) },
-              ...(Number.isFinite(Number(search)) ? [{ docketNumber: Number(search) }] : []),
-            ],
-          }
-        : {}),
-    };
+    const where = buildDocketWhere(req.query);
 
     const { take, skip, page: currentPage } = pagination(page, pageSize);
 
@@ -129,6 +140,80 @@ router.get(
         gst: Number(sum._sum.gst ?? 0),
       },
     });
+  })
+);
+
+/**
+ * GET /api/dockets/export?<same filters as the list>&detail=lines
+ *
+ * Exports everything matching the current filters, not just the visible page.
+ * `detail=lines` gives one row per material line instead of one per document,
+ * which is what you want for working out volumes by material.
+ */
+router.get(
+  '/export',
+  requireAuth,
+  asyncHandler(async (req, res) => {
+    const where = buildDocketWhere(req.query);
+    const byLine = String(req.query.detail) === 'lines';
+
+    const dockets = await prisma.docket.findMany({
+      where,
+      include: {
+        supplier: true,
+        lineItems: { include: { material: true } },
+        createdBy: { select: { name: true } },
+      },
+      orderBy: { date: 'asc' },
+      take: 20000,
+    });
+
+    const typeLabel = (d) => (d.type === 'TAX_INVOICE' ? 'Tax invoice' : 'Purchase docket');
+
+    if (byLine) {
+      const rows = dockets.flatMap((d) =>
+        d.lineItems.map((li) => ({ d, li }))
+      );
+      return sendCsv(res, 'shine-purchases-by-material', [
+        { label: 'Docket no.', get: (r) => r.d.docketNumber },
+        { label: 'Type', get: (r) => typeLabel(r.d) },
+        { label: 'Status', get: (r) => r.d.status },
+        { label: 'Date', get: (r) => isoDate(r.d.date) },
+        { label: 'Supplier', get: (r) => r.d.supplier?.name },
+        { label: 'Material code', get: (r) => r.li.material?.code ?? '' },
+        { label: 'Material', get: (r) => r.li.material?.description },
+        { label: 'Category', get: (r) => r.li.material?.category ?? '' },
+        { label: 'Unit', get: (r) => r.li.material?.unit },
+        { label: 'Net weight', get: (r) => money(r.li.netWeight) },
+        { label: 'Rate (AUD)', get: (r) => money(r.li.price) },
+        { label: 'Line value (AUD)', get: (r) => money(r.li.value) },
+      ], rows);
+    }
+
+    sendCsv(res, 'shine-purchases', [
+      { label: 'Docket no.', get: (d) => d.docketNumber },
+      { label: 'Type', get: typeLabel },
+      { label: 'Status', get: (d) => d.status },
+      { label: 'Date', get: (d) => isoDate(d.date) },
+      { label: 'Time', get: (d) => isoDateTime(d.createdAt).slice(11) },
+      { label: 'Supplier', get: (d) => d.supplier?.name },
+      { label: 'Supplier phone', get: (d) => d.supplier?.phone ?? '' },
+      { label: 'Supplier email', get: (d) => d.supplier?.email ?? '' },
+      { label: 'Supplier ABN', get: (d) => d.supplier?.abn ?? '' },
+      { label: 'Sale type', get: (d) => (d.supplier?.saleType === 'BUSINESS' ? 'Business' : 'Private') },
+      { label: 'Lines', get: (d) => d.lineItems.length },
+      { label: 'Materials', get: (d) => d.lineItems.map((li) => li.material?.description).join('; ') },
+      { label: 'Total weight', get: (d) => money(d.lineItems.reduce((s, li) => s + Number(li.netWeight), 0)) },
+      { label: 'Subtotal (AUD)', get: (d) => money(d.subtotal) },
+      { label: 'Discount (AUD)', get: (d) => money(d.discountAmount) },
+      { label: 'GST (AUD)', get: (d) => money(d.gst) },
+      { label: 'Total (AUD)', get: (d) => money(d.total) },
+      { label: 'Vehicle rego', get: (d) => d.vehicleReg ?? '' },
+      { label: 'PAYG statement', get: (d) => d.paygStatement ?? '' },
+      { label: 'Processed by', get: (d) => d.createdBy?.name ?? '' },
+      { label: 'Void reason', get: (d) => d.voidReason ?? '' },
+      { label: 'Notes', get: (d) => d.notes ?? '' },
+    ], dockets);
   })
 );
 

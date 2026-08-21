@@ -39,6 +39,13 @@
       }
     },
     {
+      "src": "/(favicon\\.svg|favicon-32\\.png|apple-touch-icon\\.png|robots\\.txt)",
+      "dest": "/frontend/$1",
+      "headers": {
+        "cache-control": "public, max-age=86400"
+      }
+    },
+    {
       "src": "/(.*)",
       "dest": "/frontend/index.html"
     }

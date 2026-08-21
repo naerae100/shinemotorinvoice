@@ -65,6 +65,7 @@ model Supplier {
   suburb    String?
   postcode  String?
   phone     String?
+  email     String?
   saleType  String   @default("PRIVATE")
   abn       String?
   licenceNo String?

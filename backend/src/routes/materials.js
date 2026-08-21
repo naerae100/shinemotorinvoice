@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { prisma } from '../config/prisma.js';
 import { requireAuth, requireRole } from '../middleware/auth.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
+import { sendCsv, money, isoDate } from '../lib/csv.js';
 
 const router = Router();
 
@@ -26,6 +27,27 @@ router.get(
       orderBy: [{ code: 'asc' }, { description: 'asc' }],
     });
     res.json({ materials });
+  })
+);
+
+// GET /api/materials/export — the price list as a spreadsheet
+router.get(
+  '/export',
+  requireAuth,
+  asyncHandler(async (req, res) => {
+    const materials = await prisma.material.findMany({
+      where: req.query.includeInactive === 'true' ? {} : { active: true },
+      orderBy: [{ category: 'asc' }, { code: 'asc' }],
+    });
+    sendCsv(res, 'shine-price-list', [
+      { label: 'Code', get: (m) => m.code ?? '' },
+      { label: 'Material', get: (m) => m.description },
+      { label: 'Category', get: (m) => m.category ?? '' },
+      { label: 'Unit', get: (m) => m.unit },
+      { label: 'Rate (AUD)', get: (m) => money(m.currentPrice) },
+      { label: 'Active', get: (m) => (m.active ? 'Yes' : 'Retired') },
+      { label: 'Rate updated', get: (m) => isoDate(m.updatedAt) },
+    ], materials);
   })
 );
 

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../lib/api';
+import ExportButton from '../components/ExportButton';
 
 const BLANK = { name: '', country: '', address: '', email: '', phone: '' };
 
@@ -52,12 +53,15 @@ export default function BuyersPage() {
           <h1 className="font-display text-2xl font-semibold text-steel-900">Buyers</h1>
           <p className="mt-0.5 text-sm text-steel-500">Who we sell containers and scrap to</p>
         </div>
-        <button
-          onClick={() => setForm({ ...BLANK })}
-          className="rounded-md bg-copper-500 px-4 py-2.5 text-sm font-semibold text-steel-950 hover:bg-copper-400"
-        >
-          + Add buyer
-        </button>
+        <div className="flex flex-wrap gap-2">
+          <ExportButton endpoint="/consignees/export" />
+          <button
+            onClick={() => setForm({ ...BLANK })}
+            className="rounded-lg bg-copper-500 px-4 py-2.5 text-sm font-semibold text-steel-950 hover:bg-copper-400"
+          >
+            + Add buyer
+          </button>
+        </div>
       </div>
 
       <input

@@ -147,6 +147,7 @@ export default function NewDocketPage({ defaultType = 'PURCHASE_DOCKET' }) {
       address: s.address || '',
       suburb: s.suburb || '',
       phone: s.phone || '',
+      email: s.email || '',
       abn: s.abn || '',
       licenceNo: s.licenceNo || '',
     });
@@ -186,6 +187,7 @@ export default function NewDocketPage({ defaultType = 'PURCHASE_DOCKET' }) {
         address: newSupplier.address || null,
         suburb: newSupplier.suburb || null,
         phone: newSupplier.phone || null,
+        email: newSupplier.email || null,
         abn: newSupplier.abn || null,
         licenceNo: newSupplier.licenceNo || null,
       };
@@ -348,6 +350,13 @@ export default function NewDocketPage({ defaultType = 'PURCHASE_DOCKET' }) {
                   placeholder="Phone"
                   value={newSupplier.phone || ''}
                   onChange={(e) => setNewSupplier({ ...newSupplier, phone: e.target.value })}
+                  className="rounded-md border border-steel-200 px-3 py-2 text-sm"
+                />
+                <input
+                  type="email"
+                  placeholder="Email"
+                  value={newSupplier.email || ''}
+                  onChange={(e) => setNewSupplier({ ...newSupplier, email: e.target.value })}
                   className="rounded-md border border-steel-200 px-3 py-2 text-sm"
                 />
                 <input

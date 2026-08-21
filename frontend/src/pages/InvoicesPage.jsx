@@ -6,6 +6,7 @@ import { formatAud } from '../lib/format';
 import { useAuth } from '../context/AuthContext';
 import RowActions from '../components/RowActions';
 import ConfirmDialog from '../components/ConfirmDialog';
+import ExportButton from '../components/ExportButton';
 
 const PAGE_SIZE = 25;
 
@@ -79,12 +80,24 @@ export default function InvoicesPage() {
             Container exports and local sales — GST is set per invoice
           </p>
         </div>
-        <Link
-          to="/export-invoices/new"
-          className="rounded-md bg-copper-500 px-4 py-2.5 text-sm font-semibold text-steel-950 hover:bg-copper-400"
-        >
-          + New sales invoice
-        </Link>
+        <div className="flex flex-wrap gap-2">
+          <ExportButton
+            endpoint="/invoices/export"
+            params={Object.fromEntries(
+              Object.entries({ search, status, consigneeId, from, to }).filter(([, v]) => v)
+            )}
+            options={[
+              { label: 'One row per invoice', hint: 'Totals, buyer, container', params: {} },
+              { label: 'One row per material line', hint: 'Tonnage and price by material', params: { detail: 'lines' } },
+            ]}
+          />
+          <Link
+            to="/export-invoices/new"
+            className="rounded-lg bg-copper-500 px-4 py-2.5 text-sm font-semibold text-steel-950 hover:bg-copper-400"
+          >
+            + New sales invoice
+          </Link>
+        </div>
       </div>
 
       {(from || to) && (

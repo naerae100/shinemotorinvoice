@@ -78,6 +78,7 @@ export default function PartyDetailPage({ kind }) {
                   party.saleType === 'BUSINESS' ? 'Business' : 'Private',
                   [party.address, party.suburb, party.postcode].filter(Boolean).join(', '),
                   party.phone,
+                  party.email,
                   party.abn && `ABN ${party.abn}`,
                   party.licenceNo && `Licence ${party.licenceNo}`,
                 ]
