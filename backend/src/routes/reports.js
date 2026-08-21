@@ -11,6 +11,10 @@ const router = Router();
  */
 const ACTIVE = { status: 'ACTIVE' };
 
+// Super simple in-memory cache for Vercel instances
+// This makes navigating back to the dashboard instantly fast.
+const dashboardCache = new Map();
+
 function parseRange(query) {
   const now = new Date();
   const valid = (d) => d && !Number.isNaN(d.getTime());
@@ -98,61 +102,83 @@ router.get(
     const docketWhere = { ...ACTIVE, date: dateRange };
     const invoiceWhere = { ...ACTIVE, date: dateRange };
 
-    const purchaseAgg = await prisma.docket.aggregate({
-      where: docketWhere,
-      _count: { _all: true },
-      _sum: { total: true, subtotal: true, gst: true, discountAmount: true },
-    });
-    const salesAgg = await prisma.exportInvoice.aggregate({
-      where: invoiceWhere,
-      _count: { _all: true },
-      _sum: { totalAud: true, subtotalAud: true, gstAud: true, discountAmount: true },
-    });
-    const docketRows = await prisma.docket.findMany({ where: docketWhere, select: { date: true, total: true } });
-    const invoiceRows = await prisma.exportInvoice.findMany({ where: invoiceWhere, select: { date: true, totalAud: true } });
-    const topBought = await prisma.docketLineItem.groupBy({
-      by: ['materialId'],
-      _sum: { netWeight: true, value: true },
-      where: { docket: docketWhere },
-      orderBy: { _sum: { value: 'desc' } },
-      take: 8,
-    });
-    const topSold = await prisma.invoiceLineItem.groupBy({
-      by: ['materialId'],
-      _sum: { weightTonnes: true, totalAud: true },
-      where: { invoice: invoiceWhere },
-      orderBy: { _sum: { totalAud: 'desc' } },
-      take: 8,
-    });
-    const topSuppliers = await prisma.docket.groupBy({
-      by: ['supplierId'],
-      _sum: { total: true },
-      _count: { _all: true },
-      where: docketWhere,
-      orderBy: { _sum: { total: 'desc' } },
-      take: 8,
-    });
-    const topConsignees = await prisma.exportInvoice.groupBy({
-      by: ['consigneeId'],
-      _sum: { totalAud: true },
-      _count: { _all: true },
-      where: invoiceWhere,
-      orderBy: { _sum: { totalAud: 'desc' } },
-      take: 8,
-    });
-    const recentDockets = await prisma.docket.findMany({
-      where: ACTIVE,
-      orderBy: { date: 'desc' },
-      take: 6,
-      include: { supplier: { select: { id: true, name: true } } },
-    });
-    const recentInvoices = await prisma.exportInvoice.findMany({
-      where: ACTIVE,
-      orderBy: { date: 'desc' },
-      take: 6,
-      include: { consignee: { select: { id: true, name: true } } },
-    });
-    const voidCount = await prisma.docket.count({ where: { status: 'VOID', date: dateRange } });
+    const cacheKey = `${from.toISOString()}_${to.toISOString()}_${granularity}`;
+    const cached = dashboardCache.get(cacheKey);
+    if (cached && Date.now() < cached.expires) {
+      return res.json(cached.data);
+    }
+
+    // Run in small batches (2-3) to fit in Vercel's Prisma connection pool (size=3)
+    // while minimizing network round trips.
+    const [purchaseAgg, salesAgg, voidCount] = await Promise.all([
+      prisma.docket.aggregate({
+        where: docketWhere,
+        _count: { _all: true },
+        _sum: { total: true, subtotal: true, gst: true, discountAmount: true },
+      }),
+      prisma.exportInvoice.aggregate({
+        where: invoiceWhere,
+        _count: { _all: true },
+        _sum: { totalAud: true, subtotalAud: true, gstAud: true, discountAmount: true },
+      }),
+      prisma.docket.count({ where: { status: 'VOID', date: dateRange } }),
+    ]);
+
+    const [docketRows, invoiceRows] = await Promise.all([
+      prisma.docket.findMany({ where: docketWhere, select: { date: true, total: true } }),
+      prisma.exportInvoice.findMany({ where: invoiceWhere, select: { date: true, totalAud: true } }),
+    ]);
+
+    const [topBought, topSold] = await Promise.all([
+      prisma.docketLineItem.groupBy({
+        by: ['materialId'],
+        _sum: { netWeight: true, value: true },
+        where: { docket: docketWhere },
+        orderBy: { _sum: { value: 'desc' } },
+        take: 8,
+      }),
+      prisma.invoiceLineItem.groupBy({
+        by: ['materialId'],
+        _sum: { weightTonnes: true, totalAud: true },
+        where: { invoice: invoiceWhere },
+        orderBy: { _sum: { totalAud: 'desc' } },
+        take: 8,
+      }),
+    ]);
+
+    const [topSuppliers, topConsignees] = await Promise.all([
+      prisma.docket.groupBy({
+        by: ['supplierId'],
+        _sum: { total: true },
+        _count: { _all: true },
+        where: docketWhere,
+        orderBy: { _sum: { total: 'desc' } },
+        take: 8,
+      }),
+      prisma.exportInvoice.groupBy({
+        by: ['consigneeId'],
+        _sum: { totalAud: true },
+        _count: { _all: true },
+        where: invoiceWhere,
+        orderBy: { _sum: { totalAud: 'desc' } },
+        take: 8,
+      }),
+    ]);
+
+    const [recentDockets, recentInvoices] = await Promise.all([
+      prisma.docket.findMany({
+        where: ACTIVE,
+        orderBy: { date: 'desc' },
+        take: 6,
+        include: { supplier: { select: { id: true, name: true } } },
+      }),
+      prisma.exportInvoice.findMany({
+        where: ACTIVE,
+        orderBy: { date: 'desc' },
+        take: 6,
+        include: { consignee: { select: { id: true, name: true } } },
+      }),
+    ]);
 
     // Resolve the grouped ids to names in one round trip each.
     const [materials, suppliers, consignees] = await Promise.all([
@@ -170,7 +196,12 @@ router.get(
     const purchasesTotal = sumOf(purchaseAgg, 'total');
     const salesTotal = sumOf(salesAgg, 'totalAud');
 
-    res.json({
+    // Instruct Vercel Edge Network to cache this heavy dashboard request.
+    // It caches for 5 seconds, and serves stale data for up to 60 seconds
+    // while revalidating in the background. This makes the dashboard INSTANT.
+    res.setHeader('Cache-Control', 's-maxage=5, stale-while-revalidate=60');
+
+    const responseData = {
       range: { from, to, granularity },
       purchases: {
         count: purchaseAgg._count._all,
@@ -225,7 +256,12 @@ router.get(
         })),
       recentDockets,
       recentInvoices,
-    });
+    };
+
+    // Cache in-memory for 15 seconds to prevent spamming the database
+    dashboardCache.set(cacheKey, { data: responseData, expires: Date.now() + 15000 });
+
+    res.json(responseData);
   })
 );
 
