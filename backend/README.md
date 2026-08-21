@@ -74,9 +74,13 @@ database while it held 3 dockets and 0 invoices:
 A 4 KB response took 2.5 seconds. No index or query rewrite fixes that — it is
 latency multiplied by the number of round trips. So:
 
-1. **Keep the functions in the database's region.** `vercel.json` pins `hnd1`
-   (Tokyo) because the Supabase project is in `ap-northeast-1`. If either moves,
-   move the other. Co-located, a round trip is ~1-5 ms instead of ~178 ms.
+1. **Keep the functions in the database's region.** `vercel.json` pins
+   `"regions": ["hnd1"]` (Tokyo) because the Supabase project is in
+   `ap-northeast-1`. If either moves, move the other — co-located, a round trip
+   is ~1-5 ms instead of ~178 ms. This note lives here rather than in
+   `vercel.json` because that file is strict JSON: Vercel validates it against a
+   schema and rejects unknown keys, including the `"//"` comment convention that
+   works in `package.json`.
 2. **Issue independent queries in one `Promise.all`, not one after another.**
    Each extra wave costs a full round trip. The dashboard and both per-client
    reports each collapsed from five or six waves to one.

@@ -1,31 +1,46 @@
 {
   "version": 2,
-  "//": "Functions run in hnd1 (Tokyo) to sit alongside the Supabase database in ap-northeast-1. Every query is a round trip, so a cross-Pacific function costs ~180ms per query; co-located it is ~1-5ms. If the database is ever moved to ap-southeast-2 (Sydney), change this to syd1 to also shorten the hop from the yard.",
-  "regions": ["hnd1"],
+  "regions": [
+    "hnd1"
+  ],
   "builds": [
     {
       "src": "backend/src/index.js",
       "use": "@vercel/node",
-      "config": { "maxDuration": 30 }
+      "config": {
+        "maxDuration": 30
+      }
     },
     {
       "src": "frontend/package.json",
       "use": "@vercel/static-build",
-      "config": { "distDir": "dist" }
+      "config": {
+        "distDir": "dist"
+      }
     }
   ],
   "routes": [
-    { "src": "/api/(.*)", "dest": "/backend/src/index.js" },
+    {
+      "src": "/api/(.*)",
+      "dest": "/backend/src/index.js"
+    },
     {
       "src": "/assets/(.*)",
       "dest": "/frontend/assets/$1",
-      "headers": { "cache-control": "public, max-age=31536000, immutable" }
+      "headers": {
+        "cache-control": "public, max-age=31536000, immutable"
+      }
     },
     {
       "src": "/branding/(.*)",
       "dest": "/frontend/branding/$1",
-      "headers": { "cache-control": "public, max-age=86400" }
+      "headers": {
+        "cache-control": "public, max-age=86400"
+      }
     },
-    { "src": "/(.*)", "dest": "/frontend/index.html" }
+    {
+      "src": "/(.*)",
+      "dest": "/frontend/index.html"
+    }
   ]
 }
