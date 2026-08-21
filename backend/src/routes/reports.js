@@ -98,75 +98,61 @@ router.get(
     const docketWhere = { ...ACTIVE, date: dateRange };
     const invoiceWhere = { ...ACTIVE, date: dateRange };
 
-    const [
-      purchaseAgg,
-      salesAgg,
-      docketRows,
-      invoiceRows,
-      topBought,
-      topSold,
-      topSuppliers,
-      topConsignees,
-      recentDockets,
-      recentInvoices,
-      voidCount,
-    ] = await Promise.all([
-      prisma.docket.aggregate({
-        where: docketWhere,
-        _count: { _all: true },
-        _sum: { total: true, subtotal: true, gst: true, discountAmount: true },
-      }),
-      prisma.exportInvoice.aggregate({
-        where: invoiceWhere,
-        _count: { _all: true },
-        _sum: { totalAud: true, subtotalAud: true, gstAud: true, discountAmount: true },
-      }),
-      prisma.docket.findMany({ where: docketWhere, select: { date: true, total: true } }),
-      prisma.exportInvoice.findMany({ where: invoiceWhere, select: { date: true, totalAud: true } }),
-      prisma.docketLineItem.groupBy({
-        by: ['materialId'],
-        _sum: { netWeight: true, value: true },
-        where: { docket: docketWhere },
-        orderBy: { _sum: { value: 'desc' } },
-        take: 8,
-      }),
-      prisma.invoiceLineItem.groupBy({
-        by: ['materialId'],
-        _sum: { weightTonnes: true, totalAud: true },
-        where: { invoice: invoiceWhere },
-        orderBy: { _sum: { totalAud: 'desc' } },
-        take: 8,
-      }),
-      prisma.docket.groupBy({
-        by: ['supplierId'],
-        _sum: { total: true },
-        _count: { _all: true },
-        where: docketWhere,
-        orderBy: { _sum: { total: 'desc' } },
-        take: 8,
-      }),
-      prisma.exportInvoice.groupBy({
-        by: ['consigneeId'],
-        _sum: { totalAud: true },
-        _count: { _all: true },
-        where: invoiceWhere,
-        orderBy: { _sum: { totalAud: 'desc' } },
-        take: 8,
-      }),
-      prisma.docket.findMany({
-        where: ACTIVE,
-        orderBy: { date: 'desc' },
-        take: 6,
-        include: { supplier: { select: { id: true, name: true } } },
-      }),
-      prisma.exportInvoice.findMany({
-        where: ACTIVE,
-        orderBy: { date: 'desc' },
-        take: 6,
-        include: { consignee: { select: { id: true, name: true } } },
-      }),
-      prisma.docket.count({ where: { status: 'VOID', date: dateRange } }),
-    ]);
+    const purchaseAgg = await prisma.docket.aggregate({
+      where: docketWhere,
+      _count: { _all: true },
+      _sum: { total: true, subtotal: true, gst: true, discountAmount: true },
+    });
+    const salesAgg = await prisma.exportInvoice.aggregate({
+      where: invoiceWhere,
+      _count: { _all: true },
+      _sum: { totalAud: true, subtotalAud: true, gstAud: true, discountAmount: true },
+    });
+    const docketRows = await prisma.docket.findMany({ where: docketWhere, select: { date: true, total: true } });
+    const invoiceRows = await prisma.exportInvoice.findMany({ where: invoiceWhere, select: { date: true, totalAud: true } });
+    const topBought = await prisma.docketLineItem.groupBy({
+      by: ['materialId'],
+      _sum: { netWeight: true, value: true },
+      where: { docket: docketWhere },
+      orderBy: { _sum: { value: 'desc' } },
+      take: 8,
+    });
+    const topSold = await prisma.invoiceLineItem.groupBy({
+      by: ['materialId'],
+      _sum: { weightTonnes: true, totalAud: true },
+      where: { invoice: invoiceWhere },
+      orderBy: { _sum: { totalAud: 'desc' } },
+      take: 8,
+    });
+    const topSuppliers = await prisma.docket.groupBy({
+      by: ['supplierId'],
+      _sum: { total: true },
+      _count: { _all: true },
+      where: docketWhere,
+      orderBy: { _sum: { total: 'desc' } },
+      take: 8,
+    });
+    const topConsignees = await prisma.exportInvoice.groupBy({
+      by: ['consigneeId'],
+      _sum: { totalAud: true },
+      _count: { _all: true },
+      where: invoiceWhere,
+      orderBy: { _sum: { totalAud: 'desc' } },
+      take: 8,
+    });
+    const recentDockets = await prisma.docket.findMany({
+      where: ACTIVE,
+      orderBy: { date: 'desc' },
+      take: 6,
+      include: { supplier: { select: { id: true, name: true } } },
+    });
+    const recentInvoices = await prisma.exportInvoice.findMany({
+      where: ACTIVE,
+      orderBy: { date: 'desc' },
+      take: 6,
+      include: { consignee: { select: { id: true, name: true } } },
+    });
+    const voidCount = await prisma.docket.count({ where: { status: 'VOID', date: dateRange } });
 
     // Resolve the grouped ids to names in one round trip each.
     const [materials, suppliers, consignees] = await Promise.all([
@@ -254,37 +240,35 @@ router.get(
 
     const inRange = { ...ACTIVE, supplierId: supplier.id, date: { gte: from, lte: to } };
 
-    const [rangeAgg, lifetimeAgg, materials, rows, dockets, firstDocket] = await Promise.all([
-      prisma.docket.aggregate({
-        where: inRange,
-        _count: { _all: true },
-        _sum: { total: true, gst: true },
-      }),
-      prisma.docket.aggregate({
-        where: { ...ACTIVE, supplierId: supplier.id },
-        _count: { _all: true },
-        _sum: { total: true },
-      }),
-      prisma.docketLineItem.groupBy({
-        by: ['materialId'],
-        _sum: { netWeight: true, value: true },
-        _count: { _all: true },
-        where: { docket: inRange },
-        orderBy: { _sum: { value: 'desc' } },
-      }),
-      prisma.docket.findMany({ where: inRange, select: { date: true, total: true } }),
-      prisma.docket.findMany({
-        where: { supplierId: supplier.id },
-        include: { lineItems: { include: { material: true } } },
-        orderBy: { date: 'desc' },
-        take: 50,
-      }),
-      prisma.docket.findFirst({
-        where: { ...ACTIVE, supplierId: supplier.id },
-        orderBy: { date: 'asc' },
-        select: { date: true },
-      }),
-    ]);
+    const rangeAgg = await prisma.docket.aggregate({
+      where: inRange,
+      _count: { _all: true },
+      _sum: { total: true, gst: true },
+    });
+    const lifetimeAgg = await prisma.docket.aggregate({
+      where: { ...ACTIVE, supplierId: supplier.id },
+      _count: { _all: true },
+      _sum: { total: true },
+    });
+    const materials = await prisma.docketLineItem.groupBy({
+      by: ['materialId'],
+      _sum: { netWeight: true, value: true },
+      _count: { _all: true },
+      where: { docket: inRange },
+      orderBy: { _sum: { value: 'desc' } },
+    });
+    const rows = await prisma.docket.findMany({ where: inRange, select: { date: true, total: true } });
+    const dockets = await prisma.docket.findMany({
+      where: { supplierId: supplier.id },
+      include: { lineItems: { include: { material: true } } },
+      orderBy: { date: 'desc' },
+      take: 50,
+    });
+    const firstDocket = await prisma.docket.findFirst({
+      where: { ...ACTIVE, supplierId: supplier.id },
+      orderBy: { date: 'asc' },
+      select: { date: true },
+    });
 
     const materialRows = await prisma.material.findMany({
       where: { id: { in: materials.map((m) => m.materialId) } },
@@ -331,32 +315,30 @@ router.get(
 
     const inRange = { ...ACTIVE, consigneeId: consignee.id, date: { gte: from, lte: to } };
 
-    const [rangeAgg, lifetimeAgg, materials, rows, invoices] = await Promise.all([
-      prisma.exportInvoice.aggregate({
-        where: inRange,
-        _count: { _all: true },
-        _sum: { totalAud: true, gstAud: true },
-      }),
-      prisma.exportInvoice.aggregate({
-        where: { ...ACTIVE, consigneeId: consignee.id },
-        _count: { _all: true },
-        _sum: { totalAud: true },
-      }),
-      prisma.invoiceLineItem.groupBy({
-        by: ['materialId'],
-        _sum: { weightTonnes: true, totalAud: true },
-        _count: { _all: true },
-        where: { invoice: inRange },
-        orderBy: { _sum: { totalAud: 'desc' } },
-      }),
-      prisma.exportInvoice.findMany({ where: inRange, select: { date: true, totalAud: true } }),
-      prisma.exportInvoice.findMany({
-        where: { consigneeId: consignee.id },
-        include: { lineItems: { include: { material: true } } },
-        orderBy: { date: 'desc' },
-        take: 50,
-      }),
-    ]);
+    const rangeAgg = await prisma.exportInvoice.aggregate({
+      where: inRange,
+      _count: { _all: true },
+      _sum: { totalAud: true, gstAud: true },
+    });
+    const lifetimeAgg = await prisma.exportInvoice.aggregate({
+      where: { ...ACTIVE, consigneeId: consignee.id },
+      _count: { _all: true },
+      _sum: { totalAud: true },
+    });
+    const materials = await prisma.invoiceLineItem.groupBy({
+      by: ['materialId'],
+      _sum: { weightTonnes: true, totalAud: true },
+      _count: { _all: true },
+      where: { invoice: inRange },
+      orderBy: { _sum: { totalAud: 'desc' } },
+    });
+    const rows = await prisma.exportInvoice.findMany({ where: inRange, select: { date: true, totalAud: true } });
+    const invoices = await prisma.exportInvoice.findMany({
+      where: { consigneeId: consignee.id },
+      include: { lineItems: { include: { material: true } } },
+      orderBy: { date: 'desc' },
+      take: 50,
+    });
 
     const materialRows = await prisma.material.findMany({
       where: { id: { in: materials.map((m) => m.materialId) } },
@@ -401,18 +383,16 @@ router.get(
     today.setHours(0, 0, 0, 0);
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
 
-    const [todayAgg, monthAgg] = await Promise.all([
-      prisma.docket.aggregate({
-        where: { ...ACTIVE, date: { gte: today } },
-        _count: { _all: true },
-        _sum: { total: true },
-      }),
-      prisma.docket.aggregate({
-        where: { ...ACTIVE, date: { gte: monthStart } },
-        _count: { _all: true },
-        _sum: { total: true },
-      }),
-    ]);
+    const todayAgg = await prisma.docket.aggregate({
+      where: { ...ACTIVE, date: { gte: today } },
+      _count: { _all: true },
+      _sum: { total: true },
+    });
+    const monthAgg = await prisma.docket.aggregate({
+      where: { ...ACTIVE, date: { gte: monthStart } },
+      _count: { _all: true },
+      _sum: { total: true },
+    });
 
     res.json({
       today: { docketCount: todayAgg._count._all, totalValue: Number(todayAgg._sum.total ?? 0) },
