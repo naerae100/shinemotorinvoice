@@ -192,11 +192,11 @@ export default function NewInvoicePage() {
   const labelCls = 'mb-1 block text-xs font-medium text-steel-500';
 
   if (loadingInvoice) {
-    return <div className="px-8 py-8 text-sm text-steel-500">Loading…</div>;
+    return <div className="px-4 py-6 sm:px-6 lg:px-8 lg:py-8 text-sm text-steel-500">Loading…</div>;
   }
 
   return (
-    <div className="mx-auto max-w-4xl px-8 py-8">
+    <div className="mx-auto max-w-4xl px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
       <h1 className="mb-6 font-display text-2xl font-semibold text-steel-900">
         {isEdit ? 'Edit invoice' : 'New sales invoice'}
       </h1>
@@ -208,7 +208,7 @@ export default function NewInvoicePage() {
             <div className="text-xs text-steel-400">Container shipment</div>
           </div>
 
-          <div className="grid grid-cols-2 gap-4 border-b border-steel-100 px-6 py-5">
+          <div className="grid grid-cols-1 gap-4 border-b border-steel-100 px-4 py-5 sm:grid-cols-2 sm:px-6">
             <div>
               <label className={labelCls}>Invoice number</label>
               <input
@@ -231,7 +231,7 @@ export default function NewInvoicePage() {
           <div className="border-b border-steel-100 px-6 py-5">
             <label className={labelCls}>Consignee</label>
             {addingConsignee ? (
-              <div className="flex gap-2">
+              <div className="flex flex-wrap gap-2">
                 <input
                   autoFocus
                   placeholder="Consignee name"
@@ -286,7 +286,7 @@ export default function NewInvoicePage() {
             )}
           </div>
 
-          <div className="grid grid-cols-3 gap-4 border-b border-steel-100 px-6 py-5">
+          <div className="grid grid-cols-1 gap-4 border-b border-steel-100 px-4 py-5 sm:grid-cols-2 lg:grid-cols-3 sm:px-6">
             <ComboField
               label="Shipping term"
               value={shipping.shippingTerm}
@@ -334,7 +334,7 @@ export default function NewInvoicePage() {
           </div>
 
           <div className="px-6 py-5">
-            <div className="mb-2 grid grid-cols-[1fr_1fr_100px_110px_120px_32px] gap-2 text-xs font-medium uppercase tracking-wider text-steel-500">
+            <div className="mb-2 hidden gap-2 text-xs font-medium uppercase tracking-wider text-steel-500 md:grid md:grid-cols-[1fr_1fr_100px_110px_120px_32px]">
               <div>Material</div>
               <div>Description</div>
               <div>Tonnes</div>
@@ -349,12 +349,13 @@ export default function NewInvoicePage() {
                 return (
                   <div
                     key={idx}
-                    className="grid grid-cols-[1fr_1fr_100px_110px_120px_32px] items-center gap-2"
+                    className="grid grid-cols-2 items-center gap-2 rounded-lg border border-steel-200 bg-paper/60 p-3 md:grid-cols-[1fr_1fr_100px_110px_120px_32px] md:rounded-none md:border-0 md:bg-transparent md:p-0"
                   >
                     <select
+                      aria-label="Material"
                       value={line.materialId}
                       onChange={(e) => updateLine(idx, 'materialId', e.target.value)}
-                      className="rounded-md border border-steel-200 bg-paper px-2.5 py-2 text-sm focus:bg-white"
+                      className="col-span-2 rounded-md border border-steel-200 bg-white px-2.5 py-2 text-sm md:col-span-1 md:bg-paper md:focus:bg-white"
                     >
                       <option value="">Select material…</option>
                       {materials.map((m) => (
@@ -365,37 +366,43 @@ export default function NewInvoicePage() {
                       ))}
                     </select>
                     <input
+                      aria-label="Description"
                       placeholder="As shown on invoice"
                       value={line.description}
                       onChange={(e) => updateLine(idx, 'description', e.target.value)}
-                      className="rounded-md border border-steel-200 bg-paper px-2.5 py-2 text-sm focus:bg-white"
+                      className="col-span-2 rounded-md border border-steel-200 bg-white px-2.5 py-2 text-sm md:col-span-1 md:bg-paper md:focus:bg-white"
                     />
                     <input
                       type="number"
                       step="0.001"
                       min="0"
-                      placeholder="0.000"
+                      inputMode="decimal"
+                      aria-label="Tonnes"
+                      placeholder="Tonnes"
                       value={line.weightTonnes}
                       onChange={(e) => updateLine(idx, 'weightTonnes', e.target.value)}
-                      className="num rounded-md border border-steel-200 bg-paper px-2.5 py-2 text-sm focus:bg-white"
+                      className="num rounded-md border border-steel-200 bg-white px-2.5 py-2 text-sm md:bg-paper md:focus:bg-white"
                     />
                     <input
                       type="number"
                       step="0.01"
                       min="0"
-                      placeholder="0.00"
+                      inputMode="decimal"
+                      aria-label="Price per MT"
+                      placeholder="Price / MT"
                       value={line.pricePerMt}
                       onChange={(e) => updateLine(idx, 'pricePerMt', e.target.value)}
-                      className="num rounded-md border border-steel-200 bg-paper px-2.5 py-2 text-sm focus:bg-white"
+                      className="num rounded-md border border-steel-200 bg-white px-2.5 py-2 text-sm md:bg-paper md:focus:bg-white"
                     />
-                    <div className="num text-right text-sm font-medium text-steel-900">
+                    <div className="num text-sm font-medium text-steel-900 md:text-right">
+                      <span className="text-xs text-steel-400 md:hidden">Total </span>
                       {value > 0 ? formatAud(value) : '—'}
                     </div>
                     <button
                       type="button"
                       onClick={() => removeLine(idx)}
                       disabled={lines.length === 1}
-                      className="flex h-8 w-8 items-center justify-center rounded-md text-steel-400 hover:bg-working-redDim hover:text-working-red disabled:opacity-30"
+                      className="ml-auto flex h-8 w-8 items-center justify-center rounded-md text-steel-400 hover:bg-working-redDim hover:text-working-red disabled:opacity-30"
                       aria-label="Remove line"
                     >
                       ×
@@ -413,7 +420,7 @@ export default function NewInvoicePage() {
             </button>
           </div>
 
-          <div className="grid grid-cols-2 gap-6 border-t border-steel-100 px-6 py-5">
+          <div className="grid grid-cols-1 gap-6 border-t border-steel-100 px-4 py-5 sm:grid-cols-2 sm:px-6">
             <DiscountField value={discount} onChange={setDiscount} subtotal={subtotal} />
             <div>
               <label className="mb-1.5 block text-sm font-medium text-steel-700">GST</label>

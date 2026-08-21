@@ -47,7 +47,7 @@ const joinDot = (parts) => parts.filter(Boolean).join('  ·  ');
 export function Masthead({ settings, roleLabel }) {
   const companyName = settings?.companyName || 'Shine Motor Corporation Pty Ltd';
   return (
-    <header className="flex items-start justify-between gap-8 border-b-2 border-steel-900 pb-5">
+    <header className="flex flex-col gap-4 border-b-2 border-steel-900 pb-5 sm:flex-row sm:items-start sm:justify-between sm:gap-8">
       <div className="min-w-0 shrink-0">
         {settings?.logoUrl ? (
           <img src={settings.logoUrl} alt={companyName} className="h-16 object-contain object-left" />
@@ -58,7 +58,7 @@ export function Masthead({ settings, roleLabel }) {
         )}
       </div>
 
-      <div className="min-w-0 text-right">
+      <div className="min-w-0 sm:text-right">
         {roleLabel && (
           <div className="mb-1 text-[9px] font-bold uppercase tracking-widest text-copper-700">
             {roleLabel}
@@ -125,7 +125,7 @@ export function ReferenceBlock({ title, references }) {
 /** Amount-in-words on the left, the running totals on the right. */
 export function TotalsBlock({ words, rows, total, children }) {
   return (
-    <section className="avoid-break flex items-stretch justify-between gap-6 border-b border-steel-300 py-4">
+    <section className="avoid-break flex flex-col gap-4 border-b border-steel-300 py-4 sm:flex-row sm:items-stretch sm:justify-between sm:gap-6">
       <div className="flex-1">
         <div className="text-[9px] font-semibold uppercase tracking-wider text-steel-400">
           Amount in words
@@ -135,7 +135,7 @@ export function TotalsBlock({ words, rows, total, children }) {
         </div>
         {children}
       </div>
-      <div className="w-64 shrink-0">
+      <div className="w-full shrink-0 sm:w-64">
         {rows.map(([label, value]) => (
           <div
             key={label}
@@ -158,7 +158,7 @@ export function TotalsBlock({ words, rows, total, children }) {
 
 export function DocumentFooter({ settings, reference, date }) {
   return (
-    <footer className="mt-6 flex justify-between border-t border-steel-200 pt-2 text-[9px] text-steel-400">
+    <footer className="mt-6 flex flex-col gap-1 border-t border-steel-200 pt-2 text-[9px] text-steel-400 sm:flex-row sm:justify-between sm:gap-0">
       <span>
         {settings?.companyName || 'Shine Motor Corporation Pty Ltd'}
         {settings?.abn ? ` · ABN ${settings.abn}` : ''}

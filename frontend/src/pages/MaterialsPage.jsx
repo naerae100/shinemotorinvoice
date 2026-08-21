@@ -125,8 +125,8 @@ export default function MaterialsPage() {
     'w-full rounded-lg border border-steel-200 bg-paper px-3 py-2 text-sm text-steel-900 placeholder:text-steel-400 focus:border-copper-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-copper-500/20';
 
   return (
-    <div className="mx-auto max-w-5xl px-8 py-8">
-      <div className="mb-5 flex items-start justify-between gap-4">
+    <div className="mx-auto max-w-5xl px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
+      <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
         <div>
           <h1 className="font-display text-2xl font-semibold text-steel-900">Materials &amp; pricing</h1>
           <p className="mt-0.5 text-sm text-steel-500">
@@ -192,7 +192,7 @@ export default function MaterialsPage() {
                 className={`num ${field}`}
               />
             </div>
-            <div className="col-span-2 md:col-span-2">
+            <div className="sm:col-span-2 md:col-span-2">
               <label className="mb-1 block text-xs font-medium text-steel-500">Description</label>
               <input
                 required
@@ -277,7 +277,8 @@ export default function MaterialsPage() {
                 </h2>
                 <span className="num text-xs text-steel-400">{items.length}</span>
               </div>
-              <table className="w-full text-sm">
+              <div className="overflow-x-auto">
+              <table className="w-full min-w-[560px] text-sm">
                 <tbody>
                   {items.map((m) => (
                     <tr
@@ -370,6 +371,7 @@ export default function MaterialsPage() {
                   ))}
                 </tbody>
               </table>
+              </div>
             </div>
           ))}
         </div>

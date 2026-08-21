@@ -21,11 +21,11 @@ export default function DocketDocument({ docket, settings }) {
   const totalWeight = docket.lineItems.reduce((sum, li) => sum + Number(li.netWeight), 0);
 
   return (
-    <div className="print-sheet relative mx-auto flex min-h-[297mm] flex-col border border-steel-300 bg-white p-10 shadow-ticket">
+    <div className="print-sheet relative mx-auto flex min-h-[297mm] flex-col border border-steel-300 bg-white p-5 shadow-ticket sm:p-8 lg:p-10">
       {docket.status === 'VOID' && <VoidStamp reason={docket.voidReason} />}
       <Masthead settings={settings} />
 
-      <section className="grid grid-cols-2 border-b border-steel-300">
+      <section className="grid grid-cols-1 border-b border-steel-300 sm:grid-cols-2">
         <div className="border-r border-steel-300 px-4 py-3">
           <div className="mb-1.5 text-[9px] font-bold uppercase tracking-widest text-copper-700">
             Supplier / Seller
@@ -52,14 +52,15 @@ export default function DocketDocument({ docket, settings }) {
       </section>
 
       {hasVehicle && (
-        <section className="grid grid-cols-3 border-b border-steel-300 bg-paper">
+        <section className="grid grid-cols-2 border-b border-steel-300 bg-paper sm:grid-cols-3">
           <Detail label="Vehicle model" value={docket.vehicleModel} mono={false} />
           <Detail label="Registration" value={docket.vehicleReg} />
           <Detail label="VIN" value={docket.vehicleVin} />
         </section>
       )}
 
-      <table className="w-full border-collapse text-[11px]">
+      <div className="-mx-1 overflow-x-auto px-1 print:mx-0 print:overflow-visible print:px-0">
+      <table className="w-full min-w-[520px] border-collapse text-[11px]">
         <thead>
           <tr className="bg-steel-900 text-left uppercase tracking-wider text-paper">
             <th className="w-8 px-2 py-2.5 text-[9px] font-semibold">#</th>
@@ -108,6 +109,7 @@ export default function DocketDocument({ docket, settings }) {
           </tr>
         </tfoot>
       </table>
+      </div>
 
       <TotalsBlock
         words={amountInWords(docket.total)}
@@ -146,7 +148,7 @@ export default function DocketDocument({ docket, settings }) {
           </div>
         )}
 
-        <div className="grid grid-cols-2 gap-12">
+        <div className="grid grid-cols-1 gap-8 sm:grid-cols-2 sm:gap-12">
           <div>
             <div className="h-11 border-b border-steel-500" />
             <div className="mt-1 text-[10px] font-medium text-steel-800">Supplier's signature</div>

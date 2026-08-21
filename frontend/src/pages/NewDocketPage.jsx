@@ -254,11 +254,11 @@ export default function NewDocketPage({ defaultType = 'PURCHASE_DOCKET' }) {
   }
 
   if (loadingDocket) {
-    return <div className="px-8 py-8 text-sm text-steel-500">Loading…</div>;
+    return <div className="px-4 py-6 sm:px-6 lg:px-8 lg:py-8 text-sm text-steel-500">Loading…</div>;
   }
 
   return (
-    <div className="mx-auto max-w-4xl px-8 py-8">
+    <div className="mx-auto max-w-4xl px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
       <h1 className="mb-6 font-display text-2xl font-semibold text-steel-900">
         {isEdit
           ? `Edit ${type === 'TAX_INVOICE' ? 'tax invoice' : 'docket'}`
@@ -322,7 +322,7 @@ export default function NewDocketPage({ defaultType = 'PURCHASE_DOCKET' }) {
               )}
             </div>
 
-            <div className="mt-4 grid grid-cols-2 gap-3 rounded-md bg-paper p-4 border border-steel-100">
+            <div className="mt-4 grid grid-cols-1 gap-3 rounded-md border border-steel-100 bg-paper p-4 sm:grid-cols-2">
               <input
                 placeholder="Client Name"
                 value={newSupplier.name || supplierQuery || ''}
@@ -330,7 +330,7 @@ export default function NewDocketPage({ defaultType = 'PURCHASE_DOCKET' }) {
                   setSupplierQuery(e.target.value);
                   setNewSupplier({ ...newSupplier, name: e.target.value });
                 }}
-                className="col-span-2 rounded-md border border-steel-200 px-3 py-2 text-sm"
+                className="sm:col-span-2 rounded-md border border-steel-200 px-3 py-2 text-sm"
               />
                 <input
                   placeholder="Address"
@@ -380,7 +380,7 @@ export default function NewDocketPage({ defaultType = 'PURCHASE_DOCKET' }) {
               {showVehicle ? '− Hide' : '+ Add'} vehicle details (cash for cars)
             </button>
             {showVehicle && (
-              <div className="mt-3 grid grid-cols-3 gap-3">
+              <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-3">
                 <input
                   placeholder="Model"
                   value={vehicle.model}
@@ -404,7 +404,8 @@ export default function NewDocketPage({ defaultType = 'PURCHASE_DOCKET' }) {
           </div>
 
           <div className="px-6 py-5">
-            <div className="mb-2 grid grid-cols-[1fr_110px_110px_120px_32px] gap-2 text-xs font-medium uppercase tracking-wider text-steel-500">
+            {/* Column headings only make sense once the row is actually a row */}
+            <div className="mb-2 hidden gap-2 text-xs font-medium uppercase tracking-wider text-steel-500 sm:grid sm:grid-cols-[1fr_110px_110px_120px_32px]">
               <div>Material</div>
               <div>Weight</div>
               <div>Price</div>
@@ -417,12 +418,13 @@ export default function NewDocketPage({ defaultType = 'PURCHASE_DOCKET' }) {
                 return (
                   <div
                     key={idx}
-                    className="grid grid-cols-[1fr_110px_110px_120px_32px] items-center gap-2"
+                    className="grid grid-cols-2 items-center gap-2 rounded-lg border border-steel-200 bg-paper/60 p-3 sm:grid-cols-[1fr_110px_110px_120px_32px] sm:rounded-none sm:border-0 sm:bg-transparent sm:p-0"
                   >
                     <select
+                      aria-label="Material"
                       value={line.materialId}
                       onChange={(e) => updateLine(idx, 'materialId', e.target.value)}
-                      className="rounded-md border border-steel-200 bg-paper px-2.5 py-2 text-sm focus:bg-white"
+                      className="col-span-2 rounded-md border border-steel-200 bg-white px-2.5 py-2 text-sm sm:col-span-1 sm:bg-paper sm:focus:bg-white"
                     >
                       <option value="">Select material…</option>
                       {materials.map((m) => (
@@ -434,30 +436,35 @@ export default function NewDocketPage({ defaultType = 'PURCHASE_DOCKET' }) {
                     </select>
                     <input
                       type="number"
+                      inputMode="decimal"
+                      aria-label="Net weight"
                       step="0.001"
                       min="0"
-                      placeholder="0.00"
+                      placeholder="Weight"
                       value={line.netWeight}
                       onChange={(e) => updateLine(idx, 'netWeight', e.target.value)}
-                      className="num rounded-md border border-steel-200 bg-paper px-2.5 py-2 text-sm focus:bg-white"
+                      className="num rounded-md border border-steel-200 bg-white px-2.5 py-2 text-sm sm:bg-paper sm:focus:bg-white"
                     />
                     <input
                       type="number"
+                      inputMode="decimal"
+                      aria-label="Rate"
                       step="0.01"
                       min="0"
-                      placeholder="0.00"
+                      placeholder="Rate"
                       value={line.price}
                       onChange={(e) => updateLine(idx, 'price', e.target.value)}
-                      className="num rounded-md border border-steel-200 bg-paper px-2.5 py-2 text-sm focus:bg-white"
+                      className="num rounded-md border border-steel-200 bg-white px-2.5 py-2 text-sm sm:bg-paper sm:focus:bg-white"
                     />
-                    <div className="num text-right text-sm font-medium text-steel-900">
+                    <div className="num text-sm font-medium text-steel-900 sm:text-right">
+                      <span className="text-xs text-steel-400 sm:hidden">Value </span>
                       {value > 0 ? formatCurrency(value) : '—'}
                     </div>
                     <button
                       type="button"
                       onClick={() => removeLine(idx)}
                       disabled={lines.length === 1}
-                      className="flex h-8 w-8 items-center justify-center rounded-md text-steel-400 hover:bg-working-redDim hover:text-working-red disabled:opacity-30"
+                      className="ml-auto flex h-8 w-8 items-center justify-center rounded-md text-steel-400 hover:bg-working-redDim hover:text-working-red disabled:opacity-30"
                       aria-label="Remove line"
                     >
                       ×

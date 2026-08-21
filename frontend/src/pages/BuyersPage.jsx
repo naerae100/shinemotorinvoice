@@ -46,8 +46,8 @@ export default function BuyersPage() {
   const field = 'w-full rounded-md border border-steel-200 px-3 py-2 text-sm focus:border-copper-500';
 
   return (
-    <div className="mx-auto max-w-6xl px-8 py-8">
-      <div className="mb-5 flex items-center justify-between">
+    <div className="mx-auto max-w-6xl px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
+      <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="font-display text-2xl font-semibold text-steel-900">Buyers</h1>
           <p className="mt-0.5 text-sm text-steel-500">Who we sell containers and scrap to</p>
@@ -79,9 +79,9 @@ export default function BuyersPage() {
           <h2 className="mb-3 font-display text-base font-semibold text-steel-900">
             {form.id ? 'Edit buyer' : 'New buyer'}
           </h2>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <input required placeholder="Company name" value={form.name}
-              onChange={(e) => setForm({ ...form, name: e.target.value })} className={`col-span-2 ${field}`} />
+              onChange={(e) => setForm({ ...form, name: e.target.value })} className={`sm:col-span-2 ${field}`} />
             <input placeholder="Address" value={form.address || ''}
               onChange={(e) => setForm({ ...form, address: e.target.value })} className={field} />
             <input placeholder="Country" value={form.country || ''}
@@ -104,8 +104,8 @@ export default function BuyersPage() {
         </form>
       )}
 
-      <div className="overflow-hidden rounded-xl border border-steel-200 bg-white shadow-ticket">
-        <table className="w-full text-sm">
+      <div className="overflow-x-auto rounded-xl border border-steel-200 bg-white shadow-ticket">
+        <table className="w-full min-w-[640px] text-sm">
           <thead>
             <tr className="border-b border-steel-100 bg-paper text-left text-xs uppercase tracking-wider text-steel-500">
               <th className="px-5 py-3 font-medium">Name</th>

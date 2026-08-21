@@ -103,16 +103,19 @@ export default function DateRangePicker({ from, to, granularity, onChange, showG
     'rounded-md border border-steel-200 bg-white px-2.5 py-1.5 text-sm text-steel-800 focus:border-copper-500';
 
   return (
-    <div className="flex flex-wrap items-center gap-2">
-      <div className="flex flex-wrap gap-1">
+    <div className="space-y-2.5">
+      {/* On a phone eight wrapped buttons became an eight-line vertical stack
+          that pushed the whole page down. A single scrolling row of chips keeps
+          it to one line and stays thumb-friendly. */}
+      <div className="-mx-1 flex gap-1.5 overflow-x-auto px-1 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden lg:flex-wrap lg:overflow-visible">
         {PRESET_ORDER.map((key) => (
           <button
             key={key}
             onClick={() => applyPreset(key)}
-            className={`rounded-md px-2.5 py-1.5 text-xs font-medium transition-colors ${
+            className={`shrink-0 whitespace-nowrap rounded-lg px-3 py-2 text-xs font-medium transition-colors lg:py-1.5 ${
               activePreset === key
                 ? 'bg-steel-900 text-paper'
-                : 'bg-white text-steel-600 hover:bg-steel-100 border border-steel-200'
+                : 'border border-steel-200 bg-white text-steel-600 hover:bg-steel-100'
             }`}
           >
             {PRESETS[key]().label}
@@ -120,24 +123,26 @@ export default function DateRangePicker({ from, to, granularity, onChange, showG
         ))}
       </div>
 
-      <div className="ml-auto flex items-center gap-2">
-        <input
-          type="date"
-          value={from}
-          max={to}
-          onChange={(e) => onChange({ from: e.target.value, to, granularity })}
-          className={`num ${field}`}
-          aria-label="From date"
-        />
-        <span className="text-sm text-steel-400">to</span>
-        <input
-          type="date"
-          value={to}
-          min={from}
-          onChange={(e) => onChange({ from, to: e.target.value, granularity })}
-          className={`num ${field}`}
-          aria-label="To date"
-        />
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="flex min-w-0 flex-1 items-center gap-2 sm:flex-initial">
+          <input
+            type="date"
+            value={from}
+            max={to}
+            onChange={(e) => onChange({ from: e.target.value, to, granularity })}
+            className={`num min-w-0 flex-1 ${field} sm:flex-initial`}
+            aria-label="From date"
+          />
+          <span className="shrink-0 text-sm text-steel-400">to</span>
+          <input
+            type="date"
+            value={to}
+            min={from}
+            onChange={(e) => onChange({ from, to: e.target.value, granularity })}
+            className={`num min-w-0 flex-1 ${field} sm:flex-initial`}
+            aria-label="To date"
+          />
+        </div>
         {showGranularity && (
           <select
             value={granularity}

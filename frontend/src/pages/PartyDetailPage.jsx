@@ -46,8 +46,8 @@ export default function PartyDetailPage({ kind }) {
     };
   }, [kind, id, range.from, range.to]);
 
-  if (error) return <div className="px-8 py-8 text-sm text-working-red">{error}</div>;
-  if (!data) return <div className="px-8 py-8 text-sm text-steel-500">Loading…</div>;
+  if (error) return <div className="px-4 py-6 sm:px-6 lg:px-8 lg:py-8 text-sm text-working-red">{error}</div>;
+  if (!data) return <div className="px-4 py-6 sm:px-6 lg:px-8 lg:py-8 text-sm text-steel-500">Loading…</div>;
 
   const party = isSupplier ? data.supplier : data.consignee;
   const docs = isSupplier ? data.dockets : data.invoices;
@@ -65,11 +65,11 @@ export default function PartyDetailPage({ kind }) {
   }));
 
   return (
-    <div className="mx-auto max-w-7xl px-8 py-8">
+    <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
       <Link to={listPath} className="text-sm text-steel-500 hover:text-copper-600">
         ← {isSupplier ? 'Clients' : 'Buyers'}
       </Link>
-      <div className="mb-5 mt-1 flex items-start justify-between gap-4">
+      <div className="mb-5 mt-1 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
         <div>
           <h1 className="font-display text-2xl font-semibold text-steel-900">{party.name}</h1>
           <p className="mt-0.5 text-sm text-steel-500">
@@ -100,7 +100,7 @@ export default function PartyDetailPage({ kind }) {
         <DateRangePicker {...range} showGranularity={false} onChange={setRange} />
       </div>
 
-      <div className="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
+      <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <StatTile
           label={isSupplier ? 'Bought in period' : 'Sold in period'}
           value={formatAud(data.inRange.total)}
@@ -148,8 +148,8 @@ export default function PartyDetailPage({ kind }) {
           {docs.length === 0 ? (
             <div className="py-8 text-center text-sm text-steel-500">Nothing recorded yet.</div>
           ) : (
-            <div className="max-h-[420px] overflow-y-auto">
-              <table className="w-full text-sm">
+            <div className="max-h-[420px] overflow-auto">
+              <table className="w-full min-w-[420px] text-sm">
                 <thead className="sticky top-0 bg-white">
                   <tr className="border-b border-steel-100 text-left text-xs uppercase tracking-wider text-steel-500">
                     <th className="py-2 font-medium">Ref</th>

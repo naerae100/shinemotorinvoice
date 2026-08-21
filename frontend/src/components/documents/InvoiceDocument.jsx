@@ -13,11 +13,11 @@ export default function InvoiceDocument({ invoice, settings }) {
   const totalWeight = invoice.lineItems.reduce((s, li) => s + Number(li.weightTonnes), 0);
 
   return (
-    <div className="print-sheet relative mx-auto flex min-h-[297mm] flex-col border border-steel-300 bg-white p-10 shadow-ticket">
+    <div className="print-sheet relative mx-auto flex min-h-[297mm] flex-col border border-steel-300 bg-white p-5 shadow-ticket sm:p-8 lg:p-10">
       {invoice.status === 'VOID' && <VoidStamp reason={invoice.voidReason} />}
       <Masthead settings={settings} roleLabel="Exporter / Seller" />
 
-      <section className="grid grid-cols-2 border-b border-steel-300">
+      <section className="grid grid-cols-1 border-b border-steel-300 sm:grid-cols-2">
         <div className="border-r border-steel-300">
           <PartyBlock
             heading="Consignee / Buyer"
@@ -35,7 +35,7 @@ export default function InvoiceDocument({ invoice, settings }) {
         />
       </section>
 
-      <section className="grid grid-cols-4 border-b border-steel-300 bg-paper">
+      <section className="grid grid-cols-2 border-b border-steel-300 bg-paper sm:grid-cols-4">
         <Detail label="Shipping terms" value={invoice.shippingTerm} mono={false} />
         <Detail label="Port" value={invoice.fasPort} mono={false} />
         <Detail label="Mode of transport" value={invoice.modeOfTransport} mono={false} />
@@ -46,7 +46,8 @@ export default function InvoiceDocument({ invoice, settings }) {
         <Detail label="Currency" value={invoice.applyGst ? 'AUD (incl. GST)' : 'AUD'} mono={false} />
       </section>
 
-      <table className="w-full border-collapse text-[11px]">
+      <div className="-mx-1 overflow-x-auto px-1 print:mx-0 print:overflow-visible print:px-0">
+      <table className="w-full min-w-[520px] border-collapse text-[11px]">
         <thead>
           <tr className="bg-steel-900 text-left uppercase tracking-wider text-paper">
             <th className="w-8 px-2 py-2.5 text-[9px] font-semibold">#</th>
@@ -103,6 +104,7 @@ export default function InvoiceDocument({ invoice, settings }) {
           </tr>
         </tfoot>
       </table>
+      </div>
 
       <TotalsBlock
         words={amountInWords(invoice.totalAud)}
@@ -116,7 +118,7 @@ export default function InvoiceDocument({ invoice, settings }) {
         total={formatAud(invoice.totalAud)}
       />
 
-      <section className="avoid-break grid grid-cols-2 gap-6 pt-4">
+      <section className="avoid-break grid grid-cols-1 gap-6 pt-4 sm:grid-cols-2">
         <div>
           <div className="mb-1.5 text-[9px] font-bold uppercase tracking-widest text-copper-700">
             Bank details for payment

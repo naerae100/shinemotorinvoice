@@ -73,10 +73,10 @@ export default function SettingsPage() {
     }
   }
 
-  if (!settings) return <div className="px-8 py-8 text-sm text-steel-500">Loading…</div>;
+  if (!settings) return <div className="px-4 py-6 sm:px-6 lg:px-8 lg:py-8 text-sm text-steel-500">Loading…</div>;
 
   return (
-    <div className="mx-auto max-w-2xl px-8 py-8">
+    <div className="mx-auto max-w-2xl px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
       <h1 className="mb-1 font-display text-2xl font-semibold text-steel-900">Settings</h1>
       <p className="mb-6 text-sm text-steel-500">
         Company info, logo, stamp, and bank details used on printed dockets and invoices.
@@ -131,7 +131,7 @@ export default function SettingsPage() {
           <h2 className="mb-3 text-sm font-semibold uppercase tracking-wider text-steel-600">
             {group.title}
           </h2>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             {group.fields.map(([key, label]) => (
               <div key={key}>
                 <label className="mb-1 block text-xs font-medium text-steel-500">{label}</label>

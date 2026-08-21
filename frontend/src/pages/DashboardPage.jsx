@@ -103,7 +103,7 @@ export default function DashboardPage() {
     : '';
 
   return (
-    <div className="mx-auto max-w-7xl px-8 py-8">
+    <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
       <header className="mb-6 flex flex-wrap items-end justify-between gap-4">
         <div>
           <h1 className="font-display text-[28px] font-semibold leading-tight text-steel-900">
@@ -155,7 +155,7 @@ export default function DashboardPage() {
 
       {data && (
         <div className={loading ? 'opacity-60 transition-opacity' : 'transition-opacity'}>
-          <div className="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
+          <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
             <StatTile
               label="Scrap bought"
               value={formatAud(data.purchases.total)}
@@ -290,7 +290,8 @@ export default function DashboardPage() {
             {recent.length === 0 ? (
               <EmptyState>Nothing recorded yet.</EmptyState>
             ) : (
-              <table className="w-full text-sm">
+              <div className="-mx-5 overflow-x-auto px-5">
+              <table className="w-full min-w-[560px] text-sm">
                 <thead>
                   <tr className="border-b border-steel-100 text-left text-[11px] uppercase tracking-wider text-steel-500">
                     <th className="py-2 font-medium">Type</th>
@@ -332,6 +333,7 @@ export default function DashboardPage() {
                   ))}
                 </tbody>
               </table>
+              </div>
             )}
           </Card>
         </div>

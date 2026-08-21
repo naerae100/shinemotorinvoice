@@ -62,8 +62,8 @@ export default function InvoicesPage() {
   const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
 
   return (
-    <div className="mx-auto max-w-6xl px-8 py-8">
-      <div className="mb-6 flex items-center justify-between">
+    <div className="mx-auto max-w-6xl px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
+      <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="font-display text-2xl font-semibold text-steel-900">Sales invoices</h1>
           <p className="mt-0.5 text-sm text-steel-500">
@@ -125,8 +125,8 @@ export default function InvoicesPage() {
         </div>
       )}
 
-      <div className="overflow-hidden rounded-xl border border-steel-200 bg-white shadow-ticket">
-        <table className="w-full text-sm">
+      <div className="overflow-x-auto rounded-xl border border-steel-200 bg-white shadow-ticket">
+        <table className="w-full min-w-[640px] text-sm">
           <thead>
             <tr className="border-b border-steel-100 bg-paper text-left text-xs uppercase tracking-wider text-steel-500">
               <th className="px-5 py-3 font-medium">Invoice</th>

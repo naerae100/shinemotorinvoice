@@ -22,12 +22,12 @@ export default function InvoiceDetailPage() {
       .catch(() => setError('Could not load this invoice.'));
   }, [id]);
 
-  if (error) return <div className="px-8 py-8 text-sm text-working-red">{error}</div>;
-  if (!invoice) return <div className="px-8 py-8 text-sm text-steel-500">Loading…</div>;
+  if (error) return <div className="px-4 py-6 sm:px-6 lg:px-8 lg:py-8 text-sm text-working-red">{error}</div>;
+  if (!invoice) return <div className="px-4 py-6 sm:px-6 lg:px-8 lg:py-8 text-sm text-steel-500">Loading…</div>;
 
   return (
-    <div className="mx-auto max-w-[860px] px-8 py-8 print:max-w-none print:p-0">
-      <div className="print-hidden mb-4 flex items-center justify-between">
+    <div className="mx-auto max-w-[860px] px-3 py-5 sm:px-6 lg:px-8 lg:py-8 print:max-w-none print:p-0">
+      <div className="print-hidden mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <Link to="/export-invoices" className="text-sm text-steel-500 hover:text-copper-600">
             ← Export invoices
