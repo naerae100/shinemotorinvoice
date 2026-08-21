@@ -66,23 +66,27 @@ app.get('/api/health', (req, res) => res.json({ status: 'ok' }));
 app.use('/api', notFoundHandler);
 app.use(errorHandler);
 
-const server = app.listen(config.port, () => {
-  console.log(`Shine Metals API running on port ${config.port}`);
-});
+if (!process.env.VERCEL) {
+  const server = app.listen(config.port, () => {
+    console.log(`Shine Metals API running on port ${config.port}`);
+  });
 
-// Last-resort safety net. Route handlers are wrapped in asyncHandler, so reaching
-// here means a bug outside the request cycle — log it and stay up rather than
-// letting Node's default behaviour take the API down mid-shift.
-process.on('unhandledRejection', (reason) => {
-  console.error('Unhandled promise rejection:', reason);
-});
-process.on('uncaughtException', (err) => {
-  console.error('Uncaught exception:', err);
-});
+  // Last-resort safety net. Route handlers are wrapped in asyncHandler, so reaching
+  // here means a bug outside the request cycle — log it and stay up rather than
+  // letting Node's default behaviour take the API down mid-shift.
+  process.on('unhandledRejection', (reason) => {
+    console.error('Unhandled promise rejection:', reason);
+  });
+  process.on('uncaughtException', (err) => {
+    console.error('Uncaught exception:', err);
+  });
 
-function shutdown(signal) {
-  console.log(`${signal} received, shutting down.`);
-  server.close(() => process.exit(0));
+  function shutdown(signal) {
+    console.log(`${signal} received, shutting down.`);
+    server.close(() => process.exit(0));
+  }
+  process.on('SIGTERM', () => shutdown('SIGTERM'));
+  process.on('SIGINT', () => shutdown('SIGINT'));
 }
-process.on('SIGTERM', () => shutdown('SIGTERM'));
-process.on('SIGINT', () => shutdown('SIGINT'));
+
+export default app;

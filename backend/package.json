@@ -13,7 +13,8 @@
     "seed": "node prisma/seed.js",
     "demo": "node prisma/demo.js",
     "demo:clear": "node prisma/demo.js --clear",
-    "test": "node --test \"tests/**/*.test.js\""
+    "test": "node --test \"tests/**/*.test.js\"",
+    "postinstall": "prisma generate"
   },
   "dependencies": {
     "@prisma/client": "^5.20.0",
