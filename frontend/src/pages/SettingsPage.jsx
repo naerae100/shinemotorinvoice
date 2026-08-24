@@ -31,12 +31,20 @@ const FIELD_GROUPS = [
 
 export default function SettingsPage() {
   const [settings, setSettings] = useState(null);
+  const [xeroStatus, setXeroStatus] = useState(null);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState('');
 
   useEffect(() => {
     getSettings().then(setSettings);
+    api.get('/xero/status').then((res) => setXeroStatus(res.data)).catch(() => {});
+    
+    // Check if we just returned from Xero oauth
+    if (window.location.search.includes('xero=success')) {
+      window.history.replaceState({}, '', '/settings');
+      setSaved(true);
+    }
   }, []);
 
   function update(field, value) {
@@ -145,6 +153,31 @@ export default function SettingsPage() {
           </div>
         </div>
       ))}
+
+      <div className="mb-6 rounded-xl border border-steel-200 bg-white p-5 shadow-ticket">
+        <h2 className="mb-3 text-sm font-semibold uppercase tracking-wider text-steel-600">
+          Integrations
+        </h2>
+        <div className="flex flex-col items-start gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <div className="text-sm font-medium text-steel-900">Xero Accounting</div>
+            <div className="text-sm text-steel-500">
+              Automatically sync purchases as Draft Bills and sales as Draft Invoices.
+            </div>
+            {xeroStatus?.connected && (
+              <div className="mt-1 text-xs font-medium text-working-green">
+                ✓ Connected (Tenant ID: {xeroStatus.tenantId})
+              </div>
+            )}
+          </div>
+          <a
+            href={`${import.meta.env.VITE_API_URL || '/api'}/xero/connect`}
+            className="rounded-md border border-steel-300 bg-white px-4 py-2 text-sm font-semibold text-steel-700 shadow-sm hover:bg-paper"
+          >
+            {xeroStatus?.connected ? 'Reconnect Xero' : 'Connect to Xero'}
+          </a>
+        </div>
+      </div>
 
       <div className="flex items-center gap-3">
         <button

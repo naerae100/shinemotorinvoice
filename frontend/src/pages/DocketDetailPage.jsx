@@ -34,9 +34,16 @@ export default function DocketDetailPage() {
           <Link to="/purchases" className="text-sm text-steel-500 hover:text-copper-600">
             ← Purchases
           </Link>
-          <h1 className="font-display text-2xl font-semibold text-steel-900">
-            {isTaxInvoice ? 'Tax invoice' : 'Docket'} #{docket.docketNumber}
-          </h1>
+          <div className="flex items-center gap-3">
+            <h1 className="font-display text-2xl font-semibold text-steel-900">
+              {isTaxInvoice ? 'Tax invoice' : 'Docket'} #{docket.docketNumber}
+            </h1>
+            {docket.xeroInvoiceId && (
+              <div className="rounded border border-working-green/20 bg-working-green/10 px-2 py-0.5 text-[10px] font-semibold tracking-wide text-working-green">
+                ✓ Synced to Xero
+              </div>
+            )}
+          </div>
         </div>
         <button
           onClick={() => window.print()}

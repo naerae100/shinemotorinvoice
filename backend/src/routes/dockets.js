@@ -7,6 +7,7 @@ import { contains } from '../lib/search.js';
 import { computeTotals, round2, discountSchema } from '../lib/money.js';
 import { dateFilter, numberFilter, pagination } from '../lib/query.js';
 import { sendCsv, money, isoDate, isoDateTime } from '../lib/csv.js';
+import { pushPurchaseDocketToXero } from './xero.js';
 
 const router = Router();
 
@@ -272,6 +273,10 @@ router.post(
           data: { ...baseData, docketNumber: (lastDocket?.docketNumber ?? 0) + 1 },
           include: DETAIL_INCLUDE,
         });
+        
+        // Push to Xero
+        await pushPurchaseDocketToXero(docket);
+        
         return res.status(201).json({ docket });
       } catch (err) {
         const isNumberCollision =
@@ -363,6 +368,9 @@ router.patch(
         include: DETAIL_INCLUDE,
       });
     });
+
+    // Push to Xero on updates
+    await pushPurchaseDocketToXero(docket);
 
     res.json({ docket });
   })

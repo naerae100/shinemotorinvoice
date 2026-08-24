@@ -5,8 +5,9 @@ import { requireAuth, requireRole } from '../middleware/auth.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { contains } from '../lib/search.js';
 import { computeTotals, round2, discountSchema } from '../lib/money.js';
-import { dateFilter, pagination } from '../lib/query.js';
-import { sendCsv, money, isoDate } from '../lib/csv.js';
+import { dateFilter, numberFilter, pagination } from '../lib/query.js';
+import { sendCsv, money, isoDate, isoDateTime } from '../lib/csv.js';
+import { pushSalesInvoiceToXero } from './xero.js';
 
 const router = Router();
 
@@ -283,6 +284,8 @@ router.post(
       include: DETAIL_INCLUDE,
     });
 
+    await pushSalesInvoiceToXero(invoice);
+
     res.status(201).json({ invoice: withParsedSnapshot(invoice) });
   })
 );
@@ -367,6 +370,8 @@ router.patch(
         include: DETAIL_INCLUDE,
       });
     });
+
+    await pushSalesInvoiceToXero(invoice);
 
     res.json({ invoice: withParsedSnapshot(invoice) });
   })

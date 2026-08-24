@@ -107,6 +107,9 @@ model Docket {
 
   subtotal Decimal @default(0)
 
+  // Xero integration
+  xeroInvoiceId String?
+
   // DiscountType values: "NONE" | "PERCENT" | "FIXED"
   discountType   String  @default("NONE")
   discountValue  Decimal @default(0) // the percentage, or the fixed dollar amount
@@ -190,6 +193,9 @@ model ExportInvoice {
 
   subtotalAud Decimal @default(0)
 
+  // Xero integration
+  xeroInvoiceId String?
+
   // DiscountType values: "NONE" | "PERCENT" | "FIXED"
   discountType   String  @default("NONE")
   discountValue  Decimal @default(0)
@@ -258,4 +264,10 @@ model CompanySettings {
   bankBsb       String?
   bankAddress   String?
   beneficiary   String?
+
+  // Xero integration
+  xeroTenantId       String?
+  xeroAccessToken    String?
+  xeroRefreshToken   String?
+  xeroTokenExpiresAt DateTime?
 }

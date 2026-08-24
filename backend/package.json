@@ -1,7 +1,7 @@
 {
   "name": "shine-metals-backend",
   "version": "1.0.0",
-  "description": "Shine Metals docket & invoice system \u2014 backend API",
+  "description": "Shine Metals docket & invoice system — backend API",
   "main": "src/index.js",
   "type": "module",
   "scripts": {
@@ -27,6 +27,7 @@
     "jsonwebtoken": "^9.0.2",
     "multer": "^2.2.0",
     "pdfkit": "^0.15.0",
+    "xero-node": "^19.1.0",
     "zod": "^3.23.8"
   },
   "devDependencies": {

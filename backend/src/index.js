@@ -15,6 +15,7 @@ import consigneeRoutes from './routes/consignees.js';
 import settingsRoutes from './routes/settings.js';
 import reportRoutes from './routes/reports.js';
 import userRoutes from './routes/users.js';
+import xeroRoutes from './routes/xero.js';
 import { errorHandler, notFoundHandler } from './middleware/errorHandler.js';
 
 const app = express();
@@ -60,6 +61,7 @@ app.use('/api/consignees', consigneeRoutes);
 app.use('/api/settings', settingsRoutes);
 app.use('/api/reports', reportRoutes);
 app.use('/api/users', userRoutes);
+app.use('/api/xero', xeroRoutes);
 
 app.get('/api/health', (req, res) => res.json({ status: 'ok' }));
 

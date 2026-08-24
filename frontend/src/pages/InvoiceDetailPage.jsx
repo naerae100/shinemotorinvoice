@@ -32,9 +32,16 @@ export default function InvoiceDetailPage() {
           <Link to="/export-invoices" className="text-sm text-steel-500 hover:text-copper-600">
             ← Export invoices
           </Link>
-          <h1 className="font-display text-2xl font-semibold text-steel-900">
-            Invoice {invoice.invoiceNumber}
-          </h1>
+          <div className="flex items-center gap-3">
+            <h1 className="font-display text-2xl font-semibold text-steel-900">
+              Invoice {invoice.invoiceNumber}
+            </h1>
+            {invoice.xeroInvoiceId && (
+              <div className="rounded border border-working-green/20 bg-working-green/10 px-2 py-0.5 text-[10px] font-semibold tracking-wide text-working-green">
+                ✓ Synced to Xero
+              </div>
+            )}
+          </div>
         </div>
         <button
           onClick={() => window.print()}
