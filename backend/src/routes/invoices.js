@@ -5,86 +5,171 @@ import { requireAuth, requireRole } from '../middleware/auth.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { contains } from '../lib/search.js';
 import { computeTotals, round2, discountSchema } from '../lib/money.js';
+import { CURRENCIES } from '../lib/currency.js';
 import { dateFilter, numberFilter, pagination } from '../lib/query.js';
 import { sendCsv, money, isoDate, isoDateTime } from '../lib/csv.js';
 import { pushSalesInvoiceToXero } from './xero.js';
+import { invalidateDashboardCache } from './reports.js';
 
 const router = Router();
 
-const invoiceLineSchema = z.object({
-  materialId: z.string(),
-  description: z.string().optional().nullable(),
-  weightTonnes: z.number().positive(),
-  pricePerMt: z.number().nonnegative(),
+// Sales figures feed the same cached dashboard as purchases; see dockets.js.
+router.use((req, res, next) => {
+  if (req.method === 'GET') return next();
+  res.on('finish', () => {
+    if (res.statusCode < 400) invalidateDashboardCache();
+  });
+  next();
 });
 
-const invoiceSchema = z.object({
+
+
+const invoiceLineSchema = z
+  .object({
+    // A line may name a material from the price list, or just describe itself.
+    // Requiring one of the two is what stops a blank row reaching the document.
+    materialId: z.string().optional().nullable(),
+    description: z.string().optional().nullable(),
+    packageCount: z.string().optional().nullable(),
+
+    // Index into this request's `containers` array, not a database id — the
+    // containers may not exist yet when the invoice is being created.
+    containerIndex: z.number().int().nonnegative().optional().nullable(),
+
+    grossWeightMt: z.number().nonnegative().optional().nullable(),
+    tareWeightMt: z.number().nonnegative().optional().nullable(),
+    netWeightMt: z.number().positive(),
+    pricePerMt: z.number().nonnegative(),
+  })
+  .refine((li) => li.materialId || (li.description && li.description.trim()), {
+    message: 'A line needs either a material or a description',
+    path: ['description'],
+  })
+  .refine(
+    (li) =>
+      li.grossWeightMt == null ||
+      li.tareWeightMt == null ||
+      round2(li.grossWeightMt - li.tareWeightMt) === round2(li.netWeightMt),
+    {
+      message: 'Net weight must equal gross minus tare',
+      path: ['netWeightMt'],
+    }
+  );
+
+const containerSchema = z.object({
+  containerNo: z.string().optional().nullable(),
+  seal: z.string().optional().nullable(),
+  containerType: z.string().optional().nullable(),
+});
+
+const invoiceBase = z.object({
   invoiceNumber: z.string().min(1),
   date: z.string().datetime().optional(),
   consigneeId: z.string(),
+  currency: z.enum(CURRENCIES).default('AUD'),
   shippingTerm: z.string().optional().nullable(),
   fasPort: z.string().optional().nullable(),
   poNumber: z.string().optional().nullable(),
-  containerNo: z.string().optional().nullable(),
-  seal: z.string().optional().nullable(),
+  contractNo: z.string().optional().nullable(),
   modeOfTransport: z.string().optional().nullable(),
-  containerType: z.string().optional().nullable(),
+  containers: z.array(containerSchema).default([]),
   // Exports are GST-free; a local sale on the same document is not.
   applyGst: z.boolean().default(false),
   lineItems: z.array(invoiceLineSchema).min(1),
   ...discountSchema,
 });
 
+/** A line may only point at a container the same request supplied. */
+const containerRefsResolve = (d) =>
+  !d.lineItems ||
+  !d.containers ||
+  d.lineItems.every((li) => li.containerIndex == null || li.containerIndex < d.containers.length);
+const CONTAINER_REF_ERROR = {
+  message: 'A line points at a container that was not supplied',
+  path: ['lineItems'],
+};
+
+const invoiceSchema = invoiceBase.refine(containerRefsResolve, CONTAINER_REF_ERROR);
+
+// PATCH accepts any subset. `.partial()` has to be taken on the plain object —
+// a refined schema is a ZodEffects and no longer offers it — so the refinement
+// is re-applied afterwards.
+const invoicePatchSchema = invoiceBase.partial().refine(containerRefsResolve, CONTAINER_REF_ERROR);
+
 const DETAIL_INCLUDE = {
   consignee: true,
-  lineItems: { include: { material: true } },
+  containers: { orderBy: { position: 'asc' } },
+  lineItems: { include: { material: true }, orderBy: { position: 'asc' } },
   createdBy: { select: { id: true, name: true } },
   editedBy: { select: { id: true, name: true } },
   voidedBy: { select: { id: true, name: true } },
 };
 
-const buildLines = (lineItems) =>
-  lineItems.map((li) => ({
-    materialId: li.materialId,
-    description: li.description,
-    weightTonnes: li.weightTonnes,
+/**
+ * Line values, in document order. `containerIds` maps this request's container
+ * indexes onto the rows that were just created; it is absent when the caller
+ * sent no containers, in which case every line simply has none.
+ */
+const buildLines = (lineItems, containerIds = []) =>
+  lineItems.map((li, position) => ({
+    materialId: li.materialId ?? null,
+    containerId: li.containerIndex == null ? null : (containerIds[li.containerIndex] ?? null),
+    description: li.description ?? null,
+    packageCount: li.packageCount ?? null,
+    grossWeightMt: li.grossWeightMt ?? null,
+    tareWeightMt: li.tareWeightMt ?? null,
+    netWeightMt: li.netWeightMt,
     pricePerMt: li.pricePerMt,
-    totalAud: round2(li.weightTonnes * li.pricePerMt),
+    total: round2(li.netWeightMt * li.pricePerMt),
+    position,
   }));
 
-/** computeTotals speaks in subtotal/gst/total; the invoice columns are AUD-suffixed. */
+/** Totals are in the invoice's own currency; nothing is converted. */
 function invoiceTotals(lines, data) {
   const t = computeTotals({
-    lineValues: lines.map((l) => l.totalAud),
+    lineValues: lines.map((l) => l.total),
     discountType: data.discountType,
     discountValue: data.discountValue,
     applyGst: data.applyGst,
   });
   return {
-    subtotalAud: t.subtotal,
+    subtotal: t.subtotal,
     discountType: t.discountType,
     discountValue: t.discountValue,
     discountAmount: t.discountAmount,
     applyGst: Boolean(data.applyGst),
-    gstAud: t.gst,
-    totalAud: t.total,
+    gst: t.gst,
+    total: t.total,
   };
 }
 
 /**
  * bankSnapshot is a TEXT column (SQLite has no JSON type), stored as a JSON string
  * and expanded on the way out so callers always see an object.
+ *
+ * The account is chosen by the invoice's currency: AUD collects at one Westpac
+ * account and USD at another, and paying the wrong one misroutes an
+ * international wire. Snapshotting it means a later change to the account
+ * details cannot rewrite an invoice the buyer has already been sent.
  */
-function serialiseBankSnapshot(settings) {
-  if (!settings) return null;
+async function bankSnapshotFor(currency) {
+  const account = await prisma.bankAccount.findUnique({ where: { currency } });
+  if (!account) return null;
   return JSON.stringify({
-    bankName: settings.bankName,
-    bankSwift: settings.bankSwift,
-    bankAccountNo: settings.bankAccountNo,
-    bankBsb: settings.bankBsb,
-    bankAddress: settings.bankAddress,
-    beneficiary: settings.beneficiary,
+    currency: account.currency,
+    bankName: account.bankName,
+    bankSwift: account.swift,
+    bankAccountNo: account.accountNo,
+    bankBsb: account.bsb,
+    bankAddress: account.bankAddress,
+    beneficiary: account.beneficiary,
   });
+}
+
+/** True when the account for this currency has not been filled in yet. */
+async function bankAccountIsBlank(currency) {
+  const a = await prisma.bankAccount.findUnique({ where: { currency } });
+  return !a || !(a.accountNo || a.bsb || a.swift);
 }
 
 function withParsedSnapshot(invoice) {
@@ -112,7 +197,8 @@ function buildInvoiceWhere(query) {
       ? {
           OR: [
             { invoiceNumber: contains(String(search)) },
-            { containerNo: contains(String(search)) },
+            { containers: { some: { containerNo: contains(String(search)) } } },
+            { contractNo: contains(String(search)) },
             { poNumber: contains(String(search)) },
             { consignee: { name: contains(String(search)) } },
           ],
@@ -148,9 +234,13 @@ router.get(
         skip,
       }),
       prisma.exportInvoice.count({ where }),
-      prisma.exportInvoice.aggregate({
+      // Grouped by currency, never summed across it: adding a USD invoice to an
+      // AUD one produces a figure that means nothing without an exchange rate,
+      // and we deliberately hold none.
+      prisma.exportInvoice.groupBy({
+        by: ['currency'],
         where: { ...where, status: 'ACTIVE' },
-        _sum: { totalAud: true, subtotalAud: true, gstAud: true },
+        _sum: { total: true, subtotal: true, gst: true },
       }),
     ]);
 
@@ -159,11 +249,12 @@ router.get(
       totalCount,
       page: currentPage,
       pageSize: take,
-      filteredTotals: {
-        total: Number(sum._sum.totalAud ?? 0),
-        subtotal: Number(sum._sum.subtotalAud ?? 0),
-        gst: Number(sum._sum.gstAud ?? 0),
-      },
+      filteredTotals: sum.map((row) => ({
+        currency: row.currency,
+        total: Number(row._sum.total ?? 0),
+        subtotal: Number(row._sum.subtotal ?? 0),
+        gst: Number(row._sum.gst ?? 0),
+      })),
     });
   })
 );
@@ -180,7 +271,8 @@ router.get(
       where,
       include: {
         consignee: true,
-        lineItems: { include: { material: true } },
+        containers: { orderBy: { position: 'asc' } },
+        lineItems: { include: { material: true, container: true }, orderBy: { position: 'asc' } },
         createdBy: { select: { name: true } },
       },
       orderBy: { date: 'asc' },
@@ -197,9 +289,14 @@ router.get(
         { label: 'Country', get: (r) => r.i.consignee?.country ?? '' },
         { label: 'Material', get: (r) => r.li.material?.description },
         { label: 'Description', get: (r) => r.li.description ?? '' },
-        { label: 'Weight (MT)', get: (r) => money(r.li.weightTonnes) },
-        { label: 'Price/MT (AUD)', get: (r) => money(r.li.pricePerMt) },
-        { label: 'Line total (AUD)', get: (r) => money(r.li.totalAud) },
+        { label: 'Container', get: (r) => r.li.container?.containerNo ?? '' },
+        { label: 'Packages', get: (r) => r.li.packageCount ?? '' },
+        { label: 'Gross (MT)', get: (r) => (r.li.grossWeightMt == null ? '' : money(r.li.grossWeightMt)) },
+        { label: 'Tare (MT)', get: (r) => (r.li.tareWeightMt == null ? '' : money(r.li.tareWeightMt)) },
+        { label: 'Net weight (MT)', get: (r) => money(r.li.netWeightMt) },
+        { label: 'Currency', get: (r) => r.i.currency },
+        { label: 'Price/MT', get: (r) => money(r.li.pricePerMt) },
+        { label: 'Line total', get: (r) => money(r.li.total) },
       ], rows);
     }
 
@@ -214,15 +311,18 @@ router.get(
       { label: 'Shipping term', get: (i) => i.shippingTerm ?? '' },
       { label: 'Port', get: (i) => i.fasPort ?? '' },
       { label: 'Transport', get: (i) => i.modeOfTransport ?? '' },
-      { label: 'Container type', get: (i) => i.containerType ?? '' },
-      { label: 'Container no.', get: (i) => i.containerNo ?? '' },
-      { label: 'Seal', get: (i) => i.seal ?? '' },
+      { label: 'Contract no.', get: (i) => i.contractNo ?? '' },
+      { label: 'Containers', get: (i) => i.containers.length },
+      { label: 'Container type', get: (i) => i.containers.map((c) => c.containerType).filter(Boolean).join('; ') },
+      { label: 'Container no.', get: (i) => i.containers.map((c) => c.containerNo).filter(Boolean).join('; ') },
+      { label: 'Seal', get: (i) => i.containers.map((c) => c.seal).filter(Boolean).join('; ') },
       { label: 'Lines', get: (i) => i.lineItems.length },
-      { label: 'Total weight (MT)', get: (i) => money(i.lineItems.reduce((s, li) => s + Number(li.weightTonnes), 0)) },
-      { label: 'Subtotal (AUD)', get: (i) => money(i.subtotalAud) },
-      { label: 'Discount (AUD)', get: (i) => money(i.discountAmount) },
-      { label: 'GST (AUD)', get: (i) => money(i.gstAud) },
-      { label: 'Total (AUD)', get: (i) => money(i.totalAud) },
+      { label: 'Total weight (MT)', get: (i) => money(i.lineItems.reduce((s, li) => s + Number(li.netWeightMt), 0)) },
+      { label: 'Currency', get: (i) => i.currency },
+      { label: 'Subtotal', get: (i) => money(i.subtotal) },
+      { label: 'Discount', get: (i) => money(i.discountAmount) },
+      { label: 'GST', get: (i) => money(i.gst) },
+      { label: 'Total', get: (i) => money(i.total) },
       { label: 'Raised by', get: (i) => i.createdBy?.name ?? '' },
       { label: 'Void reason', get: (i) => i.voidReason ?? '' },
     ], invoices);
@@ -261,43 +361,66 @@ router.post(
       return res.status(409).json({ error: 'Invoice number already exists' });
     }
 
-    const settings = await prisma.companySettings.findUnique({ where: { id: 'singleton' } });
-    const lines = buildLines(data.lineItems);
+    const bankSnapshot = await bankSnapshotFor(data.currency);
 
-    const invoice = await prisma.exportInvoice.create({
-      data: {
-        invoiceNumber: data.invoiceNumber,
-        date: data.date ? new Date(data.date) : undefined,
-        consigneeId: data.consigneeId,
-        shippingTerm: data.shippingTerm,
-        fasPort: data.fasPort,
-        poNumber: data.poNumber,
-        containerNo: data.containerNo,
-        seal: data.seal,
-        modeOfTransport: data.modeOfTransport,
-        containerType: data.containerType,
-        ...invoiceTotals(lines, data),
-        bankSnapshot: serialiseBankSnapshot(settings),
-        createdById: req.user.id,
-        lineItems: { create: lines },
-      },
-      include: DETAIL_INCLUDE,
+    // Containers are created first so their ids can be attached to the lines
+    // that travelled in them; both happen in one transaction so a failure
+    // halfway cannot leave an invoice with orphaned containers.
+    const invoice = await prisma.$transaction(async (tx) => {
+      const created = await tx.exportInvoice.create({
+        data: {
+          invoiceNumber: data.invoiceNumber,
+          date: data.date ? new Date(data.date) : undefined,
+          consigneeId: data.consigneeId,
+          currency: data.currency,
+          shippingTerm: data.shippingTerm,
+          fasPort: data.fasPort,
+          poNumber: data.poNumber,
+          contractNo: data.contractNo,
+          modeOfTransport: data.modeOfTransport,
+          ...invoiceTotals(buildLines(data.lineItems), data),
+          bankSnapshot,
+          createdById: req.user.id,
+          containers: {
+            create: data.containers.map((c, position) => ({ ...c, position })),
+          },
+        },
+        include: { containers: { orderBy: { position: 'asc' } } },
+      });
+
+      const containerIds = created.containers.map((c) => c.id);
+      await tx.invoiceLineItem.createMany({
+        data: buildLines(data.lineItems, containerIds).map((l) => ({
+          ...l,
+          invoiceId: created.id,
+        })),
+      });
+
+      return tx.exportInvoice.findUnique({ where: { id: created.id }, include: DETAIL_INCLUDE });
     });
 
     await pushSalesInvoiceToXero(invoice);
 
-    res.status(201).json({ invoice: withParsedSnapshot(invoice) });
+    // Saved either way — refusing would lose the operator's typing — but the
+    // document would print with no account for the buyer to pay into, so say so.
+    const warnings = (await bankAccountIsBlank(data.currency))
+      ? [`No ${data.currency} bank account is set up in Settings, so this invoice has no payment details.`]
+      : undefined;
+
+    res.status(201).json({ invoice: withParsedSnapshot(invoice), warnings });
   })
 );
 
-// PATCH /api/invoices/:id — the bank snapshot is deliberately never updated:
-// it records the details as they stood when the invoice was issued, and the
-// buyer may already have paid against them.
+// PATCH /api/invoices/:id — the bank snapshot is deliberately not refreshed when
+// the account details change: it records them as they stood when the invoice was
+// issued, and the buyer may already have paid against them. Changing the invoice's
+// *currency* is the one exception, because the snapshot then names an account in
+// the wrong currency entirely.
 router.patch(
   '/:id',
   requireAuth,
   asyncHandler(async (req, res) => {
-    const parsed = invoiceSchema.partial().safeParse(req.body);
+    const parsed = invoicePatchSchema.safeParse(req.body);
     if (!parsed.success) {
       return res.status(400).json({ error: parsed.error.flatten() });
     }
@@ -307,10 +430,14 @@ router.patch(
       where: { id: req.params.id },
       select: {
         id: true,
+        invoiceNumber: true,
         status: true,
+        currency: true,
+        issuedAt: true,
         applyGst: true,
         discountType: true,
         discountValue: true,
+        total: true,
       },
     });
     if (!existing) return res.status(404).json({ error: 'Invoice not found' });
@@ -318,6 +445,12 @@ router.patch(
       return res
         .status(409)
         .json({ error: 'This invoice is voided. Restore it before making changes.' });
+    }
+    if (existing.issuedAt) {
+      return res.status(409).json({
+        error:
+          'This invoice has been issued to the buyer and can no longer be edited. Void it and raise a replacement.',
+      });
     }
 
     const settled = {
@@ -327,20 +460,62 @@ router.patch(
         data.discountValue !== undefined ? data.discountValue : Number(existing.discountValue),
     };
 
+    // When lines are replaced without also replacing the containers, their
+    // containerIndex refers to the containers already on the invoice.
+    if (data.lineItems && !data.containers) {
+      const have = await prisma.invoiceContainer.count({ where: { invoiceId: req.params.id } });
+      const dangling = data.lineItems.some(
+        (li) => li.containerIndex != null && li.containerIndex >= have
+      );
+      if (dangling) {
+        return res.status(400).json({
+          error: `A line points at container #${have + 1}, but this invoice has ${have}.`,
+        });
+      }
+    }
+
+    const currencyChanged = data.currency && data.currency !== existing.currency;
+    const rebankedSnapshot = currencyChanged ? await bankSnapshotFor(data.currency) : undefined;
+
     const invoice = await prisma.$transaction(async (tx) => {
       const updateData = {
         ...(data.invoiceNumber ? { invoiceNumber: data.invoiceNumber } : {}),
         ...(data.date ? { date: new Date(data.date) } : {}),
         ...(data.consigneeId ? { consigneeId: data.consigneeId } : {}),
+        ...(data.currency ? { currency: data.currency } : {}),
+        ...(currencyChanged ? { bankSnapshot: rebankedSnapshot } : {}),
         ...(data.shippingTerm !== undefined ? { shippingTerm: data.shippingTerm } : {}),
         ...(data.fasPort !== undefined ? { fasPort: data.fasPort } : {}),
         ...(data.poNumber !== undefined ? { poNumber: data.poNumber } : {}),
-        ...(data.containerNo !== undefined ? { containerNo: data.containerNo } : {}),
-        ...(data.seal !== undefined ? { seal: data.seal } : {}),
+        ...(data.contractNo !== undefined ? { contractNo: data.contractNo } : {}),
         ...(data.modeOfTransport !== undefined ? { modeOfTransport: data.modeOfTransport } : {}),
-        ...(data.containerType !== undefined ? { containerType: data.containerType } : {}),
         editedById: req.user.id,
       };
+
+      // Lines go first: they reference containers, and replacing the container
+      // list would otherwise blank the links of lines about to be replaced anyway.
+      if (data.lineItems) {
+        await tx.invoiceLineItem.deleteMany({ where: { invoiceId: req.params.id } });
+      }
+
+      let containerIds;
+      if (data.containers) {
+        await tx.invoiceContainer.deleteMany({ where: { invoiceId: req.params.id } });
+        for (const [position, c] of data.containers.entries()) {
+          const row = await tx.invoiceContainer.create({
+            data: { ...c, position, invoiceId: req.params.id },
+          });
+          (containerIds ??= []).push(row.id);
+        }
+        containerIds ??= [];
+      } else {
+        const stored = await tx.invoiceContainer.findMany({
+          where: { invoiceId: req.params.id },
+          orderBy: { position: 'asc' },
+          select: { id: true },
+        });
+        containerIds = stored.map((c) => c.id);
+      }
 
       const totalsAffected =
         data.lineItems ||
@@ -351,15 +526,14 @@ router.patch(
       if (totalsAffected) {
         let lines;
         if (data.lineItems) {
-          lines = buildLines(data.lineItems);
-          await tx.invoiceLineItem.deleteMany({ where: { invoiceId: req.params.id } });
+          lines = buildLines(data.lineItems, containerIds);
           updateData.lineItems = { create: lines };
         } else {
           const stored = await tx.invoiceLineItem.findMany({
             where: { invoiceId: req.params.id },
-            select: { totalAud: true },
+            select: { total: true },
           });
-          lines = stored.map((l) => ({ totalAud: Number(l.totalAud) }));
+          lines = stored.map((l) => ({ total: Number(l.total) }));
         }
         Object.assign(updateData, invoiceTotals(lines, settled));
       }
@@ -430,26 +604,15 @@ router.post(
   })
 );
 
-router.delete(
-  '/:id',
-  requireAuth,
-  requireRole('ADMIN'),
-  asyncHandler(async (req, res) => {
-    const existing = await prisma.exportInvoice.findUnique({
-      where: { id: req.params.id },
-      select: { id: true, invoiceNumber: true },
-    });
-    if (!existing) return res.status(404).json({ error: 'Invoice not found' });
-
-    await prisma.$transaction([
-      prisma.invoiceLineItem.deleteMany({ where: { invoiceId: req.params.id } }),
-      prisma.exportInvoice.delete({ where: { id: req.params.id } }),
-    ]);
-    console.warn(
-      `Invoice ${existing.invoiceNumber} permanently deleted by ${req.user.email || req.user.id}`
-    );
-    res.json({ deleted: true, invoiceNumber: existing.invoiceNumber });
-  })
-);
+/**
+ * DELETE is deliberately not implemented — see dockets.js. A commercial invoice
+ * may already be with a buyer, a bank or a customs broker; it is voided, never
+ * erased.
+ */
+router.delete('/:id', requireAuth, (req, res) => {
+  res.status(405).json({
+    error: 'Invoices cannot be deleted. Void it instead — the number and history are kept.',
+  });
+});
 
 export default router;

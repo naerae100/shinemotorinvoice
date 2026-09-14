@@ -1,9 +1,13 @@
 import { Router } from 'express';
 import bcrypt from 'bcryptjs';
+import jwt from 'jsonwebtoken';
+import { config } from '../config/env.js';
 import { z } from 'zod';
 import { prisma } from '../config/prisma.js';
 import { requireAuth, requireRole } from '../middleware/auth.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
+import { forgetUser } from '../middleware/auth.js';
+import { audit } from '../lib/audit.js';
 
 const router = Router();
 
@@ -103,13 +107,30 @@ router.patch(
     }
 
     const { password, ...rest } = data;
+    // A password reset or a deactivation must take effect now, not whenever the
+    // existing token happens to expire.
+    const endsSessions = Boolean(password) || rest.active === false || rest.role !== undefined;
     const user = await prisma.user.update({
       where: { id: req.params.id },
       data: {
         ...rest,
         ...(password ? { passwordHash: await bcrypt.hash(password, 10) } : {}),
+        ...(endsSessions ? { tokenVersion: { increment: 1 } } : {}),
       },
       select: SAFE_FIELDS,
+    });
+    if (endsSessions) forgetUser(user.id);
+    await audit({
+      req,
+      action: 'UPDATE',
+      entity: 'User',
+      entityId: user.id,
+      label: user.email,
+      after: {
+        ...(password ? { passwordChanged: true } : {}),
+        ...(rest.role !== undefined ? { role: rest.role } : {}),
+        ...(rest.active !== undefined ? { active: rest.active } : {}),
+      },
     });
     res.json({ user });
   })
@@ -165,11 +186,39 @@ router.post(
       return res.status(401).json({ error: 'Current password is incorrect' });
     }
 
-    await prisma.user.update({
+    // Changing a password signs out every other device holding an old token.
+    const updated = await prisma.user.update({
       where: { id: req.user.id },
-      data: { passwordHash: await bcrypt.hash(parsed.data.newPassword, 10) },
+      data: {
+        passwordHash: await bcrypt.hash(parsed.data.newPassword, 10),
+        tokenVersion: { increment: 1 },
+      },
+      select: { id: true, name: true, email: true, role: true, tokenVersion: true },
     });
-    res.json({ changed: true });
+    forgetUser(updated.id);
+    await audit({
+      req,
+      action: 'PASSWORD_CHANGE',
+      entity: 'User',
+      entityId: updated.id,
+      label: updated.email,
+    });
+
+    // The caller's own token was just invalidated along with the rest, so hand
+    // back a fresh one — otherwise changing your password logs you out of the
+    // device you changed it on.
+    const token = jwt.sign(
+      {
+        id: updated.id,
+        role: updated.role,
+        name: updated.name,
+        email: updated.email,
+        tokenVersion: updated.tokenVersion,
+      },
+      config.jwtSecret,
+      { expiresIn: config.jwtExpiresIn }
+    );
+    res.json({ changed: true, token });
   })
 );
 

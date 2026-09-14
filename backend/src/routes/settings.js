@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { prisma } from '../config/prisma.js';
 import { requireAuth, requireRole } from '../middleware/auth.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
+import { CURRENCIES } from '../lib/currency.js';
 import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
@@ -55,10 +56,22 @@ const settingsSchema = z.object({
   website: z.string().optional().nullable(),
   logoUrl: z.string().optional().nullable(),
   stampUrl: z.string().optional().nullable(),
+  // The legacy single bank block. It is still written so nothing that reads
+  // CompanySettings breaks, but the invoice takes its details from BankAccount,
+  // which holds one set per currency.
   bankName: z.string().optional().nullable(),
   bankSwift: z.string().optional().nullable(),
   bankAccountNo: z.string().optional().nullable(),
   bankBsb: z.string().optional().nullable(),
+  bankAddress: z.string().optional().nullable(),
+  beneficiary: z.string().optional().nullable(),
+});
+
+const bankAccountSchema = z.object({
+  bankName: z.string().optional().nullable(),
+  swift: z.string().optional().nullable(),
+  accountNo: z.string().optional().nullable(),
+  bsb: z.string().optional().nullable(),
   bankAddress: z.string().optional().nullable(),
   beneficiary: z.string().optional().nullable(),
 });
@@ -112,6 +125,51 @@ router.patch(
       create: { id: 'singleton', ...parsed.data },
     });
     res.json({ settings });
+  })
+);
+
+/**
+ * GET /api/settings/bank-accounts — admin only, these are payment details.
+ *
+ * Always returns a row per supported currency, inventing an empty one where none
+ * has been saved, so the settings screen can render a form for each without
+ * having to know which exist.
+ */
+router.get(
+  '/bank-accounts',
+  requireAuth,
+  requireRole('ADMIN'),
+  asyncHandler(async (req, res) => {
+    const rows = await prisma.bankAccount.findMany();
+    const byCurrency = Object.fromEntries(rows.map((r) => [r.currency, r]));
+    res.json({
+      bankAccounts: CURRENCIES.map(
+        (currency) => byCurrency[currency] ?? { currency, bankName: null, swift: null, accountNo: null, bsb: null, bankAddress: null, beneficiary: null }
+      ),
+    });
+  })
+);
+
+// PUT /api/settings/bank-accounts/:currency — admin only.
+router.put(
+  '/bank-accounts/:currency',
+  requireAuth,
+  requireRole('ADMIN'),
+  asyncHandler(async (req, res) => {
+    const currency = String(req.params.currency).toUpperCase();
+    if (!CURRENCIES.includes(currency)) {
+      return res.status(400).json({ error: `Unsupported currency ${currency}` });
+    }
+    const parsed = bankAccountSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: parsed.error.flatten() });
+    }
+    const bankAccount = await prisma.bankAccount.upsert({
+      where: { currency },
+      update: parsed.data,
+      create: { currency, ...parsed.data },
+    });
+    res.json({ bankAccount });
   })
 );
 

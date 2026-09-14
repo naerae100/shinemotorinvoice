@@ -42,6 +42,19 @@ function cacheSet(key, data) {
   dashboardCache.set(key, { data, expires: Date.now() + CACHE_TTL_MS });
 }
 
+/**
+ * Drop every cached window after a write.
+ *
+ * The cache is keyed by date range, so there is no way to tell which entries a
+ * given docket or invoice touched without re-deriving its range. Clearing all
+ * of it is correct and cheap — the map holds at most CACHE_MAX_ENTRIES. Without
+ * this, voiding a docket left its value sitting in the dashboard totals for up
+ * to CACHE_TTL_MS, which reads as the money never having left.
+ */
+export function invalidateDashboardCache() {
+  dashboardCache.clear();
+}
+
 function parseRange(query) {
   const now = new Date();
   const valid = (d) => d && !Number.isNaN(d.getTime());
@@ -168,14 +181,18 @@ router.get(
         _count: { _all: true },
         _sum: { total: true, subtotal: true, gst: true, discountAmount: true },
       }),
-      prisma.exportInvoice.aggregate({
+      prisma.exportInvoice.groupBy({
+        by: ['currency'],
         where: invoiceWhere,
         _count: { _all: true },
-        _sum: { totalAud: true, subtotalAud: true, gstAud: true, discountAmount: true },
+        _sum: { total: true, subtotal: true, gst: true, discountAmount: true },
       }),
       prisma.docket.count({ where: { status: 'VOID', date: dateRange } }),
       prisma.docket.findMany({ where: docketWhere, select: { date: true, total: true } }),
-      prisma.exportInvoice.findMany({ where: invoiceWhere, select: { date: true, totalAud: true } }),
+      prisma.exportInvoice.findMany({
+        where: { ...invoiceWhere, currency: 'AUD' },
+        select: { date: true, total: true },
+      }),
       prisma.docketLineItem.groupBy({
         by: ['materialId'],
         _sum: { netWeight: true, value: true },
@@ -185,9 +202,11 @@ router.get(
       }),
       prisma.invoiceLineItem.groupBy({
         by: ['materialId'],
-        _sum: { weightTonnes: true, totalAud: true },
-        where: { invoice: invoiceWhere },
-        orderBy: { _sum: { totalAud: 'desc' } },
+        _sum: { netWeightMt: true, total: true },
+        // A one-off line typed straight onto an invoice has no material to rank,
+        // so it is excluded rather than grouped under a null heading.
+        where: { invoice: invoiceWhere, materialId: { not: null } },
+        orderBy: { _sum: { total: 'desc' } },
         take: 8,
       }),
       prisma.docket.groupBy({
@@ -200,10 +219,10 @@ router.get(
       }),
       prisma.exportInvoice.groupBy({
         by: ['consigneeId'],
-        _sum: { totalAud: true },
+        _sum: { total: true },
         _count: { _all: true },
         where: invoiceWhere,
-        orderBy: { _sum: { totalAud: 'desc' } },
+        orderBy: { _sum: { total: 'desc' } },
         take: 8,
       }),
       prisma.docket.findMany({
@@ -224,15 +243,17 @@ router.get(
         _sum: { total: true },
       }),
       prisma.exportInvoice.aggregate({
-        where: { ...ACTIVE, date: prevRange },
+        where: { ...ACTIVE, date: prevRange, currency: 'AUD' },
         _count: { _all: true },
-        _sum: { totalAud: true },
+        _sum: { total: true },
       }),
     ]);
 
     // Second wave — these genuinely depend on the groupBy results above, so they
     // cannot join the first. Skipped entirely when there is nothing to resolve.
-    const materialIds = [...new Set([...topBought, ...topSold].map((r) => r.materialId))];
+    const materialIds = [
+      ...new Set([...topBought, ...topSold].map((r) => r.materialId).filter(Boolean)),
+    ];
     const supplierIds = topSuppliers.map((r) => r.supplierId);
     const consigneeIds = topConsignees.map((r) => r.consigneeId);
 
@@ -254,7 +275,18 @@ router.get(
     const consigneeMap = byId(consignees);
 
     const purchasesTotal = sumOf(purchaseAgg, 'total');
-    const salesTotal = sumOf(salesAgg, 'totalAud');
+    // salesAgg is now one row per currency. `salesIn` reads a single currency's
+    // figures; the AUD row drives every headline, and the rest are reported
+    // beside it rather than being folded in.
+    const salesIn = (currency) => salesAgg.find((r) => r.currency === currency);
+    const salesFigures = (row) => ({
+      count: row?._count._all ?? 0,
+      total: Number(row?._sum.total ?? 0),
+      subtotal: Number(row?._sum.subtotal ?? 0),
+      gst: Number(row?._sum.gst ?? 0),
+      discount: Number(row?._sum.discountAmount ?? 0),
+    });
+    const salesTotal = Number(salesIn('AUD')?._sum.total ?? 0);
 
     // Deliberately NOT s-maxage. This response is per-account financial data
     // behind requireAuth, and a shared CDN keys its cache on the URL, not on the
@@ -272,16 +304,17 @@ router.get(
         gst: sumOf(purchaseAgg, 'gst'),
         discount: sumOf(purchaseAgg, 'discountAmount'),
       },
-      sales: {
-        count: salesAgg._count._all,
-        total: salesTotal,
-        subtotal: sumOf(salesAgg, 'subtotalAud'),
-        gst: sumOf(salesAgg, 'gstAud'),
-        discount: sumOf(salesAgg, 'discountAmount'),
-      },
-      // Sales minus purchases over the same window. This is a cash-movement
+      // AUD, to sit alongside purchases in the same currency.
+      sales: salesFigures(salesIn('AUD')),
+      // Every currency actually invoiced in the window, AUD included, so the
+      // dashboard can show USD trade without it being added to anything.
+      salesByCurrency: salesAgg
+        .map((row) => ({ currency: row.currency, ...salesFigures(row) }))
+        .sort((a, b) => a.currency.localeCompare(b.currency)),
+      // AUD sales minus AUD purchases over the same window. A cash-movement
       // figure, not accounting profit — stock bought this month may not be sold
-      // until next, so a negative number is normal in a buying month.
+      // until next, so a negative number is normal in a buying month. USD sales
+      // are excluded rather than converted at an invented rate.
       grossMargin: Math.round((salesTotal - purchasesTotal) * 100) / 100,
       previous: {
         from: prevFrom,
@@ -292,16 +325,16 @@ router.get(
         },
         sales: {
           count: prevSalesAgg._count._all,
-          total: sumOf(prevSalesAgg, 'totalAud'),
+          total: sumOf(prevSalesAgg, 'total'),
         },
         grossMargin:
-          Math.round((sumOf(prevSalesAgg, 'totalAud') - sumOf(prevPurchaseAgg, 'total')) * 100) /
+          Math.round((sumOf(prevSalesAgg, 'total') - sumOf(prevPurchaseAgg, 'total')) * 100) /
           100,
       },
       voidedInRange: voidCount,
       series: buildSeries(from, to, granularity, {
         purchases: docketRows.map((d) => ({ date: d.date, value: d.total })),
-        sales: invoiceRows.map((i) => ({ date: i.date, value: i.totalAud })),
+        sales: invoiceRows.map((i) => ({ date: i.date, value: i.total })),
       }),
       topMaterialsBought: topBought
         .filter((r) => materialMap[r.materialId])
@@ -314,8 +347,8 @@ router.get(
         .filter((r) => materialMap[r.materialId])
         .map((r) => ({
           material: materialMap[r.materialId],
-          weight: Number(r._sum.weightTonnes ?? 0),
-          value: Number(r._sum.totalAud ?? 0),
+          weight: Number(r._sum.netWeightMt ?? 0),
+          value: Number(r._sum.total ?? 0),
         })),
       topSuppliers: topSuppliers
         .filter((r) => supplierMap[r.supplierId])
@@ -329,7 +362,7 @@ router.get(
         .map((r) => ({
           client: consigneeMap[r.consigneeId],
           count: r._count._all,
-          value: Number(r._sum.totalAud ?? 0),
+          value: Number(r._sum.total ?? 0),
         })),
       recentDockets,
       recentInvoices,
@@ -388,7 +421,7 @@ router.get(
       }),
     ]);
 
-    const materialIds = materials.map((m) => m.materialId);
+    const materialIds = materials.map((m) => m.materialId).filter(Boolean);
     const materialRows = materialIds.length
       ? await prisma.material.findMany({ where: { id: { in: materialIds } } })
       : [];
@@ -439,21 +472,22 @@ router.get(
       prisma.exportInvoice.aggregate({
         where: inRange,
         _count: { _all: true },
-        _sum: { totalAud: true, gstAud: true },
+        _sum: { total: true, gst: true },
       }),
       prisma.exportInvoice.aggregate({
         where: { ...ACTIVE, consigneeId: consignee.id },
         _count: { _all: true },
-        _sum: { totalAud: true },
+        _sum: { total: true },
       }),
       prisma.invoiceLineItem.groupBy({
         by: ['materialId'],
-        _sum: { weightTonnes: true, totalAud: true },
+        _sum: { netWeightMt: true, total: true },
         _count: { _all: true },
-        where: { invoice: inRange },
-        orderBy: { _sum: { totalAud: 'desc' } },
+        // One-off lines have no material to break down by; see the overview.
+        where: { invoice: inRange, materialId: { not: null } },
+        orderBy: { _sum: { total: 'desc' } },
       }),
-      prisma.exportInvoice.findMany({ where: inRange, select: { date: true, totalAud: true } }),
+      prisma.exportInvoice.findMany({ where: inRange, select: { date: true, total: true } }),
       prisma.exportInvoice.findMany({
         where: { consigneeId: consignee.id },
         include: { lineItems: { include: { material: true } } },
@@ -462,7 +496,7 @@ router.get(
       }),
     ]);
 
-    const materialIds = materials.map((m) => m.materialId);
+    const materialIds = materials.map((m) => m.materialId).filter(Boolean);
     const materialRows = materialIds.length
       ? await prisma.material.findMany({ where: { id: { in: materialIds } } })
       : [];
@@ -473,23 +507,23 @@ router.get(
       range: { from, to },
       inRange: {
         count: rangeAgg._count._all,
-        total: Number(rangeAgg._sum.totalAud ?? 0),
-        gst: Number(rangeAgg._sum.gstAud ?? 0),
+        total: Number(rangeAgg._sum.total ?? 0),
+        gst: Number(rangeAgg._sum.gst ?? 0),
       },
       lifetime: {
         count: lifetimeAgg._count._all,
-        total: Number(lifetimeAgg._sum.totalAud ?? 0),
+        total: Number(lifetimeAgg._sum.total ?? 0),
       },
       series: buildSeries(from, to, 'month', {
-        sales: rows.map((d) => ({ date: d.date, value: d.totalAud })),
+        sales: rows.map((d) => ({ date: d.date, value: d.total })),
       }),
       materials: materials
         .filter((m) => materialMap[m.materialId])
         .map((m) => ({
           material: materialMap[m.materialId],
           lines: m._count._all,
-          weight: Number(m._sum.weightTonnes ?? 0),
-          value: Number(m._sum.totalAud ?? 0),
+          weight: Number(m._sum.netWeightMt ?? 0),
+          value: Number(m._sum.total ?? 0),
         })),
       invoices,
     });

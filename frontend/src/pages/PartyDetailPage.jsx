@@ -183,7 +183,7 @@ export default function PartyDetailPage({ kind }) {
                           {format(new Date(doc.date), 'd MMM yyyy')}
                         </td>
                         <td className="num py-2 text-right font-medium text-steel-900">
-                          {formatAud(isSupplier ? doc.total : doc.totalAud)}
+                          {formatAud(isSupplier ? doc.total : doc.total)}
                         </td>
                       </tr>
                     );

@@ -25,12 +25,55 @@ model User {
   active       Boolean  @default(true)
   createdAt    DateTime @default(now())
 
+  // Bumped on password change or "sign out everywhere". A token carries the
+  // version it was minted with, so raising this instantly invalidates every
+  // token already issued — a JWT is otherwise valid until it expires, and a
+  // tablet lost on the yard cannot be locked out any other way.
+  tokenVersion Int @default(0)
+
+  auditEvents AuditEvent[]
+
   docketsCreated  Docket[]        @relation("DocketCreatedBy")
   docketsEdited   Docket[]        @relation("DocketEditedBy")
   docketsVoided   Docket[]        @relation("DocketVoidedBy")
   invoicesCreated ExportInvoice[] @relation("InvoiceCreatedBy")
   invoicesEdited  ExportInvoice[] @relation("InvoiceEditedBy")
   invoicesVoided  ExportInvoice[] @relation("InvoiceVoidedBy")
+}
+
+// ─────────────────────────────────────────────
+// Audit trail
+// ─────────────────────────────────────────────
+
+/// Append-only. Nothing in the application updates or deletes a row here: the
+/// point of the table is that it records what happened even when the record it
+/// describes has since been changed again. `createdBy`/`editedBy` on a document
+/// only ever show the *latest* actor and never say what changed.
+model AuditEvent {
+  id String   @id @default(cuid())
+  at DateTime @default(now())
+
+  actorId    String?
+  actor      User?   @relation(fields: [actorId], references: [id])
+  // Denormalised so the trail still names someone after a user row is edited.
+  actorEmail String?
+
+  // Action values: "CREATE" | "UPDATE" | "VOID" | "RESTORE" | "ISSUE" | "LOGIN" | "LOGIN_FAILED"
+  action   String
+  entity   String // "Docket" | "ExportInvoice" | "User" | ...
+  entityId String
+  label    String? // human handle, e.g. "Docket #123"
+
+  // The changed fields only, before and after — not the whole row, which would
+  // make the table larger than the data it describes.
+  before Json?
+  after  Json?
+
+  ip String?
+
+  @@index([entity, entityId])
+  @@index([at])
+  @@index([actorId])
 }
 
 // ─────────────────────────────────────────────
@@ -86,6 +129,8 @@ model Docket {
   id           String   @id @default(cuid())
   docketNumber Int      @unique // managed in application code (max + 1)
   type         String   @default("PURCHASE_DOCKET")
+  // TaxMode values: "EXCLUSIVE" | "INCLUSIVE" | "NO_TAX"
+  taxMode      String   @default("EXCLUSIVE")
   date         DateTime @default(now())
 
   supplierId String
@@ -117,6 +162,10 @@ model Docket {
 
   gst   Decimal @default(0)
   total Decimal @default(0)
+
+  // Set when the docket is handed to the supplier. After that the record is
+  // evidence of a completed transaction, not a draft, and the API refuses edits.
+  issuedAt DateTime?
 
   supplierSignedAt  DateTime?
   buyerSignedAt     DateTime?
@@ -165,7 +214,52 @@ model Consignee {
   phone   String?
   country String?
 
+  // A buyer often trades under several billing entities — PT Daiki bills through
+  // Indonesia, Thailand and Malaysia, HANWA through four. Each is its own
+  // Consignee; groupName is what they are collectively called on the yard floor,
+  // so the picker can offer them together.
+  groupName String?
+
+  abn     String?
+  website String?
+
+  // The historic archive carries more than one contact for some buyers. `email`
+  // and `phone` above stay the ones we actually send to; these are the rest.
+  extraEmails String[] @default([])
+  extraPhones String[] @default([])
+
+  // Prefilled on a new invoice, because a given buyer almost always trades on the
+  // same terms in the same currency. Both remain editable per invoice.
+  defaultCurrency     String? // "AUD" | "USD"
+  defaultShippingTerm String?
+
+  notes String?
+
+  // Which folder of the export archive this record was imported from, kept so a
+  // reconciliation against the original invoices is possible later.
+  archiveFolder String?
+
   invoices ExportInvoice[]
+
+  @@index([groupName])
+}
+
+// Payment must be made to a different Westpac account depending on the currency
+// of the invoice — AUD collects at Ingleburn, USD at Parramatta Square. Printing
+// the wrong one sends an international wire into the wrong account, so the
+// account is keyed by currency rather than being a single company-wide block.
+model BankAccount {
+  id       String @id @default(cuid())
+  currency String @unique // "AUD" | "USD"
+
+  bankName    String?
+  swift       String?
+  accountNo   String?
+  bsb         String?
+  bankAddress String?
+  beneficiary String?
+
+  updatedAt DateTime @updatedAt
 }
 
 model ExportInvoice {
@@ -176,13 +270,17 @@ model ExportInvoice {
   consigneeId String
   consignee   Consignee @relation(fields: [consigneeId], references: [id])
 
+  // "AUD" | "USD". Every amount on this invoice and its lines is denominated in
+  // it; a USD invoice is recorded in USD only, with no AUD equivalent.
+  currency String @default("AUD")
+
   shippingTerm    String?
   fasPort         String?
   poNumber        String?
-  containerNo     String?
-  seal            String?
+  // Some buyers reference a contract rather than a PO, and for them the contract
+  // number is what gets printed — occasionally as the invoice number itself.
+  contractNo      String?
   modeOfTransport String?
-  containerType   String?
 
   // Status values: "ACTIVE" | "VOID"
   status     String    @default("ACTIVE")
@@ -191,7 +289,7 @@ model ExportInvoice {
   voidedById String?
   voidedBy   User?     @relation("InvoiceVoidedBy", fields: [voidedById], references: [id])
 
-  subtotalAud Decimal @default(0)
+  subtotal Decimal @default(0)
 
   // Xero integration
   xeroInvoiceId String?
@@ -204,9 +302,13 @@ model ExportInvoice {
   // Exports are GST-free, but the same document is used for local sales, where
   // 10% applies. The operator chooses per invoice rather than it being implied.
   applyGst Boolean @default(false)
-  gstAud   Decimal @default(0)
+  gst      Decimal @default(0)
 
-  totalAud Decimal @default(0)
+  total Decimal @default(0)
+
+  // Set when the invoice is sent to the buyer. They may pay against it, so from
+  // that moment the figures are frozen; a correction is a new document.
+  issuedAt DateTime?
 
   bankSnapshot String?
 
@@ -218,26 +320,69 @@ model ExportInvoice {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  lineItems InvoiceLineItem[]
+  lineItems  InvoiceLineItem[]
+  containers InvoiceContainer[]
 
   @@index([date])
   @@index([consigneeId])
   @@index([status])
 }
 
-model InvoiceLineItem {
-  id         String        @id @default(cuid())
-  invoiceId  String
-  invoice    ExportInvoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
-  materialId String
-  material   Material      @relation(fields: [materialId], references: [id])
+// One shipment can fill several containers, and the goods in each are listed
+// separately. The old single containerNo/seal/containerType trio could only
+// describe one, which is why operators were appending the container number to
+// the description text ("HEAVY MELTING SCRAP - CAIU6523084").
+model InvoiceContainer {
+  id        String        @id @default(cuid())
+  invoiceId String
+  invoice   ExportInvoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
 
-  description  String?
-  weightTonnes Decimal
-  pricePerMt   Decimal
-  totalAud     Decimal
+  containerNo   String?
+  seal          String?
+  containerType String? // "1 x 20FT", "1 x 40FT"
+
+  position Int @default(0)
+
+  lineItems InvoiceLineItem[]
 
   @@index([invoiceId])
+}
+
+model InvoiceLineItem {
+  id        String        @id @default(cuid())
+  invoiceId String
+  invoice   ExportInvoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+
+  // Optional: a one-off product can be typed straight onto the invoice without
+  // first being added to the material list. Either materialId or description
+  // must be present — the API enforces that, since a line with neither would
+  // print as a blank row.
+  materialId String?
+  material   Material? @relation(fields: [materialId], references: [id])
+
+  // Which container these goods travelled in. Null on a single-container
+  // shipment, where naming the container per line would just be noise.
+  containerId String?
+  container   InvoiceContainer? @relation(fields: [containerId], references: [id], onDelete: SetNull)
+
+  description  String?
+  // As printed in the packing list's parentheses: "13 bags", "16 IBC".
+  packageCount String?
+
+  // The packing list weighs the load; the invoice bills the net. Gross and tare
+  // are nullable because an invoice may be raised before the truck is weighed,
+  // but net is always what gets multiplied by the price.
+  grossWeightMt Decimal?
+  tareWeightMt  Decimal?
+  netWeightMt   Decimal
+
+  pricePerMt Decimal
+  total      Decimal
+
+  position Int @default(0)
+
+  @@index([invoiceId])
+  @@index([containerId])
 }
 
 // ─────────────────────────────────────────────

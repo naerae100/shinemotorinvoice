@@ -350,14 +350,6 @@ export default function PurchasesPage() {
                           'Could not restore this docket.'
                         )
                       }
-                      onDelete={() =>
-                        setDialog({
-                          kind: 'delete',
-                          id: d.id,
-                          title: `Permanently delete #${d.docketNumber}?`,
-                          body: 'This cannot be undone and leaves a gap in the numbering. Voiding is almost always the right choice.',
-                        })
-                      }
                     />
                   </td>
                 </tr>
@@ -396,17 +388,15 @@ export default function PurchasesPage() {
         title={dialog?.title}
         body={dialog?.body}
         busy={busy}
-        requireReason={dialog?.kind === 'void'}
+        requireReason
         reasonLabel="Why is this being voided?"
-        confirmLabel={dialog?.kind === 'void' ? 'Void record' : 'Delete permanently'}
+        confirmLabel="Void record"
         onCancel={() => setDialog(null)}
         onConfirm={(reason) =>
-          dialog?.kind === 'void'
-            ? runAction(
-                () => api.post(`/dockets/${dialog.id}/void`, { reason }),
-                'Could not void this record.'
-              )
-            : runAction(() => api.delete(`/dockets/${dialog.id}`), 'Could not delete this record.')
+          runAction(
+            () => api.post(`/dockets/${dialog.id}/void`, { reason }),
+            'Could not void this record.'
+          )
         }
       />
     </div>

@@ -8,11 +8,30 @@ import { computeTotals, round2, discountSchema } from '../lib/money.js';
 import { dateFilter, numberFilter, pagination } from '../lib/query.js';
 import { sendCsv, money, isoDate, isoDateTime } from '../lib/csv.js';
 import { pushPurchaseDocketToXero } from './xero.js';
+import { invalidateDashboardCache } from './reports.js';
+import { audit, diff } from '../lib/audit.js';
 
 const router = Router();
 
+// Any successful write here changes figures the dashboard caches, so clear it
+// on the way out. Registered as middleware rather than called from each handler
+// so a route added later cannot forget to do it.
+router.use((req, res, next) => {
+  if (req.method === 'GET') return next();
+  res.on('finish', () => {
+    if (res.statusCode < 400) invalidateDashboardCache();
+  });
+  next();
+});
+
 // How many times to retry if two terminals grab the same docket number at once.
-const DOCKET_NUMBER_ATTEMPTS = 6;
+//
+// Every concurrent writer reads the same "current maximum" and then races to
+// insert; the unique index lets one through and rejects the rest, which read
+// again and retry. With N terminals saving at once the unlucky one can lose up
+// to N-1 times, so this ceiling has to sit comfortably above the number of
+// tills that might ever hit save together, not just above the common case.
+const DOCKET_NUMBER_ATTEMPTS = 25;
 
 const lineItemSchema = z.object({
   materialId: z.string(),
@@ -22,6 +41,7 @@ const lineItemSchema = z.object({
 
 const docketSchema = z.object({
   type: z.enum(['TAX_INVOICE', 'PURCHASE_DOCKET']).default('PURCHASE_DOCKET'),
+  taxMode: z.enum(['EXCLUSIVE', 'INCLUSIVE', 'NO_TAX']).default('EXCLUSIVE'),
   date: z.string().datetime().optional(),
   supplierId: z.string(),
   vehicleReg: z.string().optional().nullable(),
@@ -44,9 +64,6 @@ const DETAIL_INCLUDE = {
   voidedBy: { select: { id: true, name: true } },
 };
 
-/** GST is a property of the document type, not a client-supplied flag. */
-const appliesGst = (type) => type === 'TAX_INVOICE';
-
 const buildLines = (lineItems) =>
   lineItems.map((li) => ({
     materialId: li.materialId,
@@ -55,12 +72,12 @@ const buildLines = (lineItems) =>
     value: round2(li.netWeight * li.price),
   }));
 
-const totalsFor = (lines, type, data) =>
+const totalsFor = (lines, data) =>
   computeTotals({
     lineValues: lines.map((l) => l.value),
     discountType: data.discountType,
     discountValue: data.discountValue,
-    applyGst: appliesGst(type),
+    taxMode: data.taxMode ?? 'EXCLUSIVE',
   });
 
 /**
@@ -205,6 +222,7 @@ router.get(
       { label: 'Lines', get: (d) => d.lineItems.length },
       { label: 'Materials', get: (d) => d.lineItems.map((li) => li.material?.description).join('; ') },
       { label: 'Total weight', get: (d) => money(d.lineItems.reduce((s, li) => s + Number(li.netWeight), 0)) },
+      { label: 'Tax mode', get: (d) => d.taxMode ?? 'EXCLUSIVE' },
       { label: 'Subtotal (AUD)', get: (d) => money(d.subtotal) },
       { label: 'Discount (AUD)', get: (d) => money(d.discountAmount) },
       { label: 'GST (AUD)', get: (d) => money(d.gst) },
@@ -243,10 +261,11 @@ router.post(
     const data = parsed.data;
 
     const linesWithValue = buildLines(data.lineItems);
-    const totals = totalsFor(linesWithValue, data.type, data);
+    const totals = totalsFor(linesWithValue, data);
 
     const baseData = {
       type: data.type,
+      taxMode: data.taxMode,
       date: data.date ? new Date(data.date) : undefined,
       supplierId: data.supplierId,
       vehicleReg: data.vehicleReg,
@@ -276,6 +295,14 @@ router.post(
         
         // Push to Xero
         await pushPurchaseDocketToXero(docket);
+        await audit({
+          req,
+          action: 'CREATE',
+          entity: 'Docket',
+          entityId: docket.id,
+          label: `Docket #${docket.docketNumber}`,
+          after: { total: String(docket.total), taxMode: docket.taxMode, supplierId: docket.supplierId },
+        });
         
         return res.status(201).json({ docket });
       } catch (err) {
@@ -301,7 +328,17 @@ router.patch(
 
     const existing = await prisma.docket.findUnique({
       where: { id: req.params.id },
-      select: { id: true, type: true, status: true, discountType: true, discountValue: true },
+      select: {
+        id: true,
+        docketNumber: true,
+        type: true,
+        taxMode: true,
+        status: true,
+        issuedAt: true,
+        discountType: true,
+        discountValue: true,
+        total: true,
+      },
     });
     if (!existing) return res.status(404).json({ error: 'Docket not found' });
     if (existing.status === 'VOID') {
@@ -309,8 +346,14 @@ router.patch(
         .status(409)
         .json({ error: 'This docket is voided. Restore it before making changes.' });
     }
+    if (existing.issuedAt) {
+      return res.status(409).json({
+        error:
+          'This docket has been issued to the supplier and can no longer be edited. Void it and raise a replacement.',
+      });
+    }
 
-    const effectiveType = data.type ?? existing.type;
+    const effectiveTaxMode = data.taxMode ?? existing.taxMode ?? 'EXCLUSIVE';
     const discount = {
       discountType: data.discountType ?? existing.discountType,
       discountValue:
@@ -320,6 +363,7 @@ router.patch(
     const docket = await prisma.$transaction(async (tx) => {
       const updateData = {
         ...(data.type ? { type: data.type } : {}),
+        ...(data.taxMode ? { taxMode: data.taxMode } : {}),
         ...(data.date ? { date: new Date(data.date) } : {}),
         ...(data.supplierId ? { supplierId: data.supplierId } : {}),
         ...(data.vehicleReg !== undefined ? { vehicleReg: data.vehicleReg } : {}),
@@ -335,6 +379,7 @@ router.patch(
       const totalsAffected =
         data.lineItems ||
         (data.type && data.type !== existing.type) ||
+        (data.taxMode && data.taxMode !== existing.taxMode) ||
         data.discountType !== undefined ||
         data.discountValue !== undefined;
 
@@ -357,7 +402,7 @@ router.patch(
           computeTotals({
             lineValues,
             ...discount,
-            applyGst: appliesGst(effectiveType),
+            taxMode: effectiveTaxMode,
           })
         );
       }
@@ -371,6 +416,17 @@ router.patch(
 
     // Push to Xero on updates
     await pushPurchaseDocketToXero(docket);
+
+    const changed = diff(existing, docket, ['taxMode', 'type', 'total', 'discountType', 'discountValue']);
+    await audit({
+      req,
+      action: 'UPDATE',
+      entity: 'Docket',
+      entityId: docket.id,
+      label: `Docket #${docket.docketNumber}`,
+      before: changed?.before,
+      after: changed?.after,
+    });
 
     res.json({ docket });
   })
@@ -404,6 +460,15 @@ router.post(
       },
       include: DETAIL_INCLUDE,
     });
+    await audit({
+      req,
+      action: 'VOID',
+      entity: 'Docket',
+      entityId: docket.id,
+      label: `Docket #${docket.docketNumber}`,
+      before: { status: 'ACTIVE' },
+      after: { status: 'VOID', voidReason: reason.data },
+    });
     res.json({ docket });
   })
 );
@@ -427,32 +492,70 @@ router.post(
       data: { status: 'ACTIVE', voidReason: null, voidedAt: null, voidedById: null },
       include: DETAIL_INCLUDE,
     });
+    await audit({
+      req,
+      action: 'RESTORE',
+      entity: 'Docket',
+      entityId: docket.id,
+      label: `Docket #${docket.docketNumber}`,
+      before: { status: 'VOID' },
+      after: { status: 'ACTIVE' },
+    });
     res.json({ docket });
   })
 );
 
-// DELETE /api/dockets/:id — permanent, admin only. Void is the normal path;
-// this exists for genuine mistakes such as a test entry.
-router.delete(
-  '/:id',
+/**
+ * POST /api/dockets/:id/issue — hand the docket to the supplier.
+ *
+ * This is the point the record stops being a draft. It is one-way on purpose:
+ * un-issuing would make the lock meaningless.
+ */
+router.post(
+  '/:id/issue',
   requireAuth,
-  requireRole('ADMIN'),
   asyncHandler(async (req, res) => {
     const existing = await prisma.docket.findUnique({
       where: { id: req.params.id },
-      select: { id: true, docketNumber: true },
+      select: { id: true, docketNumber: true, status: true, issuedAt: true },
     });
     if (!existing) return res.status(404).json({ error: 'Docket not found' });
+    if (existing.status === 'VOID') {
+      return res.status(409).json({ error: 'A voided docket cannot be issued.' });
+    }
+    if (existing.issuedAt) {
+      return res.status(409).json({ error: 'This docket has already been issued.' });
+    }
 
-    await prisma.$transaction([
-      prisma.docketLineItem.deleteMany({ where: { docketId: req.params.id } }),
-      prisma.docket.delete({ where: { id: req.params.id } }),
-    ]);
-    console.warn(
-      `Docket #${existing.docketNumber} permanently deleted by ${req.user.email || req.user.id}`
-    );
-    res.json({ deleted: true, docketNumber: existing.docketNumber });
+    const docket = await prisma.docket.update({
+      where: { id: req.params.id },
+      data: { issuedAt: new Date() },
+      include: DETAIL_INCLUDE,
+    });
+    await audit({
+      req,
+      action: 'ISSUE',
+      entity: 'Docket',
+      entityId: docket.id,
+      label: `Docket #${docket.docketNumber}`,
+      after: { issuedAt: docket.issuedAt },
+    });
+    res.json({ docket });
   })
 );
+
+/**
+ * DELETE is deliberately not implemented.
+ *
+ * A docket number is a legal reference to a completed purchase; the pad it
+ * replaced could not have a page torn out without leaving a stub. Voiding keeps
+ * the number, the reason and the audit trail, and removes the value from every
+ * total — which is what "deleting" a docket was ever meant to achieve.
+ */
+router.delete('/:id', requireAuth, (req, res) => {
+  res.status(405).json({
+    error: 'Dockets cannot be deleted. Void it instead — the number and history are kept.',
+  });
+});
 
 export default router;

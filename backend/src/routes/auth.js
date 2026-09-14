@@ -4,7 +4,8 @@ import jwt from 'jsonwebtoken';
 import { z } from 'zod';
 import { prisma } from '../config/prisma.js';
 import { config } from '../config/env.js';
-import { requireAuth } from '../middleware/auth.js';
+import { requireAuth, forgetUser } from '../middleware/auth.js';
+import { audit } from '../lib/audit.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 
 const router = Router();
@@ -28,24 +29,80 @@ router.post(
     const user = await prisma.user.findUnique({ where: { email } });
     if (!user || !user.active) {
       // Same error for "not found" and "wrong password" — don't leak which emails exist
+      await audit({
+        req,
+        action: 'LOGIN_FAILED',
+        entity: 'User',
+        entityId: email,
+        label: email,
+      });
       return res.status(401).json({ error: 'Invalid credentials' });
     }
 
     const valid = await bcrypt.compare(password, user.passwordHash);
     if (!valid) {
+      await audit({
+        req,
+        action: 'LOGIN_FAILED',
+        entity: 'User',
+        entityId: user.id,
+        label: user.email,
+      });
       return res.status(401).json({ error: 'Invalid credentials' });
     }
 
     const token = jwt.sign(
-      { id: user.id, role: user.role, name: user.name, email: user.email },
+      {
+        id: user.id,
+        role: user.role,
+        name: user.name,
+        email: user.email,
+        tokenVersion: user.tokenVersion,
+      },
       config.jwtSecret,
       { expiresIn: config.jwtExpiresIn }
     );
+
+    await audit({
+      req,
+      action: 'LOGIN',
+      entity: 'User',
+      entityId: user.id,
+      label: user.email,
+    });
 
     res.json({
       token,
       user: { id: user.id, name: user.name, email: user.email, role: user.role },
     });
+  })
+);
+
+/**
+ * POST /api/auth/sign-out-everywhere — invalidate every token for this account.
+ *
+ * The only way to withdraw a JWT already in the wild: raise the version every
+ * existing token was signed with. Use it when a device is lost.
+ */
+router.post(
+  '/sign-out-everywhere',
+  requireAuth,
+  asyncHandler(async (req, res) => {
+    const user = await prisma.user.update({
+      where: { id: req.user.id },
+      data: { tokenVersion: { increment: 1 } },
+      select: { id: true, email: true, tokenVersion: true },
+    });
+    forgetUser(user.id); // take effect on this instance immediately
+    await audit({
+      req,
+      action: 'SIGN_OUT_EVERYWHERE',
+      entity: 'User',
+      entityId: user.id,
+      label: user.email,
+      after: { tokenVersion: user.tokenVersion },
+    });
+    res.json({ signedOut: true });
   })
 );
 

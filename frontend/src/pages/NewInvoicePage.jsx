@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { api } from '../lib/api';
-import { formatAud } from '../lib/format';
+import { formatMoney, round2 } from '../lib/format';
 import DiscountField, { applyDiscount } from '../components/DiscountField';
 import ComboField from '../components/ComboField';
 
@@ -13,7 +13,35 @@ const CONTAINER_TYPES = [
 ];
 const TRANSPORT_MODES = ['Sea', 'Air', 'Road', 'Rail', 'Multimodal'];
 
-const emptyLine = { materialId: '', description: '', weightTonnes: '', pricePerMt: '' };
+const CURRENCIES = ['AUD', 'USD'];
+
+// A line may name a material or just describe itself, so materialId starts empty
+// and stays that way for a one-off product typed straight onto the invoice.
+const emptyLine = {
+  materialId: '',
+  description: '',
+  packageCount: '',
+  containerIndex: '',
+  grossWeightMt: '',
+  tareWeightMt: '',
+  netWeightMt: '',
+  pricePerMt: '',
+};
+
+const emptyContainer = { containerNo: '', seal: '', containerType: '1 x 20FT' };
+
+const emptyConsignee = {
+  name: '',
+  country: '',
+  address: '',
+  email: '',
+  phone: '',
+  abn: '',
+  website: '',
+  groupName: '',
+  defaultCurrency: '',
+  defaultShippingTerm: '',
+};
 
 export default function NewInvoicePage() {
   const navigate = useNavigate();
@@ -25,19 +53,21 @@ export default function NewInvoicePage() {
   const [consignees, setConsignees] = useState([]);
 
   const [consigneeId, setConsigneeId] = useState('');
-  const [newConsignee, setNewConsignee] = useState({ name: '', country: '' });
+  const [newConsignee, setNewConsignee] = useState({ ...emptyConsignee });
   const [addingConsignee, setAddingConsignee] = useState(false);
 
+  // Free text on purpose: the operator sometimes uses the contract number as the
+  // invoice number, because two buyers must never share one.
   const [invoiceNumber, setInvoiceNumber] = useState('');
+  const [currency, setCurrency] = useState('AUD');
   const [shipping, setShipping] = useState({
     shippingTerm: 'FAS',
     fasPort: '',
     poNumber: '',
-    containerNo: '',
-    seal: '',
+    contractNo: '',
     modeOfTransport: 'Sea',
-    containerType: '20ft GP',
   });
+  const [containers, setContainers] = useState([]);
 
   const [lines, setLines] = useState([{ ...emptyLine }]);
   const [discount, setDiscount] = useState({ discountType: 'NONE', discountValue: 0 });
@@ -73,20 +103,32 @@ export default function NewInvoicePage() {
           discountType: inv.discountType || 'NONE',
           discountValue: Number(inv.discountValue) || 0,
         });
+        setCurrency(inv.currency || 'AUD');
         setShipping({
           shippingTerm: inv.shippingTerm || '',
           fasPort: inv.fasPort || '',
           poNumber: inv.poNumber || '',
-          containerNo: inv.containerNo || '',
-          seal: inv.seal || '',
+          contractNo: inv.contractNo || '',
           modeOfTransport: inv.modeOfTransport || '',
-          containerType: inv.containerType || '',
         });
+        const loaded = inv.containers ?? [];
+        setContainers(
+          loaded.map((c) => ({
+            containerNo: c.containerNo || '',
+            seal: c.seal || '',
+            containerType: c.containerType || '',
+          }))
+        );
+        const indexById = Object.fromEntries(loaded.map((c, i) => [c.id, i]));
         setLines(
           inv.lineItems.map((li) => ({
-            materialId: li.materialId,
+            materialId: li.materialId || '',
             description: li.description || '',
-            weightTonnes: String(li.weightTonnes),
+            packageCount: li.packageCount || '',
+            containerIndex: li.containerId != null ? String(indexById[li.containerId] ?? '') : '',
+            grossWeightMt: li.grossWeightMt == null ? '' : String(li.grossWeightMt),
+            tareWeightMt: li.tareWeightMt == null ? '' : String(li.tareWeightMt),
+            netWeightMt: String(li.netWeightMt),
             pricePerMt: String(li.pricePerMt),
           }))
         );
@@ -103,21 +145,34 @@ export default function NewInvoicePage() {
   const subtotal = useMemo(
     () =>
       lines.reduce((sum, l) => {
-        const w = parseFloat(l.weightTonnes) || 0;
+        const w = parseFloat(l.netWeightMt) || 0;
         const p = parseFloat(l.pricePerMt) || 0;
         return sum + w * p;
       }, 0),
     [lines]
   );
-  const { discountAmount, gst, total } = applyDiscount(subtotal, discount, applyGst);
+  const { discountAmount, gst, total } = applyDiscount(subtotal, discount, applyGst ? 'EXCLUSIVE' : 'NO_TAX');
 
   function updateLine(idx, field, value) {
     setLines((prev) => {
       const next = [...prev];
-      next[idx] = { ...next[idx], [field]: value };
-      if (field === 'materialId' && !next[idx].description) {
-        next[idx].description = materialMap[value]?.description || '';
+      const line = { ...next[idx], [field]: value };
+
+      if (field === 'materialId' && !line.description) {
+        line.description = materialMap[value]?.description || '';
       }
+
+      // The packing list weighs gross and tare; the invoice bills the difference.
+      // Deriving it here is what stops the two documents disagreeing.
+      if (field === 'grossWeightMt' || field === 'tareWeightMt') {
+        const g = parseFloat(field === 'grossWeightMt' ? value : line.grossWeightMt);
+        const t = parseFloat(field === 'tareWeightMt' ? value : line.tareWeightMt);
+        if (Number.isFinite(g) && Number.isFinite(t)) {
+          line.netWeightMt = String(round2(g - t));
+        }
+      }
+
+      next[idx] = line;
       return next;
     });
   }
@@ -125,20 +180,59 @@ export default function NewInvoicePage() {
   const addLine = () => setLines((prev) => [...prev, { ...emptyLine }]);
   const removeLine = (idx) => setLines((prev) => prev.filter((_, i) => i !== idx));
 
+  const addContainer = () => setContainers((prev) => [...prev, { ...emptyContainer }]);
+  const updateContainer = (idx, field, value) =>
+    setContainers((prev) => {
+      const next = [...prev];
+      next[idx] = { ...next[idx], [field]: value };
+      return next;
+    });
+  const removeContainer = (idx) => {
+    setContainers((prev) => prev.filter((_, i) => i !== idx));
+    // Lines pointing past the removed container would otherwise dangle.
+    setLines((prev) =>
+      prev.map((l) => {
+        if (l.containerIndex === '') return l;
+        const at = Number(l.containerIndex);
+        if (at === idx) return { ...l, containerIndex: '' };
+        return at > idx ? { ...l, containerIndex: String(at - 1) } : l;
+      })
+    );
+  };
+
   async function handleAddConsignee() {
     if (!newConsignee.name.trim()) return;
     try {
-      const res = await api.post('/consignees', {
-        name: newConsignee.name.trim(),
-        country: newConsignee.country || null,
-      });
+      const body = { name: newConsignee.name.trim() };
+      for (const key of [
+        'country', 'address', 'email', 'phone', 'abn', 'website',
+        'groupName', 'defaultCurrency', 'defaultShippingTerm',
+      ]) {
+        const v = newConsignee[key]?.trim?.() ?? newConsignee[key];
+        if (v) body[key] = v;
+      }
+      const res = await api.post('/consignees', body);
       const created = res.data.consignee;
       setConsignees((prev) => [...prev, created].sort((a, b) => a.name.localeCompare(b.name)));
-      setConsigneeId(created.id);
+      selectConsignee(created.id, [...consignees, created]);
       setAddingConsignee(false);
-      setNewConsignee({ name: '', country: '' });
-    } catch {
-      setError('Could not create consignee.');
+      setNewConsignee({ ...emptyConsignee });
+    } catch (err) {
+      const apiError = err.response?.data?.error;
+      setError(
+        (typeof apiError === 'string' ? apiError : apiError?.formErrors?.join(', ')) ||
+          'Could not create consignee.'
+      );
+    }
+  }
+
+  /** Adopt the buyer's usual currency and terms — both stay editable. */
+  function selectConsignee(id, list = consignees) {
+    setConsigneeId(id);
+    const c = list.find((x) => x.id === id);
+    if (c?.defaultCurrency) setCurrency(c.defaultCurrency);
+    if (c?.defaultShippingTerm) {
+      setShipping((prev) => ({ ...prev, shippingTerm: c.defaultShippingTerm }));
     }
   }
 
@@ -149,23 +243,36 @@ export default function NewInvoicePage() {
     if (!invoiceNumber.trim()) return setError('Invoice number is required.');
     if (!consigneeId) return setError('Select or add a consignee.');
 
-    const validLines = lines.filter((l) => l.materialId && l.weightTonnes && l.pricePerMt);
+    const validLines = lines.filter(
+      (l) => (l.materialId || l.description.trim()) && l.netWeightMt && l.pricePerMt
+    );
     if (validLines.length === 0) {
-      return setError('Add at least one line with weight and price.');
+      return setError('Add at least one line with a product, weight and price.');
     }
 
     setSubmitting(true);
     try {
+      const num = (v) => (v === '' || v == null ? null : parseFloat(v));
       const payload = {
         invoiceNumber: invoiceNumber.trim(),
         consigneeId,
+        currency,
         ...shipping,
         ...discount,
         applyGst,
+        containers: containers.map((c) => ({
+          containerNo: c.containerNo || null,
+          seal: c.seal || null,
+          containerType: c.containerType || null,
+        })),
         lineItems: validLines.map((l) => ({
-          materialId: l.materialId,
+          materialId: l.materialId || null,
           description: l.description || null,
-          weightTonnes: parseFloat(l.weightTonnes),
+          packageCount: l.packageCount || null,
+          containerIndex: l.containerIndex === '' ? null : Number(l.containerIndex),
+          grossWeightMt: num(l.grossWeightMt),
+          tareWeightMt: num(l.tareWeightMt),
+          netWeightMt: parseFloat(l.netWeightMt),
           pricePerMt: parseFloat(l.pricePerMt),
         })),
       };
@@ -219,6 +326,23 @@ export default function NewInvoicePage() {
               />
             </div>
             <div>
+              <label className={labelCls}>Currency</label>
+              <select
+                value={currency}
+                onChange={(e) => setCurrency(e.target.value)}
+                className={field}
+              >
+                {CURRENCIES.map((c) => (
+                  <option key={c} value={c}>
+                    {c}
+                  </option>
+                ))}
+              </select>
+              <p className="mt-1 text-[11px] text-steel-400">
+                Sets the payment account printed on the invoice.
+              </p>
+            </div>
+            <div>
               <label className={labelCls}>PO number</label>
               <input
                 value={shipping.poNumber}
@@ -226,25 +350,65 @@ export default function NewInvoicePage() {
                 className={field}
               />
             </div>
+            <div>
+              <label className={labelCls}>Contract number</label>
+              <input
+                value={shipping.contractNo}
+                onChange={(e) => setShipping({ ...shipping, contractNo: e.target.value })}
+                placeholder="e.g. SHINEAUS99"
+                className={`num ${field}`}
+              />
+            </div>
           </div>
 
           <div className="border-b border-steel-100 px-6 py-5">
             <label className={labelCls}>Consignee</label>
             {addingConsignee ? (
-              <div className="flex flex-wrap gap-2">
-                <input
-                  autoFocus
-                  placeholder="Consignee name"
-                  value={newConsignee.name}
-                  onChange={(e) => setNewConsignee({ ...newConsignee, name: e.target.value })}
-                  className={field}
-                />
-                <input
-                  placeholder="Country"
-                  value={newConsignee.country}
-                  onChange={(e) => setNewConsignee({ ...newConsignee, country: e.target.value })}
-                  className={field}
-                />
+              <div className="rounded-lg border border-steel-200 bg-paper p-4">
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  {[
+                    ['name', 'Consignee name (as it should print)', true],
+                    ['groupName', 'Buyer group (if they bill through several)'],
+                    ['address', 'Address'],
+                    ['country', 'Country'],
+                    ['email', 'Email'],
+                    ['phone', 'Phone'],
+                    ['abn', 'ABN'],
+                    ['website', 'Website'],
+                  ].map(([key, placeholder, autoFocus]) => (
+                    <input
+                      key={key}
+                      autoFocus={autoFocus}
+                      placeholder={placeholder}
+                      value={newConsignee[key]}
+                      onChange={(e) => setNewConsignee({ ...newConsignee, [key]: e.target.value })}
+                      className={field}
+                    />
+                  ))}
+                  <select
+                    value={newConsignee.defaultCurrency}
+                    onChange={(e) =>
+                      setNewConsignee({ ...newConsignee, defaultCurrency: e.target.value })
+                    }
+                    className={field}
+                  >
+                    <option value="">Usual currency (optional)</option>
+                    {CURRENCIES.map((c) => (
+                      <option key={c} value={c}>
+                        {c}
+                      </option>
+                    ))}
+                  </select>
+                  <input
+                    placeholder="Usual shipping term (e.g. FAS)"
+                    value={newConsignee.defaultShippingTerm}
+                    onChange={(e) =>
+                      setNewConsignee({ ...newConsignee, defaultShippingTerm: e.target.value })
+                    }
+                    className={field}
+                  />
+                </div>
+                <div className="mt-3 flex gap-2">
                 <button
                   type="button"
                   onClick={handleAddConsignee}
@@ -259,12 +423,13 @@ export default function NewInvoicePage() {
                 >
                   Cancel
                 </button>
+                </div>
               </div>
             ) : (
               <div className="flex items-center gap-3">
                 <select
                   value={consigneeId}
-                  onChange={(e) => setConsigneeId(e.target.value)}
+                  onChange={(e) => selectConsignee(e.target.value)}
                   className={field}
                 >
                   <option value="">Select consignee…</option>
@@ -308,36 +473,83 @@ export default function NewInvoicePage() {
               options={TRANSPORT_MODES}
               placeholder="e.g. Sea"
             />
-            <ComboField
-              label="Container type"
-              value={shipping.containerType}
-              onChange={(v) => setShipping({ ...shipping, containerType: v })}
-              options={CONTAINER_TYPES}
-              placeholder="e.g. 40ft HC — or type your own"
-            />
-            <div>
-              <label className={labelCls}>Container no.</label>
-              <input
-                value={shipping.containerNo}
-                onChange={(e) => setShipping({ ...shipping, containerNo: e.target.value })}
-                className={`num ${field}`}
-              />
+          </div>
+
+          {/* A shipment can fill more than one container, and each carries its
+              own goods — which is why the container number used to end up typed
+              into the description. */}
+          <div className="border-b border-steel-100 px-4 py-5 sm:px-6">
+            <div className="mb-2 flex items-center justify-between">
+              <label className={labelCls}>Containers</label>
+              <button
+                type="button"
+                onClick={addContainer}
+                className="text-sm font-medium text-copper-600 hover:text-copper-700"
+              >
+                + Add container
+              </button>
             </div>
-            <div>
-              <label className={labelCls}>Seal</label>
-              <input
-                value={shipping.seal}
-                onChange={(e) => setShipping({ ...shipping, seal: e.target.value })}
-                className={`num ${field}`}
-              />
-            </div>
+
+            {containers.length === 0 ? (
+              <p className="text-sm text-steel-400">
+                None yet — add one if this shipment names a container.
+              </p>
+            ) : (
+              <div className="space-y-2">
+                {containers.map((c, idx) => (
+                  <div
+                    key={idx}
+                    className="grid grid-cols-2 items-end gap-2 rounded-lg border border-steel-200 bg-paper/60 p-3 md:grid-cols-[28px_1fr_1fr_1fr_32px] md:items-center md:rounded-none md:border-0 md:bg-transparent md:p-0"
+                  >
+                    <div className="num hidden text-xs text-steel-400 md:block">{idx + 1}</div>
+                    <input
+                      aria-label={`Container ${idx + 1} number`}
+                      placeholder="Container no."
+                      value={c.containerNo}
+                      onChange={(e) => updateContainer(idx, 'containerNo', e.target.value)}
+                      className={`num ${field}`}
+                    />
+                    <input
+                      aria-label={`Container ${idx + 1} seal`}
+                      placeholder="Seal"
+                      value={c.seal}
+                      onChange={(e) => updateContainer(idx, 'seal', e.target.value)}
+                      className={`num ${field}`}
+                    />
+                    <input
+                      aria-label={`Container ${idx + 1} type`}
+                      placeholder="Type, e.g. 1 x 20FT"
+                      list="container-types"
+                      value={c.containerType}
+                      onChange={(e) => updateContainer(idx, 'containerType', e.target.value)}
+                      className={field}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => removeContainer(idx)}
+                      aria-label={`Remove container ${idx + 1}`}
+                      className="justify-self-end text-steel-300 hover:text-working-red"
+                    >
+                      ×
+                    </button>
+                  </div>
+                ))}
+                <datalist id="container-types">
+                  {CONTAINER_TYPES.map((t) => (
+                    <option key={t} value={t} />
+                  ))}
+                </datalist>
+              </div>
+            )}
           </div>
 
           <div className="px-6 py-5">
-            <div className="mb-2 hidden gap-2 text-xs font-medium uppercase tracking-wider text-steel-500 md:grid md:grid-cols-[1fr_1fr_100px_110px_120px_32px]">
-              <div>Material</div>
+            <div className="mb-2 hidden gap-2 text-xs font-medium uppercase tracking-wider text-steel-500 md:grid md:grid-cols-[1fr_1fr_90px_90px_90px_100px_110px_32px]">
+              <div>Material (optional)</div>
               <div>Description</div>
-              <div>Tonnes</div>
+              <div>Gross MT</div>
+              <div>Tare MT</div>
+              <div>Net MT</div>
               <div>Price / MT</div>
               <div className="text-right">Total</div>
               <div />
@@ -345,11 +557,11 @@ export default function NewInvoicePage() {
             <div className="space-y-2">
               {lines.map((line, idx) => {
                 const value =
-                  (parseFloat(line.weightTonnes) || 0) * (parseFloat(line.pricePerMt) || 0);
+                  (parseFloat(line.netWeightMt) || 0) * (parseFloat(line.pricePerMt) || 0);
                 return (
                   <div
                     key={idx}
-                    className="grid grid-cols-2 items-center gap-2 rounded-lg border border-steel-200 bg-paper/60 p-3 md:grid-cols-[1fr_1fr_100px_110px_120px_32px] md:rounded-none md:border-0 md:bg-transparent md:p-0"
+                    className="grid grid-cols-2 items-center gap-2 rounded-lg border border-steel-200 bg-paper/60 p-3 md:grid-cols-[1fr_1fr_90px_90px_90px_100px_110px_32px] md:rounded-none md:border-0 md:bg-transparent md:p-0"
                   >
                     <select
                       aria-label="Material"
@@ -357,7 +569,7 @@ export default function NewInvoicePage() {
                       onChange={(e) => updateLine(idx, 'materialId', e.target.value)}
                       className="col-span-2 rounded-md border border-steel-200 bg-white px-2.5 py-2 text-sm md:col-span-1 md:bg-paper md:focus:bg-white"
                     >
-                      <option value="">Select material…</option>
+                      <option value="">One-off — type below</option>
                       {materials.map((m) => (
                         <option key={m.id} value={m.id}>
                           {m.code ? `${m.code}. ` : ''}
@@ -365,22 +577,70 @@ export default function NewInvoicePage() {
                         </option>
                       ))}
                     </select>
+                    <div className="col-span-2 md:col-span-1">
+                      <input
+                        aria-label="Description"
+                        placeholder="As printed on the invoice"
+                        value={line.description}
+                        onChange={(e) => updateLine(idx, 'description', e.target.value)}
+                        className="w-full rounded-md border border-steel-200 bg-white px-2.5 py-2 text-sm md:bg-paper md:focus:bg-white"
+                      />
+                      <div className="mt-1 flex gap-1">
+                        <input
+                          aria-label="Packages"
+                          placeholder="13 bags"
+                          value={line.packageCount}
+                          onChange={(e) => updateLine(idx, 'packageCount', e.target.value)}
+                          className="w-1/2 rounded-md border border-steel-200 bg-white px-2 py-1 text-[11px] md:bg-paper"
+                        />
+                        {containers.length > 0 && (
+                          <select
+                            aria-label="Container"
+                            value={line.containerIndex}
+                            onChange={(e) => updateLine(idx, 'containerIndex', e.target.value)}
+                            className="w-1/2 rounded-md border border-steel-200 bg-white px-2 py-1 text-[11px] md:bg-paper"
+                          >
+                            <option value="">No container</option>
+                            {containers.map((c, i) => (
+                              <option key={i} value={String(i)}>
+                                {c.containerNo || `Container ${i + 1}`}
+                              </option>
+                            ))}
+                          </select>
+                        )}
+                      </div>
+                    </div>
                     <input
-                      aria-label="Description"
-                      placeholder="As shown on invoice"
-                      value={line.description}
-                      onChange={(e) => updateLine(idx, 'description', e.target.value)}
-                      className="col-span-2 rounded-md border border-steel-200 bg-white px-2.5 py-2 text-sm md:col-span-1 md:bg-paper md:focus:bg-white"
+                      type="number"
+                      step="0.001"
+                      min="0"
+                      inputMode="decimal"
+                      aria-label="Gross weight"
+                      placeholder="Gross"
+                      value={line.grossWeightMt}
+                      onChange={(e) => updateLine(idx, 'grossWeightMt', e.target.value)}
+                      className="num rounded-md border border-steel-200 bg-white px-2.5 py-2 text-sm md:bg-paper md:focus:bg-white"
                     />
                     <input
                       type="number"
                       step="0.001"
                       min="0"
                       inputMode="decimal"
-                      aria-label="Tonnes"
-                      placeholder="Tonnes"
-                      value={line.weightTonnes}
-                      onChange={(e) => updateLine(idx, 'weightTonnes', e.target.value)}
+                      aria-label="Tare weight"
+                      placeholder="Tare"
+                      value={line.tareWeightMt}
+                      onChange={(e) => updateLine(idx, 'tareWeightMt', e.target.value)}
+                      className="num rounded-md border border-steel-200 bg-white px-2.5 py-2 text-sm md:bg-paper md:focus:bg-white"
+                    />
+                    <input
+                      type="number"
+                      step="0.001"
+                      min="0"
+                      inputMode="decimal"
+                      aria-label="Net weight"
+                      placeholder="Net"
+                      value={line.netWeightMt}
+                      onChange={(e) => updateLine(idx, 'netWeightMt', e.target.value)}
                       className="num rounded-md border border-steel-200 bg-white px-2.5 py-2 text-sm md:bg-paper md:focus:bg-white"
                     />
                     <input
@@ -396,7 +656,7 @@ export default function NewInvoicePage() {
                     />
                     <div className="num text-sm font-medium text-steel-900 md:text-right">
                       <span className="text-xs text-steel-400 md:hidden">Total </span>
-                      {value > 0 ? formatAud(value) : '—'}
+                      {value > 0 ? formatMoney(value, currency) : '—'}
                     </div>
                     <button
                       type="button"
@@ -445,7 +705,7 @@ export default function NewInvoicePage() {
             <div className="ml-auto max-w-xs space-y-1.5">
               <div className="flex justify-between text-sm text-steel-400">
                 <span>Subtotal</span>
-                <span className="num">{formatAud(subtotal)}</span>
+                <span className="num">{formatMoney(subtotal, currency)}</span>
               </div>
               {discountAmount > 0 && (
                 <div className="flex justify-between text-sm text-copper-300">
@@ -453,18 +713,18 @@ export default function NewInvoicePage() {
                     Discount
                     {discount.discountType === 'PERCENT' ? ` (${discount.discountValue}%)` : ''}
                   </span>
-                  <span className="num">− {formatAud(discountAmount)}</span>
+                  <span className="num">− {formatMoney(discountAmount, currency)}</span>
                 </div>
               )}
               {applyGst && (
                 <div className="flex justify-between text-sm text-steel-400">
                   <span>GST (10%)</span>
-                  <span className="num">{formatAud(gst)}</span>
+                  <span className="num">{formatMoney(gst, currency)}</span>
                 </div>
               )}
               <div className="flex justify-between border-t border-steel-700 pt-2 text-lg font-semibold text-paper">
                 <span>Total AUD</span>
-                <span className="num text-copper-400">{formatAud(total)}</span>
+                <span className="num text-copper-400">{formatMoney(total, currency)}</span>
               </div>
             </div>
           </div>

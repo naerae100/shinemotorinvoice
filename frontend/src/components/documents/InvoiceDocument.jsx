@@ -1,5 +1,5 @@
 import { format } from 'date-fns';
-import { formatAud, formatNumber, amountInWords } from '../../lib/format';
+import { formatMoney, formatNumber, amountInWords } from '../../lib/format';
 import { Detail, PartyBlock, Masthead, ReferenceBlock, TotalsBlock, DocumentFooter, discountLabel, VoidStamp } from './parts';
 
 /**
@@ -10,7 +10,13 @@ export default function InvoiceDocument({ invoice, settings }) {
   const c = invoice.consignee;
   const bank = invoice.bankSnapshot;
   const companyName = settings?.companyName || 'Shine Motor Corporation Pty Ltd';
-  const totalWeight = invoice.lineItems.reduce((s, li) => s + Number(li.weightTonnes), 0);
+  const totalWeight = invoice.lineItems.reduce((s, li) => s + Number(li.netWeightMt), 0);
+  const currency = invoice.currency || 'AUD';
+  const money = (n) => formatMoney(n, currency);
+  const containers = invoice.containers ?? [];
+  // Several containers are listed one per line rather than crammed into the
+  // single-value box the layout gives each detail.
+  const joinContainers = (field) => containers.map((c) => c[field]).filter(Boolean).join(', ');
 
   return (
     <div className="print-sheet relative mx-auto flex min-h-[297mm] flex-col border border-steel-300 bg-white p-5 shadow-ticket sm:p-8 lg:p-10">
@@ -31,6 +37,7 @@ export default function InvoiceDocument({ invoice, settings }) {
             ['Invoice no.', invoice.invoiceNumber, true],
             ['Date', format(new Date(invoice.date), 'dd MMM yyyy')],
             ['PO no.', invoice.poNumber],
+            ...(invoice.contractNo ? [['Contract no.', invoice.contractNo]] : []),
           ]}
         />
       </section>
@@ -39,11 +46,15 @@ export default function InvoiceDocument({ invoice, settings }) {
         <Detail label="Shipping terms" value={invoice.shippingTerm} mono={false} />
         <Detail label="Port" value={invoice.fasPort} mono={false} />
         <Detail label="Mode of transport" value={invoice.modeOfTransport} mono={false} />
-        <Detail label="Container type" value={invoice.containerType} mono={false} />
-        <Detail label="Container no." value={invoice.containerNo} />
-        <Detail label="Seal no." value={invoice.seal} />
+        <Detail label="Container type" value={joinContainers('containerType')} mono={false} />
+        <Detail label="Container no." value={joinContainers('containerNo')} />
+        <Detail label="Seal no." value={joinContainers('seal')} />
         <Detail label="Country of origin" value="Australia" mono={false} />
-        <Detail label="Currency" value={invoice.applyGst ? 'AUD (incl. GST)' : 'AUD'} mono={false} />
+        <Detail
+          label="Currency"
+          value={invoice.applyGst ? `${currency} (incl. GST)` : currency}
+          mono={false}
+        />
       </section>
 
       <div className="-mx-1 overflow-x-auto px-1 print:mx-0 print:overflow-visible print:px-0">
@@ -54,9 +65,11 @@ export default function InvoiceDocument({ invoice, settings }) {
             <th className="px-2 py-2.5 text-[9px] font-semibold">Description of goods</th>
             <th className="w-24 px-2 py-2.5 text-right text-[9px] font-semibold">Weight (MT)</th>
             <th className="w-28 px-2 py-2.5 text-right text-[9px] font-semibold">
-              Unit price (AUD)
+              Unit price ({currency})
             </th>
-            <th className="w-32 px-2 py-2.5 text-right text-[9px] font-semibold">Amount (AUD)</th>
+            <th className="w-32 px-2 py-2.5 text-right text-[9px] font-semibold">
+              Amount ({currency})
+            </th>
           </tr>
         </thead>
         <tbody>
@@ -69,20 +82,28 @@ export default function InvoiceDocument({ invoice, settings }) {
                 <td className="num px-2 py-2.5 align-top text-steel-400">{i + 1}</td>
                 <td className="px-2 py-2.5 align-top font-medium text-steel-900">
                   {heading}
+                  {li.packageCount && (
+                    <span className="font-normal text-steel-500"> ({li.packageCount})</span>
+                  )}
                   {showMaterial && (
                     <div className="text-[10px] font-normal text-steel-500">
                       {li.material.description}
                     </div>
                   )}
+                  {li.container?.containerNo && (
+                    <div className="num text-[10px] font-normal text-steel-500">
+                      {li.container.containerNo}
+                    </div>
+                  )}
                 </td>
                 <td className="num px-2 py-2.5 text-right align-top text-steel-700">
-                  {formatNumber(li.weightTonnes, 3)}
+                  {formatNumber(li.netWeightMt, 3)}
                 </td>
                 <td className="num px-2 py-2.5 text-right align-top text-steel-700">
                   {formatNumber(li.pricePerMt, 2)}
                 </td>
                 <td className="num px-2 py-2.5 text-right align-top font-semibold text-steel-900">
-                  {formatNumber(li.totalAud, 2)}
+                  {formatNumber(li.total, 2)}
                 </td>
               </tr>
             );
@@ -99,7 +120,7 @@ export default function InvoiceDocument({ invoice, settings }) {
             </td>
             <td />
             <td className="num px-2 py-2 text-right text-steel-900">
-              {formatNumber(invoice.subtotalAud, 2)}
+              {formatNumber(invoice.subtotal, 2)}
             </td>
           </tr>
         </tfoot>
@@ -107,15 +128,15 @@ export default function InvoiceDocument({ invoice, settings }) {
       </div>
 
       <TotalsBlock
-        words={amountInWords(invoice.totalAud)}
+        words={amountInWords(invoice.total, currency)}
         rows={[
-          ['Subtotal', formatAud(invoice.subtotalAud)],
+          ['Subtotal', money(invoice.subtotal)],
           ...(Number(invoice.discountAmount) > 0
-            ? [[discountLabel(invoice), `− ${formatAud(invoice.discountAmount)}`]]
+            ? [[discountLabel(invoice), `− ${money(invoice.discountAmount)}`]]
             : []),
-          ...(invoice.applyGst ? [['GST (10%)', formatAud(invoice.gstAud)]] : []),
+          ...(invoice.applyGst ? [['GST (10%)', money(invoice.gst)]] : []),
         ]}
-        total={formatAud(invoice.totalAud)}
+        total={money(invoice.total)}
       />
 
       <section className="avoid-break grid grid-cols-1 gap-6 pt-4 sm:grid-cols-2">

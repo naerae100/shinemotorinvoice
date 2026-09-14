@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { format } from 'date-fns';
 import { api } from '../lib/api';
-import { formatAud } from '../lib/format';
+import { formatAud, formatMoney } from '../lib/format';
 import DateRangePicker, { PRESETS } from '../components/DateRangePicker';
 import TimeSeriesChart from '../components/charts/TimeSeriesChart';
 import BarList, { materialItem, clientItem } from '../components/charts/BarList';
@@ -90,7 +90,7 @@ export default function DashboardPage() {
         ref: i.invoiceNumber,
         party: i.consignee?.name,
         date: i.date,
-        total: i.totalAud,
+        total: i.total,
         to: `/export-invoices/${i.id}`,
       })),
     ]
@@ -168,7 +168,7 @@ export default function DashboardPage() {
               linkLabel="See these purchases"
             />
             <StatTile
-              label="Scrap sold"
+              label="Scrap sold (AUD)"
               value={formatAud(data.sales.total)}
               sub={`${data.sales.count} ${data.sales.count === 1 ? 'invoice' : 'invoices'}`}
               accent
@@ -179,10 +179,25 @@ export default function DashboardPage() {
               to={`/export-invoices?from=${range.from}&to=${range.to}`}
               linkLabel="See these invoices"
             />
+            {/* Trade in any other currency is reported on its own tile. It is
+                never folded into the AUD figures, because there is no exchange
+                rate in the system to fold it at. */}
+            {(data.salesByCurrency ?? [])
+              .filter((c) => c.currency !== 'AUD' && c.count > 0)
+              .map((c) => (
+                <StatTile
+                  key={c.currency}
+                  label={`Scrap sold (${c.currency})`}
+                  value={formatMoney(c.total, c.currency)}
+                  sub={`${c.count} ${c.count === 1 ? 'invoice' : 'invoices'} · not included in AUD figures`}
+                  to={`/export-invoices?from=${range.from}&to=${range.to}`}
+                  linkLabel="See these invoices"
+                />
+              ))}
             <StatTile
-              label="Net movement"
+              label="Net movement (AUD)"
               value={formatAud(net)}
-              sub="Sales less purchases in this period"
+              sub="AUD sales less purchases in this period"
               tone={net >= 0 ? 'positive' : 'negative'}
               current={net}
               previous={prev?.grossMargin}

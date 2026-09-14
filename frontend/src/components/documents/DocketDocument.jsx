@@ -118,7 +118,9 @@ export default function DocketDocument({ docket, settings }) {
           ...(Number(docket.discountAmount) > 0
             ? [[discountLabel(docket), `− ${formatAud(docket.discountAmount)}`]]
             : []),
-          [`GST${isTaxInvoice ? ' (10%)' : ''}`, formatAud(docket.gst)],
+          ...((docket.taxMode ?? (isTaxInvoice ? 'EXCLUSIVE' : 'NO_TAX')) !== 'NO_TAX'
+            ? [[(docket.taxMode === 'INCLUSIVE' ? 'Includes GST' : `GST${isTaxInvoice ? ' (10%)' : ''}`), formatAud(docket.gst)]]
+            : []),
         ]}
         total={formatAud(docket.total)}
       >

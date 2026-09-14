@@ -1,9 +1,20 @@
 export const round2 = (n) => Math.round((Number(n) + Number.EPSILON) * 100) / 100;
 
 export function formatAud(n) {
-  return new Intl.NumberFormat('en-AU', { style: 'currency', currency: 'AUD' }).format(
-    Number(n) || 0
-  );
+  return formatMoney(n, 'AUD');
+}
+
+/**
+ * An export invoice may be raised in AUD or USD, and the two are never converted
+ * into one another — so an amount is only meaningful next to its own currency.
+ * Rendered as "USD 292,242.15" rather than "$292,242.15", because a bare dollar
+ * sign on an international invoice does not say which dollars are owed.
+ */
+export function formatMoney(n, currency = 'AUD') {
+  return `${currency} ${new Intl.NumberFormat('en-AU', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(Number(n) || 0)}`;
 }
 
 /** Plain grouped number — for weights and quantities, where a currency symbol would be wrong. */

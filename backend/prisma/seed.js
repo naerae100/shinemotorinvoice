@@ -3,6 +3,9 @@ import bcrypt from 'bcryptjs';
 
 const prisma = new PrismaClient();
 
+/** Reads a seed value from the environment, falling back to a safe placeholder. */
+const env = (key, fallback) => process.env[key] || fallback;
+
 // Transcribed directly from the Shine Metals paper docket (33 lines).
 // currentPrice starts at 0 — admin fills in real rates on first login via Materials page.
 const materials = [
@@ -79,13 +82,50 @@ async function main() {
     fax: '+61 2 8712 9548',
     email: 'info@shinemotor.com.au',
     website: 'www.shinemotor.com.au',
-    bankName: 'WESTPAC',
-    bankSwift: 'WPACAU2S',
-    bankAccountNo: '576624',
-    bankBsb: '034-702',
-    bankAddress: 'Level 30, Tower 8, Parramatta Square, 10 Darcy Street, Parramatta NSW 2150',
-    beneficiary: 'SHINE MOTOR CORPORATION PTY LTD',
+    // Kept for anything still reading CompanySettings; the invoice itself takes
+    // its payment details from BankAccount, one row per currency (below).
+    bankName: env('BANK_NAME', 'WESTPAC'),
+    bankSwift: env('BANK_SWIFT', ''),
+    bankAccountNo: env('BANK_USD_ACCOUNT', ''),
+    bankBsb: env('BANK_USD_BSB', ''),
+    bankAddress: env('BANK_USD_ADDRESS', ''),
+    beneficiary: env('BANK_BENEFICIARY', 'SHINE MOTOR CORPORATION PTY LTD'),
   };
+
+  // AUD and USD collect into different accounts at different branches — an AUD
+  // invoice printed with the USD account sends the payment to the wrong place.
+  //
+  // The real numbers are read from the environment and never committed: this
+  // repository is public, and an account number does not belong in source. Set
+  // them in backend/.env (see .env.example). Left blank, the seed creates empty
+  // rows and the Settings screen prompts for them before an invoice is issued.
+  const BENEFICIARY = env('BANK_BENEFICIARY', 'SHINE MOTOR CORPORATION PTY LTD');
+  for (const account of [
+    {
+      currency: 'AUD',
+      bankName: env('BANK_NAME', 'WESTPAC'),
+      swift: env('BANK_SWIFT', ''),
+      accountNo: env('BANK_AUD_ACCOUNT', ''),
+      bsb: env('BANK_AUD_BSB', ''),
+      bankAddress: env('BANK_AUD_ADDRESS', ''),
+      beneficiary: BENEFICIARY,
+    },
+    {
+      currency: 'USD',
+      bankName: env('BANK_NAME', 'WESTPAC'),
+      swift: env('BANK_SWIFT', ''),
+      accountNo: env('BANK_USD_ACCOUNT', ''),
+      bsb: env('BANK_USD_BSB', ''),
+      bankAddress: env('BANK_USD_ADDRESS', ''),
+      beneficiary: BENEFICIARY,
+    },
+  ]) {
+    await prisma.bankAccount.upsert({
+      where: { currency: account.currency },
+      update: account,
+      create: account,
+    });
+  }
 
   await prisma.companySettings.upsert({
     where: { id: 'singleton' },

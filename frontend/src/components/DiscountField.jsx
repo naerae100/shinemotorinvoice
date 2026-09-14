@@ -4,8 +4,13 @@ import { round2 } from '../lib/format';
  * Mirrors the server's order of operations exactly (see backend src/lib/money.js):
  * discount comes off the subtotal, then GST applies to what's left. If these two
  * ever disagreed, the figure on screen would not match the figure saved.
+ *
+ * taxMode: 'EXCLUSIVE' | 'INCLUSIVE' | 'NO_TAX' (or boolean for legacy callers)
  */
-export function applyDiscount(subtotal, discount, applyGst) {
+export function applyDiscount(subtotal, discount, taxMode = 'EXCLUSIVE') {
+  // Bridge legacy boolean callers
+  const mode = typeof taxMode === 'boolean' ? (taxMode ? 'EXCLUSIVE' : 'NO_TAX') : taxMode;
+
   const base = round2(subtotal);
   const value = Number(discount.discountValue) || 0;
   let discountAmount = 0;
@@ -14,8 +19,20 @@ export function applyDiscount(subtotal, discount, applyGst) {
   discountAmount = round2(Math.min(Math.max(discountAmount, 0), base));
 
   const taxable = round2(base - discountAmount);
-  const gst = applyGst ? round2(taxable * 0.1) : 0;
-  return { discountAmount, taxable, gst, total: round2(taxable + gst) };
+
+  let gst, total;
+  if (mode === 'INCLUSIVE') {
+    gst = round2(taxable / 11);
+    total = round2(taxable);          // price already includes GST
+  } else if (mode === 'EXCLUSIVE') {
+    gst = round2(taxable * 0.1);
+    total = round2(taxable + gst);    // GST added on top
+  } else {
+    gst = 0;
+    total = round2(taxable);          // no tax at all
+  }
+
+  return { discountAmount, taxable, gst, total };
 }
 
 export default function DiscountField({ value, onChange, subtotal }) {

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { api } from '../lib/api';
 import { format } from 'date-fns';
-import { formatAud } from '../lib/format';
+import { formatMoney } from '../lib/format';
 import { useAuth } from '../context/AuthContext';
 import RowActions from '../components/RowActions';
 import ConfirmDialog from '../components/ConfirmDialog';
@@ -21,7 +21,8 @@ export default function InvoicesPage() {
 
   const [invoices, setInvoices] = useState([]);
   const [totalCount, setTotalCount] = useState(0);
-  const [filteredTotals, setFilteredTotals] = useState({ total: 0, gst: 0 });
+  // One row per currency — AUD and USD are never added together.
+  const [filteredTotals, setFilteredTotals] = useState([]);
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState('ACTIVE');
   const [page, setPage] = useState(1);
@@ -43,7 +44,7 @@ export default function InvoicesPage() {
       .then((res) => {
         setInvoices(res.data.invoices);
         setTotalCount(res.data.totalCount);
-        setFilteredTotals(res.data.filteredTotals);
+        setFilteredTotals(res.data.filteredTotals ?? []);
         setError('');
       })
       .catch(() => setError('Could not load invoices.'))
@@ -148,18 +149,27 @@ export default function InvoicesPage() {
           <div className="text-xs uppercase tracking-wider text-steel-400">Matching invoices</div>
           <div className="num text-lg font-semibold text-steel-900">{totalCount}</div>
         </div>
-        <div>
-          <div className="text-xs uppercase tracking-wider text-steel-400">Total value</div>
-          <div className="num text-lg font-semibold text-copper-600">
-            {formatAud(filteredTotals.total)}
+        {filteredTotals.length === 0 && (
+          <div>
+            <div className="text-xs uppercase tracking-wider text-steel-400">Total value</div>
+            <div className="num text-lg font-semibold text-copper-600">—</div>
           </div>
-        </div>
-        <div>
-          <div className="text-xs uppercase tracking-wider text-steel-400">GST</div>
-          <div className="num text-lg font-semibold text-steel-900">
-            {formatAud(filteredTotals.gst)}
+        )}
+        {filteredTotals.map((t) => (
+          <div key={t.currency}>
+            <div className="text-xs uppercase tracking-wider text-steel-400">
+              Total value ({t.currency})
+            </div>
+            <div className="num text-lg font-semibold text-copper-600">
+              {formatMoney(t.total, t.currency)}
+            </div>
+            {t.gst > 0 && (
+              <div className="num text-xs text-steel-500">
+                incl. GST {formatMoney(t.gst, t.currency)}
+              </div>
+            )}
           </div>
-        </div>
+        ))}
       </div>
 
       {error && (
@@ -222,12 +232,20 @@ export default function InvoicesPage() {
                     {inv.consignee?.name}
                   </Link>
                 </td>
-                <td className="num px-5 py-3 text-steel-500">{inv.containerNo || '—'}</td>
+                <td className="num px-5 py-3 text-steel-500">
+                  {(() => {
+                    const cs = (inv.containers ?? []).map((c) => c.containerNo).filter(Boolean);
+                    if (!cs.length) return '—';
+                    // A shipment can fill several containers; showing the first
+                    // with a count keeps the column narrow.
+                    return cs.length === 1 ? cs[0] : `${cs[0]} +${cs.length - 1}`;
+                  })()}
+                </td>
                 <td className="px-5 py-3 text-steel-500">
                   {format(new Date(inv.date), 'd MMM yyyy')}
                 </td>
                 <td className="num px-5 py-3 text-right font-medium text-steel-900">
-                  {formatAud(inv.totalAud)}
+                  {formatMoney(inv.total, inv.currency)}
                 </td>
                 <td className="px-5 py-3">
                   <RowActions
@@ -245,14 +263,6 @@ export default function InvoicesPage() {
                     }
                     onRestore={() =>
                       runAction(() => api.post(`/invoices/${inv.id}/restore`), 'Could not restore this invoice.')
-                    }
-                    onDelete={() =>
-                      setDialog({
-                        kind: 'delete',
-                        id: inv.id,
-                        title: `Permanently delete ${inv.invoiceNumber}?`,
-                        body: 'This cannot be undone. Voiding is almost always the right choice — use this only for something like a test entry.',
-                      })
                     }
                   />
                 </td>
@@ -292,14 +302,15 @@ export default function InvoicesPage() {
         title={dialog?.title}
         body={dialog?.body}
         busy={busy}
-        requireReason={dialog?.kind === 'void'}
+        requireReason
         reasonLabel="Why is this being voided?"
-        confirmLabel={dialog?.kind === 'void' ? 'Void invoice' : 'Delete permanently'}
+        confirmLabel="Void invoice"
         onCancel={() => setDialog(null)}
         onConfirm={(reason) =>
-          dialog?.kind === 'void'
-            ? runAction(() => api.post(`/invoices/${dialog.id}/void`, { reason }), 'Could not void this invoice.')
-            : runAction(() => api.delete(`/invoices/${dialog.id}`), 'Could not delete this invoice.')
+          runAction(
+            () => api.post(`/invoices/${dialog.id}/void`, { reason }),
+            'Could not void this invoice.'
+          )
         }
       />
     </div>

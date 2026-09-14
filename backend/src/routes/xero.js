@@ -168,8 +168,16 @@ export const pushPurchaseDocketToXero = async (docket) => {
     });
   }
 
+  // Map our taxMode to Xero's LineAmountTypes
+  const xeroTaxMode = (mode) => ({
+    EXCLUSIVE: 'Exclusive',
+    INCLUSIVE: 'Inclusive',
+    NO_TAX: 'NoTax',
+  })[mode] || 'Exclusive';
+
   const invoice = {
     Type: 'ACCPAY', // Accounts Payable (Bill)
+    LineAmountTypes: xeroTaxMode(docket.taxMode),
     Contact: {
       Name: docket.supplier.name,
     },
@@ -209,9 +217,12 @@ export const pushSalesInvoiceToXero = async (invoiceData) => {
 
   const { xero, tenantId } = connection;
 
+  // A line may be a one-off typed straight onto the invoice, with no material
+  // behind it, so the typed description comes first and the material is the
+  // fallback rather than the other way round.
   const lineItems = invoiceData.lineItems.map(li => ({
-    Description: li.material.description,
-    Quantity: Number(li.weightTonnes),
+    Description: li.description || li.material?.description || 'Goods',
+    Quantity: Number(li.netWeightMt),
     UnitAmount: Number(li.pricePerMt),
   }));
 
@@ -225,6 +236,9 @@ export const pushSalesInvoiceToXero = async (invoiceData) => {
 
   const invoice = {
     Type: 'ACCREC', // Accounts Receivable (Sales Invoice)
+    // Without this Xero books the amounts in the organisation's base currency,
+    // so a USD invoice would land as the same number of Australian dollars.
+    CurrencyCode: invoiceData.currency || 'AUD',
     Contact: {
       Name: invoiceData.consignee.name,
     },
@@ -232,7 +246,7 @@ export const pushSalesInvoiceToXero = async (invoiceData) => {
     DueDate: invoiceData.date.toISOString().split('T')[0],
     LineItems: lineItems,
     InvoiceNumber: invoiceData.invoiceNumber,
-    Reference: invoiceData.poNumber || '',
+    Reference: invoiceData.poNumber || invoiceData.contractNo || '',
     Status: 'DRAFT',
   };
 

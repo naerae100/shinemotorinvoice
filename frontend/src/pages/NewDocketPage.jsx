@@ -11,6 +11,12 @@ const PAYG_OPTIONS = [
   { value: 'SCRAP_CODE_NO_ABN', label: 'Scrap Metal Industry Code — no ABN required' },
 ];
 
+const TAX_MODE_OPTIONS = [
+  { value: 'EXCLUSIVE', label: 'Tax Exclusive' },
+  { value: 'INCLUSIVE', label: 'Tax Inclusive' },
+  { value: 'NO_TAX', label: 'No Tax' },
+];
+
 export default function NewDocketPage({ defaultType = 'PURCHASE_DOCKET' }) {
   const navigate = useNavigate();
   const { id: editId } = useParams();
@@ -25,6 +31,7 @@ export default function NewDocketPage({ defaultType = 'PURCHASE_DOCKET' }) {
 
   const [lines, setLines] = useState([{ materialId: '', netWeight: '', price: '' }]);
   const [type, setType] = useState(defaultType);
+  const [taxMode, setTaxMode] = useState('EXCLUSIVE');
   const [paygStatement, setPaygStatement] = useState('NOT_APPLICABLE');
 
   useEffect(() => {
@@ -51,6 +58,7 @@ export default function NewDocketPage({ defaultType = 'PURCHASE_DOCKET' }) {
       .then(({ data }) => {
         const d = data.docket;
         setType(d.type);
+        setTaxMode(d.taxMode || 'EXCLUSIVE');
         setPaygStatement(d.paygStatement || 'NOT_APPLICABLE');
         setSelectedSupplier(d.supplier);
         setSupplierQuery(d.supplier?.name || '');
@@ -113,7 +121,7 @@ export default function NewDocketPage({ defaultType = 'PURCHASE_DOCKET' }) {
   const { discountAmount, taxable, gst, total } = applyDiscount(
     subtotal,
     discount,
-    type === 'TAX_INVOICE'
+    taxMode
   );
 
   function updateLine(idx, field, value) {
@@ -206,6 +214,7 @@ export default function NewDocketPage({ defaultType = 'PURCHASE_DOCKET' }) {
 
       const payload = {
         type,
+        taxMode,
         supplierId,
         paygStatement,
         ...discount,
@@ -272,10 +281,26 @@ export default function NewDocketPage({ defaultType = 'PURCHASE_DOCKET' }) {
       <form onSubmit={handleSubmit}>
         <div className="overflow-hidden rounded-xl border border-steel-200 bg-white shadow-ticket">
           <div className="flex items-center justify-between bg-steel-900 px-6 py-4">
-            <div className="font-semibold text-paper">
-              {type === 'TAX_INVOICE' ? 'Tax invoice' : 'Purchase docket'}
+            <div>
+              <div className="font-semibold text-paper">
+                {type === 'TAX_INVOICE' ? 'Tax invoice' : 'Purchase docket'}
+              </div>
+              {!editId && <div className="text-xs text-steel-400">Docket # assigned on save</div>}
             </div>
-            <div className="text-xs text-steel-400">Docket # assigned on save</div>
+            <div className="flex items-center gap-3">
+              <label className="text-xs text-steel-400">Amounts are</label>
+              <select
+                value={taxMode}
+                onChange={(e) => setTaxMode(e.target.value)}
+                className="rounded-md border border-steel-600 bg-steel-800 px-3 py-1.5 text-sm text-paper focus:border-copper-500 focus:outline-none"
+              >
+                {TAX_MODE_OPTIONS.map((o) => (
+                  <option key={o.value} value={o.value}>
+                    {o.label}
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
 
           <div className="border-b border-steel-100 px-6 py-5">
@@ -527,9 +552,9 @@ export default function NewDocketPage({ defaultType = 'PURCHASE_DOCKET' }) {
                   <span className="num">− {formatCurrency(discountAmount)}</span>
                 </div>
               )}
-              {type === 'TAX_INVOICE' && (
+              {taxMode !== 'NO_TAX' && (
                 <div className="flex justify-between text-sm text-steel-400">
-                  <span>GST (10%)</span>
+                  <span>{taxMode === 'INCLUSIVE' ? 'Includes GST' : 'GST (10%)'}</span>
                   <span className="num">{formatCurrency(gst)}</span>
                 </div>
               )}

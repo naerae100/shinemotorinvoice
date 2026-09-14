@@ -8,12 +8,25 @@ import { sendCsv, money, isoDate } from '../lib/csv.js';
 
 const router = Router();
 
+const optionalEmail = z.string().email().optional().nullable().or(z.literal(''));
+
 const consigneeSchema = z.object({
   name: z.string().min(1),
   address: z.string().optional().nullable(),
-  email: z.string().email().optional().nullable().or(z.literal('')),
+  email: optionalEmail,
   phone: z.string().optional().nullable(),
   country: z.string().optional().nullable(),
+
+  // The buyer this billing entity belongs to, where one buyer bills through
+  // several — PT Daiki through Indonesia, Thailand and Malaysia.
+  groupName: z.string().optional().nullable(),
+  abn: z.string().optional().nullable(),
+  website: z.string().optional().nullable(),
+  extraEmails: z.array(z.string().email()).optional(),
+  extraPhones: z.array(z.string()).optional(),
+  defaultCurrency: z.enum(['AUD', 'USD']).optional().nullable(),
+  defaultShippingTerm: z.string().optional().nullable(),
+  notes: z.string().optional().nullable(),
 });
 
 router.get(
@@ -22,7 +35,14 @@ router.get(
   asyncHandler(async (req, res) => {
     const { search } = req.query;
     const consignees = await prisma.consignee.findMany({
-      where: search ? { name: contains(String(search)) } : {},
+      where: search
+        ? {
+            OR: [
+              { name: contains(String(search)) },
+              { groupName: contains(String(search)) },
+            ],
+          }
+        : {},
       orderBy: { name: 'asc' },
     });
     res.json({ consignees });
@@ -35,10 +55,19 @@ router.get(
   asyncHandler(async (req, res) => {
     const consignees = await prisma.consignee.findMany({
       orderBy: { name: 'asc' },
-      include: { invoices: { where: { status: 'ACTIVE' }, select: { totalAud: true, date: true } } },
+      include: {
+        invoices: {
+          where: { status: 'ACTIVE' },
+          select: { total: true, date: true, currency: true },
+        },
+      },
       take: 20000,
     });
-    const total = (c) => c.invoices.reduce((a, i) => a + Number(i.totalAud), 0);
+    // Lifetime value has to be reported per currency: a buyer invoiced in both
+    // AUD and USD has no single meaningful total without an exchange rate, and
+    // we deliberately do not hold one.
+    const totalIn = (c, currency) =>
+      c.invoices.reduce((a, i) => (i.currency === currency ? a + Number(i.total) : a), 0);
     const last = (c) =>
       c.invoices.length
         ? new Date(Math.max(...c.invoices.map((i) => new Date(i.date))))
@@ -46,12 +75,20 @@ router.get(
 
     sendCsv(res, 'shine-buyers', [
       { label: 'Name', get: (c) => c.name },
+      { label: 'Group', get: (c) => c.groupName ?? '' },
       { label: 'Country', get: (c) => c.country ?? '' },
       { label: 'Email', get: (c) => c.email ?? '' },
+      { label: 'Other emails', get: (c) => c.extraEmails.join('; ') },
       { label: 'Phone', get: (c) => c.phone ?? '' },
+      { label: 'Other phones', get: (c) => c.extraPhones.join('; ') },
       { label: 'Address', get: (c) => c.address ?? '' },
+      { label: 'ABN', get: (c) => c.abn ?? '' },
+      { label: 'Website', get: (c) => c.website ?? '' },
+      { label: 'Default currency', get: (c) => c.defaultCurrency ?? '' },
+      { label: 'Default shipping term', get: (c) => c.defaultShippingTerm ?? '' },
       { label: 'Invoices', get: (c) => c.invoices.length },
-      { label: 'Lifetime value (AUD)', get: (c) => money(total(c)) },
+      { label: 'Lifetime value (AUD)', get: (c) => money(totalIn(c, 'AUD')) },
+      { label: 'Lifetime value (USD)', get: (c) => money(totalIn(c, 'USD')) },
       { label: 'Last sale', get: (c) => isoDate(last(c)) },
     ], consignees);
   })

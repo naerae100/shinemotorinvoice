@@ -38,6 +38,19 @@ const env = {
   SEED_ADMIN_PASSWORD: ADMIN_PASSWORD,
   NODE_ENV: 'test',
   PORT: String(PORT),
+
+  // Obviously-fake bank details. The real ones live only in .env, because the
+  // repository is public; the tests only care that AUD and USD get *different*
+  // accounts, not what they are.
+  BANK_NAME: 'TESTPAC',
+  BANK_SWIFT: 'TESTAU2S',
+  BANK_BENEFICIARY: 'TEST BENEFICIARY PTY LTD',
+  BANK_AUD_ACCOUNT: '1111111',
+  BANK_AUD_BSB: '111-111',
+  BANK_AUD_ADDRESS: '1 Test Street, Sydney',
+  BANK_USD_ACCOUNT: '2222222',
+  BANK_USD_BSB: '222-222',
+  BANK_USD_ADDRESS: '2 Test Street, Sydney',
 };
 
 let server;

@@ -29,20 +29,41 @@ export function resolveDiscount(subtotal, type, value) {
  *   subtotal  = sum of the ROUNDED line values (so the document adds up to itself)
  *   discount  = percentage of subtotal, or a fixed amount, capped at subtotal
  *   taxable   = subtotal − discount        (GST applies after the discount)
- *   gst       = taxable × 10%, only when applyGst
- *   total     = taxable + gst
+ *
+ *   taxMode determines how GST is handled:
+ *     EXCLUSIVE — gst = taxable × 10%, total = taxable + gst  (added on top)
+ *     INCLUSIVE  — gst = taxable ÷ 11,  total = taxable        (already inside)
+ *     NO_TAX    — gst = 0,              total = taxable        (no tax at all)
+ *
+ *   Legacy callers may still pass `applyGst` (boolean); it is mapped automatically.
  */
-export function computeTotals({ lineValues, discountType, discountValue, applyGst }) {
+export function computeTotals({ lineValues, discountType, discountValue, taxMode, applyGst }) {
+  // Bridge legacy boolean → taxMode string
+  const mode = taxMode ?? (applyGst ? 'EXCLUSIVE' : 'NO_TAX');
+
   const subtotal = round2(lineValues.reduce((sum, v) => sum + Number(v), 0));
   const discountAmount = resolveDiscount(subtotal, discountType, discountValue);
   const taxable = round2(subtotal - discountAmount);
-  const gst = applyGst ? round2(taxable * GST_RATE) : 0;
+
+  let gst, total;
+  if (mode === 'INCLUSIVE') {
+    gst = round2(taxable / 11);
+    total = round2(taxable);          // price already includes GST
+  } else if (mode === 'EXCLUSIVE') {
+    gst = round2(taxable * GST_RATE);
+    total = round2(taxable + gst);    // GST added on top
+  } else {
+    gst = 0;
+    total = round2(taxable);          // no tax at all
+  }
+
   return {
     subtotal,
     discountType: discountAmount > 0 ? discountType : 'NONE',
     discountValue: discountAmount > 0 ? Number(discountValue) || 0 : 0,
     discountAmount,
     gst,
-    total: round2(taxable + gst),
+    total,
   };
 }
+

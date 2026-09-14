@@ -6,7 +6,7 @@ import { Link } from 'react-router-dom';
  * which gave no hint that anything was clickable — several actions were simply
  * undiscoverable.
  */
-export default function RowActions({ viewTo, onEdit, onVoid, onRestore, onDelete, isVoid, isAdmin }) {
+export default function RowActions({ viewTo, onEdit, onVoid, onRestore, isVoid, isAdmin }) {
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
 
@@ -79,17 +79,9 @@ export default function RowActions({ viewTo, onEdit, onVoid, onRestore, onDelete
                 Restore
               </button>
             )}
-            {isAdmin && (
-              <button
-                className={`${item} border-t border-steel-100 text-working-red`}
-                onClick={() => {
-                  setOpen(false);
-                  onDelete();
-                }}
-              >
-                Delete permanently…
-              </button>
-            )}
+            {/* There is deliberately no "delete" here. A docket or invoice
+                number is a legal reference and must survive; voiding keeps the
+                number and the history while removing the value from totals. */}
           </div>
         )}
       </div>
