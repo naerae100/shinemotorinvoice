@@ -152,7 +152,9 @@ export const pushPurchaseDocketToXero = async (docket) => {
   const { xero, tenantId } = connection;
 
   const lineItems = docket.lineItems.map(li => ({
-    Description: li.material.description,
+    // A docket line may be a one-off grade typed straight in, with no material
+    // behind it — reading .description first is what stops that crashing.
+    Description: li.description || li.material?.description || 'Scrap metal',
     Quantity: Number(li.netWeight),
     UnitAmount: Number(li.price),
     // For Purchases, we don't strictly need AccountCode if they just want Drafts,

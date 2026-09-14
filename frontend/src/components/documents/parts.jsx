@@ -8,11 +8,11 @@ import { format } from 'date-fns';
 
 export function Detail({ label, value, mono = true }) {
   return (
-    <div className="border-b border-steel-200 px-3 py-2">
-      <div className="text-[9px] font-semibold uppercase tracking-wider text-steel-400">
+    <div className="border-b border-ink-200 px-3 py-2">
+      <div className="text-[9px] font-bold uppercase tracking-[0.12em] text-ink-500">
         {label}
       </div>
-      <div className={`${mono ? 'num' : ''} text-[11px] font-medium text-steel-900`}>
+      <div className={`${mono ? 'num' : ''} text-[11px] font-medium text-ink-900`}>
         {value || '—'}
       </div>
     </div>
@@ -22,11 +22,11 @@ export function Detail({ label, value, mono = true }) {
 export function PartyBlock({ heading, name, lines }) {
   return (
     <div className="px-4 py-3">
-      <div className="mb-1.5 text-[9px] font-bold uppercase tracking-widest text-copper-700">
+      <div className="mb-1.5 text-[9.5px] font-bold uppercase tracking-[0.12em] text-ink-500">
         {heading}
       </div>
-      <div className="text-[13px] font-bold leading-snug text-steel-900">{name}</div>
-      <div className="mt-1 space-y-0.5 text-[11px] leading-snug text-steel-600">
+      <div className="text-[13px] font-bold leading-snug text-ink-900">{name}</div>
+      <div className="mt-1 space-y-0.5 text-[11px] leading-snug text-ink-700">
         {lines.filter(Boolean).map((line, i) => (
           <div key={i}>{line}</div>
         ))}
@@ -47,12 +47,12 @@ const joinDot = (parts) => parts.filter(Boolean).join('  ·  ');
 export function Masthead({ settings, roleLabel }) {
   const companyName = settings?.companyName || 'Shine Motor Corporation Pty Ltd';
   return (
-    <header className="flex flex-col gap-4 border-b-2 border-steel-900 pb-5 sm:flex-row sm:items-start sm:justify-between sm:gap-8">
+    <header className="flex flex-col gap-4 border-b-2 border-ink-900 pb-5 sm:flex-row sm:items-start sm:justify-between sm:gap-8">
       <div className="min-w-0 shrink-0">
         {settings?.logoUrl ? (
-          <img src={settings.logoUrl} alt={companyName} className="h-16 object-contain object-left" />
+          <img src={settings.logoUrl} alt={companyName} className="h-20 object-contain object-left" />
         ) : (
-          <div className="font-display text-[19px] font-bold leading-tight text-steel-900">
+          <div className="font-display text-[19px] font-semibold leading-tight text-ink-900">
             {companyName}
           </div>
         )}
@@ -60,16 +60,16 @@ export function Masthead({ settings, roleLabel }) {
 
       <div className="min-w-0 sm:text-right">
         {roleLabel && (
-          <div className="mb-1 text-[9px] font-bold uppercase tracking-widest text-copper-700">
+          <div className="mb-1 text-[9.5px] font-bold uppercase tracking-[0.12em] text-ink-500">
             {roleLabel}
           </div>
         )}
         {settings?.logoUrl && (
-          <div className="font-display text-[13px] font-bold leading-tight text-steel-900">
+          <div className="font-display text-[13px] font-semibold leading-tight text-ink-900">
             {companyName}
           </div>
         )}
-        <div className="mt-0.5 space-y-0.5 text-[10.5px] leading-snug text-steel-600">
+        <div className="mt-0.5 space-y-0.5 text-[10.5px] leading-snug text-ink-700">
           {settings?.address && <div>{settings.address}</div>}
           <div className="num">
             {joinDot([
@@ -78,10 +78,7 @@ export function Masthead({ settings, roleLabel }) {
             ])}
           </div>
           <div className="num">
-            {joinDot([
-              settings?.phone && `T ${settings.phone}`,
-              settings?.mobile && `M ${settings.mobile}`,
-            ])}
+            {joinDot([settings?.phone, settings?.mobile].filter(Boolean))}
           </div>
           <div>{joinDot([settings?.email, settings?.website])}</div>
         </div>
@@ -97,19 +94,19 @@ export function Masthead({ settings, roleLabel }) {
 export function ReferenceBlock({ title, references }) {
   return (
     <div className="px-4 py-3">
-      <div className="mb-2 font-display text-[17px] font-bold uppercase leading-none tracking-tight text-copper-600">
+      <div className="mb-3 font-display text-[21px] font-extrabold uppercase leading-none tracking-[-0.01em] text-ink-900">
         {title}
       </div>
-      <table className="w-full text-[11px]">
+      <table className="w-full text-[11.5px]">
         <tbody>
           {references
             .filter(([, value]) => value)
             .map(([label, value, strong]) => (
               <tr key={label}>
-                <td className="py-0.5 pr-4 uppercase tracking-wide text-steel-400">{label}</td>
+                <td className="py-1 pr-4 text-[10.5px] uppercase tracking-wide text-ink-500">{label}</td>
                 <td
-                  className={`num py-0.5 text-right text-steel-900 ${
-                    strong ? 'text-[13px] font-bold' : 'font-medium'
+                  className={`num py-1 text-right text-ink-900 ${
+                    strong ? 'text-[15px] font-bold' : 'font-semibold'
                   }`}
                 >
                   {value}
@@ -125,12 +122,12 @@ export function ReferenceBlock({ title, references }) {
 /** Amount-in-words on the left, the running totals on the right. */
 export function TotalsBlock({ words, rows, total, children }) {
   return (
-    <section className="avoid-break flex flex-col gap-4 border-b border-steel-300 py-4 sm:flex-row sm:items-stretch sm:justify-between sm:gap-6">
-      <div className="flex-1">
-        <div className="text-[9px] font-semibold uppercase tracking-wider text-steel-400">
+    <section className="avoid-break flex flex-col gap-4 border-b border-ink-200 py-3 sm:flex-row sm:items-stretch sm:justify-between sm:gap-6">
+      <div className="flex-1 rounded-xl bg-ink-50 px-4 py-3.5">
+        <div className="text-[9.5px] font-bold uppercase tracking-[0.12em] text-ink-500">
           Amount in words
         </div>
-        <div className="mt-1 text-[11.5px] font-semibold uppercase leading-snug text-steel-900">
+        <div className="mt-1.5 text-[12px] font-semibold uppercase leading-snug text-ink-900">
           {words}
         </div>
         {children}
@@ -139,17 +136,17 @@ export function TotalsBlock({ words, rows, total, children }) {
         {rows.map(([label, value]) => (
           <div
             key={label}
-            className="flex justify-between border-b border-steel-200 py-1 text-[11px]"
+            className="flex justify-between border-b border-ink-200 py-1.5 text-[11.5px]"
           >
-            <span className="text-steel-500">{label}</span>
-            <span className="num font-medium text-steel-900">{value}</span>
+            <span className="text-ink-500">{label}</span>
+            <span className="num font-medium text-ink-900">{value}</span>
           </div>
         ))}
-        <div className="mt-1 flex items-baseline justify-between bg-steel-900 px-3 py-2">
-          <span className="text-[10px] font-semibold uppercase tracking-wider text-steel-300">
+        <div className="mt-2 flex items-baseline justify-between rounded-xl bg-ink-900 px-4 py-3.5">
+          <span className="text-[10px] font-bold uppercase tracking-[0.12em] text-ink-300">
             Total AUD
           </span>
-          <span className="num text-[15px] font-bold text-copper-400">{total}</span>
+          <span className="num text-[20px] font-extrabold tracking-tight text-white">{total}</span>
         </div>
       </div>
     </section>
@@ -158,7 +155,7 @@ export function TotalsBlock({ words, rows, total, children }) {
 
 export function DocumentFooter({ settings, reference, date }) {
   return (
-    <footer className="mt-6 flex flex-col gap-1 border-t border-steel-200 pt-2 text-[9px] text-steel-400 sm:flex-row sm:justify-between sm:gap-0">
+    <footer className="mt-6 flex flex-col gap-1 border-t border-ink-200 pt-2 text-[9px] text-ink-400 sm:flex-row sm:justify-between sm:gap-0">
       <span>
         {settings?.companyName || 'Shine Motor Corporation Pty Ltd'}
         {settings?.abn ? ` · ABN ${settings.abn}` : ''}

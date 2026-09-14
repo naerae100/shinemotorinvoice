@@ -7,7 +7,17 @@
     @apply antialiased;
   }
   body {
-    @apply bg-paper text-steel-900 font-sans;
+    /* font-medium, not the browser default 400: at 14px on a pale ground the
+       lighter weight is what made the interface hard to read. */
+    @apply bg-paper text-steel-900 font-sans font-medium;
+  }
+  /* Headings carry real weight so a page has an obvious top. */
+  h1, h2, h3, h4 {
+    @apply font-semibold;
+  }
+  /* Form controls inherit the body weight rather than the UA's lighter default. */
+  input, select, textarea, button {
+    @apply font-medium;
   }
   ::selection {
     @apply bg-copper-300 text-steel-900;

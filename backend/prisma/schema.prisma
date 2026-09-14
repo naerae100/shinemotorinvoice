@@ -130,7 +130,9 @@ model Docket {
   docketNumber Int      @unique // managed in application code (max + 1)
   type         String   @default("PURCHASE_DOCKET")
   // TaxMode values: "EXCLUSIVE" | "INCLUSIVE" | "NO_TAX"
-  taxMode      String   @default("EXCLUSIVE")
+  // Inclusive is the default because the yard quotes suppliers a price per kilo
+  // with GST already in it — that is the number said out loud at the weighbridge.
+  taxMode      String   @default("INCLUSIVE")
   date         DateTime @default(now())
 
   supplierId String
@@ -189,11 +191,16 @@ model Docket {
 }
 
 model DocketLineItem {
-  id         String   @id @default(cuid())
-  docketId   String
-  docket     Docket   @relation(fields: [docketId], references: [id], onDelete: Cascade)
-  materialId String
-  material   Material @relation(fields: [materialId], references: [id])
+  id       String @id @default(cuid())
+  docketId String
+  docket   Docket @relation(fields: [docketId], references: [id], onDelete: Cascade)
+
+  // Optional, as on an invoice line: a one-off grade can be typed straight onto
+  // the docket without first being added to the price list. Either materialId or
+  // description must be present — the API enforces that.
+  materialId String?
+  material   Material? @relation(fields: [materialId], references: [id])
+  description String?
 
   netWeight Decimal
   price     Decimal

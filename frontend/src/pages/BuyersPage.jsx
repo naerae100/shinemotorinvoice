@@ -136,15 +136,26 @@ export default function BuyersPage() {
                 <td className="px-5 py-3 text-steel-500">
                   {[b.email, b.phone].filter(Boolean).join(' · ') || '—'}
                 </td>
-                <td className="px-5 py-3 text-right">
-                  <Link to={`/buyers/${b.id}`}
-                    className="mr-1 rounded-md border border-steel-200 px-2.5 py-1 text-xs font-semibold text-steel-700 hover:bg-paper">
-                    View
-                  </Link>
-                  <button onClick={() => setForm(b)}
-                    className="rounded-md border border-steel-200 px-2.5 py-1 text-xs font-semibold text-steel-700 hover:bg-paper">
-                    Edit
-                  </button>
+                {/* A <a> and a <button> are inline elements with different
+                    line-heights, so side by side in a narrow cell they wrapped
+                    and sat at different baselines. A flex row with matched
+                    padding keeps them on one line and properly aligned. */}
+                <td className="whitespace-nowrap px-5 py-3">
+                  <div className="flex items-center justify-end gap-1.5">
+                    <Link
+                      to={`/buyers/${b.id}`}
+                      className="inline-flex h-7 items-center rounded-md border border-steel-200 px-3 text-xs font-semibold text-steel-700 transition-colors hover:border-steel-300 hover:bg-paper"
+                    >
+                      View
+                    </Link>
+                    <button
+                      type="button"
+                      onClick={() => setForm(b)}
+                      className="inline-flex h-7 items-center rounded-md border border-steel-200 px-3 text-xs font-semibold text-steel-700 transition-colors hover:border-steel-300 hover:bg-paper"
+                    >
+                      Edit
+                    </button>
+                  </div>
                 </td>
               </tr>
             ))}

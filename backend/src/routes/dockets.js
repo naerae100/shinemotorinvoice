@@ -33,15 +33,25 @@ router.use((req, res, next) => {
 // tills that might ever hit save together, not just above the common case.
 const DOCKET_NUMBER_ATTEMPTS = 25;
 
-const lineItemSchema = z.object({
-  materialId: z.string(),
-  netWeight: z.number().positive(),
-  price: z.number().nonnegative(), // snapshot price at time of sale
-});
+const lineItemSchema = z
+  .object({
+    // Optional: a one-off grade can be typed onto the docket without first being
+    // added to the price list. One of the two must be present, or the line would
+    // print as a blank row.
+    materialId: z.string().optional().nullable(),
+    description: z.string().optional().nullable(),
+    netWeight: z.number().positive(),
+    price: z.number().nonnegative(), // snapshot price at time of sale
+  })
+  .refine((li) => li.materialId || (li.description && li.description.trim()), {
+    message: 'A line needs either a material or a description',
+    path: ['description'],
+  });
 
 const docketSchema = z.object({
   type: z.enum(['TAX_INVOICE', 'PURCHASE_DOCKET']).default('PURCHASE_DOCKET'),
-  taxMode: z.enum(['EXCLUSIVE', 'INCLUSIVE', 'NO_TAX']).default('EXCLUSIVE'),
+  // Inclusive by default: the rate quoted at the weighbridge already has GST in it.
+  taxMode: z.enum(['EXCLUSIVE', 'INCLUSIVE', 'NO_TAX']).default('INCLUSIVE'),
   date: z.string().datetime().optional(),
   supplierId: z.string(),
   vehicleReg: z.string().optional().nullable(),
@@ -66,7 +76,8 @@ const DETAIL_INCLUDE = {
 
 const buildLines = (lineItems) =>
   lineItems.map((li) => ({
-    materialId: li.materialId,
+    materialId: li.materialId ?? null,
+    description: li.description ?? null,
     netWeight: li.netWeight,
     price: li.price,
     value: round2(li.netWeight * li.price),
@@ -77,7 +88,7 @@ const totalsFor = (lines, data) =>
     lineValues: lines.map((l) => l.value),
     discountType: data.discountType,
     discountValue: data.discountValue,
-    taxMode: data.taxMode ?? 'EXCLUSIVE',
+    taxMode: data.taxMode ?? 'INCLUSIVE',
   });
 
 /**
@@ -199,7 +210,7 @@ router.get(
         { label: 'Date', get: (r) => isoDate(r.d.date) },
         { label: 'Supplier', get: (r) => r.d.supplier?.name },
         { label: 'Material code', get: (r) => r.li.material?.code ?? '' },
-        { label: 'Material', get: (r) => r.li.material?.description },
+        { label: 'Material', get: (r) => r.li.description || r.li.material?.description || '' },
         { label: 'Category', get: (r) => r.li.material?.category ?? '' },
         { label: 'Unit', get: (r) => r.li.material?.unit },
         { label: 'Net weight', get: (r) => money(r.li.netWeight) },
@@ -220,7 +231,7 @@ router.get(
       { label: 'Supplier ABN', get: (d) => d.supplier?.abn ?? '' },
       { label: 'Sale type', get: (d) => (d.supplier?.saleType === 'BUSINESS' ? 'Business' : 'Private') },
       { label: 'Lines', get: (d) => d.lineItems.length },
-      { label: 'Materials', get: (d) => d.lineItems.map((li) => li.material?.description).join('; ') },
+      { label: 'Materials', get: (d) => d.lineItems.map((li) => li.description || li.material?.description || '').join('; ') },
       { label: 'Total weight', get: (d) => money(d.lineItems.reduce((s, li) => s + Number(li.netWeight), 0)) },
       { label: 'Tax mode', get: (d) => d.taxMode ?? 'EXCLUSIVE' },
       { label: 'Subtotal (AUD)', get: (d) => money(d.subtotal) },
@@ -353,7 +364,7 @@ router.patch(
       });
     }
 
-    const effectiveTaxMode = data.taxMode ?? existing.taxMode ?? 'EXCLUSIVE';
+    const effectiveTaxMode = data.taxMode ?? existing.taxMode ?? 'INCLUSIVE';
     const discount = {
       discountType: data.discountType ?? existing.discountType,
       discountValue:

@@ -69,6 +69,20 @@
     width: 100% !important;
     font-size: 10.5pt;
     line-height: 1.35;
+
+    /* On screen the sheet is min-h-[297mm] so it looks like a full page of A4.
+       In print that is a bug: @page takes 12mm off the top and 14mm off the
+       bottom, leaving 271mm of printable area, so a 297mm box cannot fit and
+       always pushed a blank second page. Match the box to what actually prints
+       — the footer still sits at the bottom, on one page. */
+    min-height: calc(297mm - 12mm - 14mm) !important;
+    height: auto !important;
+  }
+
+  /* A single sheet must not be broken up by a stray break from a child. */
+  .print-sheet > section,
+  .print-sheet > div {
+    break-inside: auto;
   }
 
   a {

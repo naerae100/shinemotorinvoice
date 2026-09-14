@@ -159,16 +159,16 @@ export default function ClientsPage() {
                   <td className="px-5 py-3 text-steel-500">
                     {[c.address, c.suburb].filter(Boolean).join(', ') || '—'}
                   </td>
-                  <td className="px-5 py-3 text-right">
+                  <td className="whitespace-nowrap px-5 py-3"><div className="flex items-center justify-end gap-1.5">
                     <Link to={`/clients/${c.id}`}
-                      className="mr-1 rounded-md border border-steel-200 px-2.5 py-1 text-xs font-semibold text-steel-700 hover:bg-paper">
+                      className="inline-flex h-7 items-center rounded-md border border-steel-200 px-3 text-xs font-semibold text-steel-700 transition-colors hover:border-steel-300 hover:bg-paper">
                       View
                     </Link>
                     <button onClick={() => setForm(c)}
-                      className="rounded-md border border-steel-200 px-2.5 py-1 text-xs font-semibold text-steel-700 hover:bg-paper">
+                      className="inline-flex h-7 items-center rounded-md border border-steel-200 px-3 text-xs font-semibold text-steel-700 transition-colors hover:border-steel-300 hover:bg-paper">
                       Edit
                     </button>
-                  </td>
+                  </div></td>
                 </tr>
               ))
             )}

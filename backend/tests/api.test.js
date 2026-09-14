@@ -119,9 +119,38 @@ suite('dockets — totals', () => {
     assert.equal(Number(res.body.docket.total), 1000);
   });
 
-  test('taxMode defaults to EXCLUSIVE when the client sends none', async () => {
+  // The yard quotes a rate per kilo with GST already in it, so a new docket
+  // assumes inclusive rather than adding 10% to the number the operator typed.
+  test('taxMode defaults to INCLUSIVE when the client sends none', async () => {
     const res = await createDocket({});
-    assert.equal(res.body.docket.taxMode, 'EXCLUSIVE');
+    assert.equal(res.body.docket.taxMode, 'INCLUSIVE');
+    assert.equal(Number(res.body.docket.total), 1000, 'the quoted price is the total');
+    assert.equal(Number(res.body.docket.gst), 90.91, 'GST is inside it');
+  });
+
+  test('a one-off grade can be typed onto a docket without a material record', async () => {
+    const res = await createDocket({
+      lineItems: [{ description: 'Mixed brass turnings', netWeight: 12.345, price: 6.789 }],
+    });
+    assert.equal(res.status, 201);
+    const li = res.body.docket.lineItems[0];
+    assert.equal(li.materialId, null);
+    assert.equal(li.description, 'Mixed brass turnings');
+    assert.equal(Number(li.value), 83.81, '12.345 x 6.789 rounded to the cent');
+  });
+
+  test('a docket line with neither a material nor a description is rejected', async () => {
+    const res = await createDocket({ lineItems: [{ netWeight: 5, price: 2 }] });
+    assert.equal(res.status, 400);
+  });
+
+  test('prices carry more than two decimals', async () => {
+    const res = await createDocket({
+      lineItems: [{ description: 'Bright copper wire', netWeight: 19, price: 2.990988 }],
+    });
+    assert.equal(res.status, 201);
+    assert.equal(Number(res.body.docket.lineItems[0].price), 2.990988, 'the rate is kept as typed');
+    assert.equal(Number(res.body.docket.lineItems[0].value), 56.83, 'only the value is rounded');
   });
 
   test('an unrecognised taxMode is rejected rather than silently defaulted', async () => {

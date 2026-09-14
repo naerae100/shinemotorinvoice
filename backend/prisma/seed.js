@@ -77,10 +77,12 @@ async function main() {
     abn: '96 167 579 179',
     acn: '167 579 179',
     address: '8 Noonan Rd, Ingleburn NSW 2565, Australia',
-    phone: '+61 2 8712 6999',
-    mobile: '+61 4 351 350 80',
+    // The numbers the yard actually answers. `phone` is the general line printed
+    // first on every document; `mobile` is pickups and bin drops.
+    phone: '0413 222 171',
+    mobile: '0412 709 418',
     fax: '+61 2 8712 9548',
-    email: 'info@shinemotor.com.au',
+    email: 'shinemotorcorporation@gmail.com',
     website: 'www.shinemotor.com.au',
     // Kept for anything still reading CompanySettings; the invoice itself takes
     // its payment details from BankAccount, one row per currency (below).

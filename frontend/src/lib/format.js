@@ -17,6 +17,23 @@ export function formatMoney(n, currency = 'AUD') {
   }).format(Number(n) || 0)}`;
 }
 
+/**
+ * A rate per unit, shown to as many decimals as were actually entered.
+ *
+ * Scrap is bought at fractions of a cent per kilo — 2.990988/kg is a real rate,
+ * not a typo — so rounding the rate column to two places would print a number
+ * the supplier never agreed to, and one that does not reproduce the line value.
+ * At least 2 decimals so whole dollars still read as money; at most 6.
+ */
+export function formatRate(n) {
+  const v = Number(n) || 0;
+  const typed = (String(v).split('.')[1] || '').length;
+  return new Intl.NumberFormat('en-AU', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: Math.min(Math.max(typed, 2), 6),
+  }).format(v);
+}
+
 /** Plain grouped number — for weights and quantities, where a currency symbol would be wrong. */
 export function formatNumber(n, dp = 2) {
   return new Intl.NumberFormat('en-AU', {

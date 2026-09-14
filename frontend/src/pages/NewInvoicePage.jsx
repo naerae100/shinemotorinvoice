@@ -544,7 +544,7 @@ export default function NewInvoicePage() {
           </div>
 
           <div className="px-6 py-5">
-            <div className="mb-2 hidden gap-2 text-xs font-medium uppercase tracking-wider text-steel-500 md:grid md:grid-cols-[1fr_1fr_90px_90px_90px_100px_110px_32px]">
+            <div className="mb-2 hidden gap-2 text-xs font-medium uppercase tracking-wider text-steel-500 md:grid md:grid-cols-[minmax(160px,1.2fr)_minmax(150px,1fr)_84px_84px_84px_96px_104px_28px]">
               <div>Material (optional)</div>
               <div>Description</div>
               <div>Gross MT</div>
@@ -561,13 +561,13 @@ export default function NewInvoicePage() {
                 return (
                   <div
                     key={idx}
-                    className="grid grid-cols-2 items-center gap-2 rounded-lg border border-steel-200 bg-paper/60 p-3 md:grid-cols-[1fr_1fr_90px_90px_90px_100px_110px_32px] md:rounded-none md:border-0 md:bg-transparent md:p-0"
+                    className="grid grid-cols-2 items-center gap-2 rounded-lg border border-steel-200 bg-paper/60 p-3 md:grid-cols-[minmax(160px,1.2fr)_minmax(150px,1fr)_84px_84px_84px_96px_104px_28px] md:rounded-none md:border-0 md:bg-transparent md:p-0"
                   >
                     <select
                       aria-label="Material"
                       value={line.materialId}
                       onChange={(e) => updateLine(idx, 'materialId', e.target.value)}
-                      className="col-span-2 rounded-md border border-steel-200 bg-white px-2.5 py-2 text-sm md:col-span-1 md:bg-paper md:focus:bg-white"
+                      className="col-span-2 min-w-0 rounded-md border border-steel-200 bg-white px-2.5 py-2 text-sm md:col-span-1 md:bg-paper md:focus:bg-white"
                     >
                       <option value="">One-off — type below</option>
                       {materials.map((m) => (
@@ -577,7 +577,7 @@ export default function NewInvoicePage() {
                         </option>
                       ))}
                     </select>
-                    <div className="col-span-2 md:col-span-1">
+                    <div className="col-span-2 min-w-0 md:col-span-1">
                       <input
                         aria-label="Description"
                         placeholder="As printed on the invoice"

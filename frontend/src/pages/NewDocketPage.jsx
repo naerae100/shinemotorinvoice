@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { api } from '../lib/api';
 import { formatAud as formatCurrency } from '../lib/format';
 import DiscountField, { applyDiscount } from '../components/DiscountField';
+import MaterialField from '../components/MaterialField';
 
 const PAYG_OPTIONS = [
   { value: 'NOT_APPLICABLE', label: 'Business sale with valid ABN' },
@@ -29,9 +30,10 @@ export default function NewDocketPage({ defaultType = 'PURCHASE_DOCKET' }) {
   const [newSupplier, setNewSupplier] = useState({ saleType: 'PRIVATE' });
   const [isNewSupplier, setIsNewSupplier] = useState(false);
 
-  const [lines, setLines] = useState([{ materialId: '', netWeight: '', price: '' }]);
+  const [lines, setLines] = useState([{ materialId: '', description: '', netWeight: '', price: '' }]);
   const [type, setType] = useState(defaultType);
-  const [taxMode, setTaxMode] = useState('EXCLUSIVE');
+  // Inclusive by default: the rate agreed at the weighbridge already has GST in it.
+  const [taxMode, setTaxMode] = useState('INCLUSIVE');
   const [paygStatement, setPaygStatement] = useState('NOT_APPLICABLE');
 
   useEffect(() => {
@@ -58,7 +60,7 @@ export default function NewDocketPage({ defaultType = 'PURCHASE_DOCKET' }) {
       .then(({ data }) => {
         const d = data.docket;
         setType(d.type);
-        setTaxMode(d.taxMode || 'EXCLUSIVE');
+        setTaxMode(d.taxMode || 'INCLUSIVE');
         setPaygStatement(d.paygStatement || 'NOT_APPLICABLE');
         setSelectedSupplier(d.supplier);
         setSupplierQuery(d.supplier?.name || '');
@@ -73,7 +75,8 @@ export default function NewDocketPage({ defaultType = 'PURCHASE_DOCKET' }) {
         });
         setLines(
           d.lineItems.map((li) => ({
-            materialId: li.materialId,
+            materialId: li.materialId || '',
+            description: li.description || '',
             netWeight: String(li.netWeight),
             price: String(li.price),
           }))
@@ -128,18 +131,27 @@ export default function NewDocketPage({ defaultType = 'PURCHASE_DOCKET' }) {
     setLines((prev) => {
       const next = [...prev];
       next[idx] = { ...next[idx], [field]: value };
-      if (field === 'materialId') {
-        const mat = materialMap[value];
-        if (mat && Number(mat.currentPrice) > 0) {
-          next[idx].price = String(mat.currentPrice);
-        }
-      }
+      return next;
+    });
+  }
+
+  /**
+   * The picker reports a material or a typed one-off. Picking a material fills
+   * the rate from the price list; a rate already typed is left alone, because
+   * the operator may have agreed something different at the weighbridge.
+   */
+  function selectMaterial(idx, { materialId, description, price }) {
+    setLines((prev) => {
+      const next = [...prev];
+      const line = { ...next[idx], materialId, description };
+      if (price != null && Number(price) > 0 && !line.price) line.price = String(price);
+      next[idx] = line;
       return next;
     });
   }
 
   function addLine() {
-    setLines((prev) => [...prev, { materialId: '', netWeight: '', price: '' }]);
+    setLines((prev) => [...prev, { materialId: '', description: '', netWeight: '', price: '' }]);
   }
 
   function removeLine(idx) {
@@ -174,7 +186,9 @@ export default function NewDocketPage({ defaultType = 'PURCHASE_DOCKET' }) {
     e.preventDefault();
     setError('');
 
-    const validLines = lines.filter((l) => l.materialId && l.netWeight && l.price);
+    const validLines = lines.filter(
+      (l) => (l.materialId || l.description?.trim()) && l.netWeight && l.price
+    );
     if (validLines.length === 0) {
       setError('Add at least one material line with weight and price.');
       return;
@@ -219,7 +233,8 @@ export default function NewDocketPage({ defaultType = 'PURCHASE_DOCKET' }) {
         paygStatement,
         ...discount,
         lineItems: validLines.map((l) => ({
-          materialId: l.materialId,
+          materialId: l.materialId || null,
+          description: l.description?.trim() || null,
           netWeight: parseFloat(l.netWeight),
           price: parseFloat(l.price),
         })),
@@ -454,20 +469,12 @@ export default function NewDocketPage({ defaultType = 'PURCHASE_DOCKET' }) {
                     key={idx}
                     className="grid grid-cols-2 items-center gap-2 rounded-lg border border-steel-200 bg-paper/60 p-3 sm:grid-cols-[1fr_110px_110px_120px_32px] sm:rounded-none sm:border-0 sm:bg-transparent sm:p-0"
                   >
-                    <select
-                      aria-label="Material"
+                    <MaterialField
+                      materials={materials}
                       value={line.materialId}
-                      onChange={(e) => updateLine(idx, 'materialId', e.target.value)}
-                      className="col-span-2 rounded-md border border-steel-200 bg-white px-2.5 py-2 text-sm sm:col-span-1 sm:bg-paper sm:focus:bg-white"
-                    >
-                      <option value="">Select material…</option>
-                      {materials.map((m) => (
-                        <option key={m.id} value={m.id}>
-                          {m.code ? `${m.code}. ` : ''}
-                          {m.description}
-                        </option>
-                      ))}
-                    </select>
+                      description={line.description}
+                      onSelect={(picked) => selectMaterial(idx, picked)}
+                    />
                     <input
                       type="number"
                       inputMode="decimal"
@@ -483,7 +490,7 @@ export default function NewDocketPage({ defaultType = 'PURCHASE_DOCKET' }) {
                       type="number"
                       inputMode="decimal"
                       aria-label="Rate"
-                      step="0.01"
+                      step="any"
                       min="0"
                       placeholder="Rate"
                       value={line.price}
