@@ -73,7 +73,7 @@ export default function PackingListDocument({ invoice, settings }) {
         />
       </section>
 
-      <section className="mt-5 grid grid-cols-2 gap-y-4 rounded-lg bg-brand-50/50 border border-brand-100 p-4 sm:grid-cols-4">
+      <section className="mt-5 grid grid-cols-2 gap-y-4 border-t border-b border-ink-900 py-4 sm:grid-cols-4">
         <Detail label="Shipping terms" value={invoice.shippingTerm} mono={false} />
         <Detail label="Port" value={invoice.fasPort} mono={false} />
         <Detail label="Mode of transport" value={invoice.modeOfTransport} mono={false} />
@@ -91,15 +91,15 @@ export default function PackingListDocument({ invoice, settings }) {
         </div>
       )}
 
-      <div className="mt-6 overflow-x-auto print:overflow-visible rounded-t-lg ring-1 ring-ink-200">
-        <table className="w-full min-w-[520px] text-[13px] border-separate border-spacing-0">
+      <div className="mt-6 overflow-x-auto print:overflow-visible">
+        <table className="w-full min-w-[520px] text-[13px] border-collapse">
           <thead>
-            <tr className="bg-brand-900 text-left uppercase tracking-[0.15em] text-white">
-              <th className="w-10 rounded-tl-lg px-4 py-2.5 print:py-2 text-[10px] font-bold">SI. No.</th>
-              <th className="px-2 py-2.5 print:py-2 text-[10px] font-bold">Product</th>
-              <th className="w-28 px-2 py-2.5 print:py-2 text-right text-[10px] font-bold">Gross weight (MT)</th>
-              <th className="w-28 px-2 py-2.5 print:py-2 text-right text-[10px] font-bold">Tare weight (MT)</th>
-              <th className="w-28 rounded-tr-lg px-4 py-2.5 print:py-2 text-right text-[10px] font-bold">
+            <tr className="border-b-2 border-ink-900 text-left uppercase tracking-[0.15em] text-ink-900">
+              <th className="w-10 py-2.5 print:py-2 text-[10px] font-bold">SI. No.</th>
+              <th className="py-2.5 print:py-2 text-[10px] font-bold">Product</th>
+              <th className="w-28 py-2.5 print:py-2 text-right text-[10px] font-bold">Gross weight (MT)</th>
+              <th className="w-28 py-2.5 print:py-2 text-right text-[10px] font-bold">Tare weight (MT)</th>
+              <th className="w-28 py-2.5 print:py-2 text-right text-[10px] font-bold">
                 Net weight (MT)
               </th>
             </tr>
@@ -108,13 +108,13 @@ export default function PackingListDocument({ invoice, settings }) {
             {groups.map((group, gi) => (
               <Fragment key={group.container?.id ?? `loose-${gi}`}>
                 {containers.length > 1 && (
-                  <tr className="bg-brand-50/50">
-                    <td colSpan={5} className="border-b border-brand-100 px-4 py-2 print:py-1.5">
-                      <span className="num text-[11px] font-bold text-brand-900">
+                  <tr>
+                    <td colSpan={5} className="border-b border-ink-200 py-2 print:py-1.5">
+                      <span className="num text-[11px] font-bold text-ink-900">
                         {group.container?.containerNo || 'Not assigned to a container'}
                       </span>
                       {group.container && (
-                        <span className="ml-3 text-[10.5px] font-medium text-brand-700">
+                        <span className="ml-3 text-[10.5px] font-medium text-ink-600">
                           {[
                             group.container.containerType,
                             group.container.seal && `Seal ${group.container.seal}`,
@@ -136,10 +136,10 @@ export default function PackingListDocument({ invoice, settings }) {
                     li.description !== li.material.description;
                   return (
                     <tr key={li.id}>
-                      <td className="num border-b border-ink-100 px-4 py-2.5 print:py-2 align-top text-ink-500 font-medium">
+                      <td className="num border-b border-ink-100 py-2.5 print:py-2 align-top text-ink-500 font-medium">
                         {serial}
                       </td>
-                      <td className="border-b border-ink-100 px-2 py-2.5 print:py-2 align-top text-[13px] font-bold text-ink-900">
+                      <td className="border-b border-ink-100 py-2.5 print:py-2 align-top text-[13px] font-bold text-ink-900">
                         {heading}
                         {li.packageCount && (
                           <span className="font-semibold text-ink-600"> ({li.packageCount})</span>
@@ -150,13 +150,13 @@ export default function PackingListDocument({ invoice, settings }) {
                           </div>
                         )}
                       </td>
-                      <td className="num border-b border-ink-100 px-2 py-2.5 print:py-2 text-right align-top font-semibold text-ink-800">
+                      <td className="num border-b border-ink-100 py-2.5 print:py-2 text-right align-top font-semibold text-ink-800">
                         {weight(li.grossWeightMt)}
                       </td>
-                      <td className="num border-b border-ink-100 px-2 py-2.5 print:py-2 text-right align-top font-semibold text-ink-800">
+                      <td className="num border-b border-ink-100 py-2.5 print:py-2 text-right align-top font-semibold text-ink-800">
                         {weight(li.tareWeightMt)}
                       </td>
-                      <td className="num border-b border-ink-100 px-4 py-2.5 print:py-2 text-right align-top font-bold text-[13px] text-ink-900">
+                      <td className="num border-b border-ink-100 py-2.5 print:py-2 text-right align-top font-bold text-[13px] text-ink-900">
                         {formatNumber(li.netWeightMt, 3)}
                       </td>
                     </tr>
@@ -165,15 +165,15 @@ export default function PackingListDocument({ invoice, settings }) {
               </Fragment>
             ))}
           </tbody>
-          <tfoot className="bg-brand-50/30">
+          <tfoot>
             <tr>
               <td />
-              <td className="px-2 py-3 print:py-2 text-[11.5px] font-bold uppercase tracking-[0.15em] text-brand-900">
+              <td className="py-3 print:py-2 text-[11.5px] font-bold uppercase tracking-[0.15em] text-ink-900">
                 Total net weight
               </td>
               <td />
               <td />
-              <td className="num px-4 py-3 print:py-2 text-right font-bold text-[13.5px] text-brand-900">
+              <td className="num py-3 print:py-2 text-right font-bold text-[13.5px] text-ink-900">
                 {formatNumber(totals.net, 3)}
               </td>
             </tr>
@@ -186,8 +186,8 @@ export default function PackingListDocument({ invoice, settings }) {
           <SignatureBlock settings={settings} className="sm:w-80 shrink-0" />
         </div>
 
-        <div className="rounded-lg bg-brand-50/50 p-4 border border-brand-100">
-          <div className="mb-1.5 text-[10px] font-bold uppercase tracking-[0.15em] text-brand-700 text-center">
+        <div className="border-t border-ink-200 pt-4">
+          <div className="mb-1.5 text-[10px] font-bold uppercase tracking-[0.15em] text-ink-900 text-center">
             Declaration
           </div>
           <p className="text-[12px] font-bold leading-relaxed text-ink-800 text-center max-w-3xl mx-auto">
