@@ -3,7 +3,18 @@ import { Link } from 'react-router-dom';
 import { api } from '../lib/api';
 import ExportButton from '../components/ExportButton';
 
-const BLANK = { name: '', saleType: 'PRIVATE', address: '', suburb: '', state: 'NSW', postcode: '', country: 'Australia', phone: '', email: '', abn: '', licenceNo: '' };
+// Suppliers are local — a Sydney yard buying from people who drive in — so a
+// new one starts on the Australian country code. Buyers are overseas and
+// deliberately do not get this.
+const PHONE_PREFIX = '+61 ';
+
+/** A phone left as just the prefix is not a phone number. */
+const normalisePhone = (v) => {
+  const t = (v || '').trim();
+  return t === '' || t === PHONE_PREFIX.trim() ? null : t;
+};
+
+const BLANK = { name: '', saleType: 'PRIVATE', address: '', suburb: '', state: 'NSW', postcode: '', country: 'Australia', phone: PHONE_PREFIX, email: '', abn: '', licenceNo: '', bankAccountName: '', bankBsb: '', bankAccountNo: '', payId: '' };
 
 const L = 'mb-1 block text-xs font-medium text-steel-500';
 
@@ -46,8 +57,9 @@ export default function ClientsPage() {
     setSaving(true);
     setError('');
     try {
-      if (form.id) await api.patch(`/suppliers/${form.id}`, form);
-      else await api.post('/suppliers', form);
+      const payload = { ...form, phone: normalisePhone(form.phone) };
+      if (form.id) await api.patch(`/suppliers/${form.id}`, payload);
+      else await api.post('/suppliers', payload);
       setForm(null);
       await load();
     } catch {
@@ -70,7 +82,7 @@ export default function ClientsPage() {
           <ExportButton endpoint="/suppliers/export" params={search ? { search } : {}} />
           <button
             onClick={() => setForm({ ...BLANK })}
-            className="rounded-lg bg-copper-500 px-4 py-2.5 text-sm font-semibold text-steel-950 hover:bg-copper-400"
+            className="rounded-lg bg-copper-500 px-4 py-2.5 text-sm font-semibold text-white hover:bg-copper-400"
           >
             + Add client
           </button>
@@ -136,10 +148,36 @@ export default function ClientsPage() {
               <input placeholder="Required for a private scrap sale" value={form.licenceNo || ''}
                 onChange={(e) => setForm({ ...form, licenceNo: e.target.value })} className={`num ${field}`} />
             </Field>
+
+            {/* Payment is EFT, never cash, so where they get paid is part of the
+                record rather than something re-asked at every weighbridge. */}
+            <div className="sm:col-span-6 mt-1 border-t border-steel-200 pt-3">
+              <div className="mb-2 text-xs font-semibold uppercase tracking-wider text-steel-500">
+                Payment details
+              </div>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-6">
+                <Field label="Account name" className="sm:col-span-6">
+                  <input placeholder="As it appears on the account" value={form.bankAccountName || ''}
+                    onChange={(e) => setForm({ ...form, bankAccountName: e.target.value })} className={field} />
+                </Field>
+                <Field label="BSB" className="sm:col-span-2">
+                  <input placeholder="032-372" value={form.bankBsb || ''}
+                    onChange={(e) => setForm({ ...form, bankBsb: e.target.value })} className={`num ${field}`} />
+                </Field>
+                <Field label="Account number" className="sm:col-span-2">
+                  <input placeholder="530914" value={form.bankAccountNo || ''}
+                    onChange={(e) => setForm({ ...form, bankAccountNo: e.target.value })} className={`num ${field}`} />
+                </Field>
+                <Field label="or PayID" className="sm:col-span-2">
+                  <input placeholder="Email or mobile" value={form.payId || ''}
+                    onChange={(e) => setForm({ ...form, payId: e.target.value })} className={field} />
+                </Field>
+              </div>
+            </div>
           </div>
           <div className="mt-4 flex gap-2">
             <button type="submit" disabled={saving}
-              className="rounded-md bg-copper-500 px-4 py-2 text-sm font-semibold text-steel-950 hover:bg-copper-400 disabled:opacity-60">
+              className="rounded-md bg-copper-500 px-4 py-2 text-sm font-semibold text-white hover:bg-copper-400 disabled:opacity-60">
               {saving ? 'Saving…' : 'Save client'}
             </button>
             <button type="button" onClick={() => setForm(null)}

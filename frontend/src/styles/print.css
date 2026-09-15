@@ -75,7 +75,7 @@
     max-width: none !important;
     width: 100% !important;
     font-size: 10.5pt;
-    line-height: 1.35;
+    line-height: 1.25;
 
     /* On screen the sheet is min-h-[297mm] so it looks like a full page of A4.
        In print that is a bug: @page takes 12mm off the top and 14mm off the
@@ -84,6 +84,66 @@
        — the footer still sits at the bottom, on one page. */
     min-height: calc(297mm - 12mm - 14mm) !important;
     height: auto !important;
+  }
+
+  /* On screen these documents are laid out generously, and that is how the
+     yard wants to read them. On paper the same layout runs about 40-70mm past
+     the 271mm a page actually prints, which puts a signature block or a totals
+     plate alone on a second sheet. Everything below compresses for print only;
+     nothing here changes the screen.
+
+     Scoped to `.doc-lines` — the line-item table — rather than every table,
+     because the invoice's bank-details block is a table too and is already at
+     0.5 padding; a blanket rule would have made that one taller. */
+  .print-sheet {
+    font-size: 9.6pt;
+  }
+
+  .print-sheet .doc-lines th,
+  .print-sheet .doc-lines td {
+    padding: 0.2rem 0.4rem !important;
+  }
+
+  /* The letterhead mark is sized for a screen header; on paper it only has to
+     identify the page. */
+  .print-sheet header {
+    padding-bottom: 0.4rem !important;
+  }
+  .print-sheet header img {
+    height: 14mm !important;
+  }
+
+  /* The stamp is rendered at 96px so it reads on screen. At that size on paper
+     it alone is a tenth of the page, and the band holding it was the second
+     largest block in the document after the goods. */
+  .print-sheet img[alt*='Stamp'],
+  .print-sheet img[alt*='stamp'] {
+    height: 16mm !important;
+  }
+
+  /* Vertical rhythm between the bands of the document, and inside them: each
+     band is a row of small labelled cells with their own padding. */
+  .print-sheet > section {
+    margin-top: 0.3rem !important;
+    margin-bottom: 0.3rem !important;
+    padding-top: 0.3rem !important;
+    padding-bottom: 0.3rem !important;
+  }
+  .print-sheet > section > div,
+  .print-sheet > section > div > div {
+    padding-top: 0.2rem !important;
+    padding-bottom: 0.2rem !important;
+  }
+
+  /* Tables that are not the goods — bank details, the reference block — are
+     set relaxed for reading on screen; on paper they are reference data and
+     only need to be legible. */
+  .print-sheet table:not(.doc-lines) {
+    line-height: 1.2 !important;
+  }
+  .print-sheet table:not(.doc-lines) td {
+    padding-top: 0.05rem !important;
+    padding-bottom: 0.05rem !important;
   }
 
   /* A single sheet must not be broken up by a stray break from a child. */

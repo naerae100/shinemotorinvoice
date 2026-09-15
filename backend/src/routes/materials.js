@@ -55,7 +55,10 @@ router.get(
       },
       orderBy: [{ category: 'asc' }, { code: 'asc' }],
     });
-    sendCsv(res, 'shine-price-list', [
+    // The two catalogues must not land on the same filename — downloading both
+    // would silently overwrite the first.
+    const isExport = String(req.query.kind) === 'EXPORT';
+    sendCsv(res, isExport ? 'shine-export-grades' : 'shine-price-list', [
       { label: 'Code', get: (m) => m.code ?? '' },
       { label: 'Material', get: (m) => m.description },
       { label: 'Category', get: (m) => m.category ?? '' },

@@ -75,7 +75,7 @@ export default function UsersPage() {
         </div>
         <button
           onClick={() => setForm({ ...BLANK })}
-          className="rounded-md bg-copper-500 px-4 py-2.5 text-sm font-semibold text-steel-950 hover:bg-copper-400"
+          className="rounded-md bg-copper-500 px-4 py-2.5 text-sm font-semibold text-white hover:bg-copper-400"
         >
           + Add staff member
         </button>
@@ -124,7 +124,7 @@ export default function UsersPage() {
           </div>
           <div className="mt-4 flex gap-2">
             <button type="submit" disabled={saving}
-              className="rounded-md bg-copper-500 px-4 py-2 text-sm font-semibold text-steel-950 hover:bg-copper-400 disabled:opacity-60">
+              className="rounded-md bg-copper-500 px-4 py-2 text-sm font-semibold text-white hover:bg-copper-400 disabled:opacity-60">
               {saving ? 'Saving…' : 'Save'}
             </button>
             <button type="button" onClick={() => setForm(null)}

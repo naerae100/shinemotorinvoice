@@ -6,8 +6,14 @@ import DiscountField, { applyDiscount } from '../components/DiscountField';
 import ComboField from '../components/ComboField';
 
 // Suggestions, not restrictions — every one of these fields accepts free text.
-const SHIPPING_TERMS = ['FAS', 'FOB', 'CFR', 'CIF', 'EXW', 'DAP', 'DDP', 'CPT', 'CIP', 'FCA'];
+// The four the yard actually trades on lead; the rest of the Incoterms follow
+// for the occasional buyer who asks for one. The field stays free text either
+// way — a contract sometimes words the term in a way no list would hold.
+const SHIPPING_TERMS = ['FAS', 'FOB', 'CIF', 'CNF', 'CFR', 'EXW', 'DAP', 'DDP', 'CPT', 'CIP', 'FCA'];
+// Written the way the packing list prints them — "1 x 20FT" is what appears on
+// the document and what the buyer's paperwork quotes back.
 const CONTAINER_TYPES = [
+  '1 x 20FT', '1 x 40FT', '1 x 40FT HC',
   '20ft GP', '40ft GP', '20ft HC', '40ft HC', '45ft HC',
   '20ft Reefer', '40ft Reefer', 'Flat rack', 'Open top', 'Bulk', 'Break bulk',
 ];
@@ -192,6 +198,24 @@ export default function NewInvoicePage({ mode = 'invoice' }) {
   // What a packing slip is for: the figure the invoice will later price.
   const totalNetWeight = lines.reduce((sum, l) => sum + (parseFloat(l.netWeightMt) || 0), 0);
 
+  /**
+   * Grades under their category, for the picker. Categories alphabetical, with
+   * anything uncategorised collected last rather than dropped.
+   */
+  const materialGroups = useMemo(() => {
+    const byCategory = new Map();
+    for (const m of materials) {
+      const key = m.category || 'Other';
+      if (!byCategory.has(key)) byCategory.set(key, []);
+      byCategory.get(key).push(m);
+    }
+    return [...byCategory.entries()].sort(([a], [b]) => {
+      if (a === 'Other') return 1;
+      if (b === 'Other') return -1;
+      return a.localeCompare(b);
+    });
+  }, [materials]);
+
   function updateLine(idx, field, value) {
     setLines((prev) => {
       const next = [...prev];
@@ -354,7 +378,7 @@ export default function NewInvoicePage({ mode = 'invoice' }) {
   }
 
   return (
-    <div className="mx-auto max-w-4xl px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
+    <div className="mx-auto max-w-6xl px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
       <h1 className="font-display text-2xl font-semibold text-steel-900">
         {isPacking
           ? isEdit
@@ -422,9 +446,12 @@ export default function NewInvoicePage({ mode = 'invoice' }) {
           {/* ── Header: reference numbers ─────────────────────────── */}
           <div className={`grid gap-4 border-b border-steel-100 px-4 py-5 sm:px-6 ${isPacking ? 'grid-cols-1 sm:grid-cols-2' : 'grid-cols-1 sm:grid-cols-3'}`}>
             <div>
-              <label className={labelCls}>
-                {isPacking ? 'Packing slip number' : 'Invoice number'}
-              </label>
+              {/* One number, whichever stage it is at. The slip and its invoice
+                  are the same record — the invoice is made from the slip, and
+                  editing either edits both — so they are filed and paid against
+                  a single reference. "Packing slip number" implied a second
+                  series that does not exist. */}
+              <label className={labelCls}>Invoice number</label>
               <input
                 value={invoiceNumber}
                 onChange={(e) => setInvoiceNumber(e.target.value)}
@@ -577,7 +604,7 @@ export default function NewInvoicePage({ mode = 'invoice' }) {
                 <button
                   type="button"
                   onClick={handleAddConsignee}
-                  className="whitespace-nowrap rounded-md bg-copper-500 px-3 py-2 text-sm font-semibold text-steel-950 hover:bg-copper-400"
+                  className="whitespace-nowrap rounded-md bg-copper-500 px-3 py-2 text-sm font-semibold text-white hover:bg-copper-400"
                 >
                   Add
                 </button>
@@ -711,14 +738,27 @@ export default function NewInvoicePage({ mode = 'invoice' }) {
                         className="min-w-0 flex-1 rounded-lg border border-steel-200 bg-paper px-3 py-2 text-sm font-medium focus:bg-white"
                       >
                         <option value="">Select a grade…</option>
-                        {materials.map((m) => (
-                          <option key={m.id} value={m.id}>
-                            {m.code ? `${m.code}. ` : ''}
-                            {m.description}
-                          </option>
+                        {/* Grouped by category. A flat list of 21 trade names —
+                            Talk, Tense, Troma, Night, Druid — says nothing about
+                            what each one is; under "Aluminium" and "Brass" they
+                            are findable without knowing the vocabulary. */}
+                        {materialGroups.map(([category, items]) => (
+                          <optgroup key={category} label={category}>
+                            {items.map((m) => (
+                              <option key={m.id} value={m.id}>
+                                {m.code ? `${m.code}. ` : ''}
+                                {m.description}
+                              </option>
+                            ))}
+                          </optgroup>
                         ))}
                       </select>
-                      {containers.length > 0 && (
+                      {/* Only with more than one container. With a single one
+                          there is nothing to choose — every line is in it — and
+                          the control was just another thing to tab past on every
+                          product. The document still groups by container when a
+                          shipment fills several. */}
+                      {containers.length > 1 && (
                         <select
                           aria-label="Container"
                           value={line.containerIndex}
@@ -884,32 +924,36 @@ export default function NewInvoicePage({ mode = 'invoice' }) {
             {isPacking ? (
               <div className="ml-auto flex max-w-xs items-baseline justify-between border-t border-steel-700 pt-2 text-lg font-semibold text-paper">
                 <span>Total net weight</span>
-                <span className="num text-copper-400">{formatNumber(totalNetWeight, 3)} MT</span>
+                <span className="num text-white">{formatNumber(totalNetWeight, 3)} MT</span>
               </div>
             ) : (
             <div className="ml-auto max-w-xs space-y-1.5">
-              <div className="flex justify-between text-sm text-steel-400">
-                <span>Subtotal</span>
-                <span className="num">{formatMoney(subtotal, currency)}</span>
+              <div className="flex justify-between text-sm">
+                <span className="text-steel-300">Subtotal</span>
+                <span className="num font-semibold text-white">{formatMoney(subtotal, currency)}</span>
               </div>
               {discountAmount > 0 && (
-                <div className="flex justify-between text-sm text-copper-300">
-                  <span>
+                <div className="flex justify-between text-sm">
+                  <span className="text-steel-300">
                     Discount
                     {discount.discountType === 'PERCENT' ? ` (${discount.discountValue}%)` : ''}
                   </span>
-                  <span className="num">− {formatMoney(discountAmount, currency)}</span>
+                  <span className="num font-semibold text-white">
+                    − {formatMoney(discountAmount, currency)}
+                  </span>
                 </div>
               )}
+              {/* Only when GST is being added on top — an export is GST-free and
+                  a local sale adds it, so this line is always real arithmetic. */}
               {applyGst && (
-                <div className="flex justify-between text-sm text-steel-400">
-                  <span>GST (10%)</span>
-                  <span className="num">{formatMoney(gst, currency)}</span>
+                <div className="flex justify-between text-sm">
+                  <span className="text-steel-300">GST (10%)</span>
+                  <span className="num font-semibold text-white">{formatMoney(gst, currency)}</span>
                 </div>
               )}
-              <div className="flex justify-between border-t border-steel-700 pt-2 text-lg font-semibold text-paper">
+              <div className="flex justify-between border-t border-steel-700 pt-2 text-xl font-bold text-white">
                 <span>Total {currency}</span>
-                <span className="num text-copper-400">{formatMoney(total, currency)}</span>
+                <span className="num">{formatMoney(total, currency)}</span>
               </div>
             </div>
             )}
@@ -926,7 +970,7 @@ export default function NewInvoicePage({ mode = 'invoice' }) {
           <button
             type="submit"
             disabled={submitting}
-            className="rounded-md bg-copper-500 px-6 py-3 text-sm font-semibold text-steel-950 shadow-sm transition-colors hover:bg-copper-400 disabled:opacity-60"
+            className="rounded-md bg-copper-500 px-6 py-3 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-copper-400 disabled:opacity-60"
           >
             {submitting
               ? 'Saving…'

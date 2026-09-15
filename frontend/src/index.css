@@ -4,11 +4,19 @@
 
 @layer base {
   html {
-    @apply antialiased;
+    /* Deliberately NOT `antialiased`.
+       On macOS, -webkit-font-smoothing: antialiased drops glyph rendering from
+       subpixel to greyscale, which makes every stroke in the app measurably
+       thinner and lighter. It is a common default and it was a direct cause of
+       the interface reading as too fine to focus on. `auto` restores the
+       system's subpixel rendering, so the same weights look solid. */
+    -webkit-font-smoothing: auto;
+    -moz-osx-font-smoothing: auto;
+    text-rendering: optimizeLegibility;
   }
   body {
-    /* font-medium, not the browser default 400: at 14px on a pale ground the
-       lighter weight is what made the interface hard to read. */
+    /* Numbers and labels are the whole interface here, so the body weight sits
+       a step above the browser default rather than at it. */
     @apply bg-paper text-steel-900 font-sans font-medium;
   }
   /* Headings carry real weight so a page has an obvious top. */

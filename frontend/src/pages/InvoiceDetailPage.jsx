@@ -4,6 +4,7 @@ import { api } from '../lib/api';
 import { getSettings } from '../lib/settings';
 import InvoiceDocument from '../components/documents/InvoiceDocument';
 import PackingListDocument from '../components/documents/PackingListDocument';
+import ExportButton from '../components/ExportButton';
 
 /**
  * A shipment is described by two documents drawn from the same record. They are
@@ -100,9 +101,10 @@ export default function InvoiceDetailPage() {
               </button>
             ))}
           </div>
+          <ExportButton endpoint={`/invoices/${invoice.id}/export`} label="Export CSV" />
           <button
             onClick={() => window.print()}
-            className="rounded-md bg-copper-500 px-4 py-2.5 text-sm font-semibold text-steel-950 hover:bg-copper-400"
+            className="rounded-md bg-copper-500 px-4 py-2.5 text-sm font-semibold text-white hover:bg-copper-400"
           >
             Print / Save PDF
           </button>

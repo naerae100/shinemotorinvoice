@@ -91,7 +91,7 @@ export default function PackingListDocument({ invoice, settings }) {
       )}
 
       <div className="mt-6 overflow-x-auto print:overflow-visible">
-        <table className="w-full min-w-[520px] text-[13px] border-collapse">
+        <table className="doc-lines w-full min-w-[520px] text-[13px] border-collapse">
           <thead>
             <tr className="border-b-2 border-ink-900 text-left uppercase tracking-[0.15em] text-ink-900">
               <th className="w-10 py-2.5 print:py-2 text-[10px] font-bold">SI. No.</th>

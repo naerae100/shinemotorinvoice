@@ -22,6 +22,13 @@ const supplierSchema = z.object({
   saleType: z.enum(['PRIVATE', 'BUSINESS']).default('PRIVATE'),
   abn: z.string().optional().nullable(),
   licenceNo: z.string().optional().nullable(),
+
+  // Where they get paid. Free text rather than validated formats: a BSB is
+  // written with or without the dash, and a PayID is an email or a mobile.
+  bankAccountName: z.string().optional().nullable(),
+  bankBsb: z.string().optional().nullable(),
+  bankAccountNo: z.string().optional().nullable(),
+  payId: z.string().optional().nullable(),
 });
 
 // GET /api/suppliers?search=... — for the autocomplete when starting a new docket
@@ -90,9 +97,17 @@ router.get(
       { label: 'Email', get: (s) => s.email ?? '' },
       { label: 'Address', get: (s) => s.address ?? '' },
       { label: 'Suburb', get: (s) => s.suburb ?? '' },
+      { label: 'State', get: (s) => s.state ?? '' },
       { label: 'Postcode', get: (s) => s.postcode ?? '' },
+      { label: 'Country', get: (s) => s.country ?? '' },
       { label: 'ABN', get: (s) => s.abn ?? '' },
       { label: 'Driver licence', get: (s) => s.licenceNo ?? '' },
+      // Where they get paid. The whole point of holding these is settling a
+      // docket later, so an export that omits them cannot be used to pay anyone.
+      { label: 'Account name', get: (s) => s.bankAccountName ?? '' },
+      { label: 'BSB', get: (s) => s.bankBsb ?? '' },
+      { label: 'Account number', get: (s) => s.bankAccountNo ?? '' },
+      { label: 'PayID', get: (s) => s.payId ?? '' },
       { label: 'Dockets', get: (s) => s.dockets.length },
       { label: 'Lifetime value (AUD)', get: (s) => money(summarise(s).totals) },
       { label: 'First dealt', get: (s) => isoDate(summarise(s).first) },

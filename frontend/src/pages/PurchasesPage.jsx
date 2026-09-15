@@ -103,10 +103,12 @@ export default function PurchasesPage() {
     }
   }
 
+  // Opens on today, like the dashboard. This list is checked to see what has
+  // come in so far — month-to-date buried today's four dockets in a month of
+  // them, and the period is one click wider whenever that is what is wanted.
   const rangeDefaults = useMemo(() => {
-    const today = new Date();
-    const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
-    return { from: toISODate(monthStart), to: toISODate(today) };
+    const today = toISODate(new Date());
+    return { from: today, to: today };
   }, []);
 
   const field =
@@ -142,7 +144,7 @@ export default function PurchasesPage() {
           />
           <Link
             to="/purchases/new"
-            className="rounded-lg bg-copper-500 px-4 py-2.5 text-sm font-semibold text-steel-950 hover:bg-copper-400"
+            className="rounded-lg bg-copper-500 px-4 py-2.5 text-sm font-semibold text-white hover:bg-copper-400"
           >
             + New docket
           </Link>

@@ -14,19 +14,29 @@
  *
  * Assigned in fixed order and never cycled. Purchases is slot 1 because buying
  * scrap is the main business; the blue also echoes the wave in the logo.
- * Sales is the brand copper token (copper-500) unchanged.
+ *
+ * These two did NOT move when the interface palette was retuned from copper to
+ * blue. Blue against orange is the canonical colour-vision-safe pair, and it is
+ * the only thing separating purchases from sales for a viewer who cannot rely on
+ * hue — the ΔE figures above are what that costs to give up. Recolouring sales to
+ * match the new accent would have made the two series near-identical under
+ * protanopia. Interface chrome and data marks are different jobs.
  */
 export const SERIES = {
   purchases: '#2F6FB5',
   sales: '#C17A3D',
 };
 
-/** Recessive chart furniture — one step off the surface, never competing with data. */
+/**
+ * Recessive chart furniture — one step off the surface, never competing with data.
+ * Tracks the retuned steel ramp; the axis label in particular was #587485, which
+ * no longer exists and was too faint to read a value against.
+ */
 export const CHART_INK = {
-  grid: '#E9EFF1',   // steel-100
-  axis: '#A9BCC5',   // steel-300
-  label: '#587485',  // steel-500
-  strong: '#1A2E35', // steel-900
+  grid: '#F1F5F9',   // steel-100
+  axis: '#CBD5E1',   // one step lighter than steel-300: furniture, not data
+  label: '#475569',  // steel-500 — 7.2:1, because axis labels are read
+  strong: '#0F172A', // steel-900
   surface: '#FFFFFF',
 };
 

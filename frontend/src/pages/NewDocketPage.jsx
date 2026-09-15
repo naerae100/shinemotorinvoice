@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { api } from '../lib/api';
 import { formatAud as formatCurrency } from '../lib/format';
@@ -18,6 +18,54 @@ const TAX_MODE_OPTIONS = [
   { value: 'NO_TAX', label: 'No Tax' },
 ];
 
+/**
+ * The supplier fields this form owns, in one place.
+ *
+ * Two paths load a supplier into the form — picking one from the search, and
+ * opening an existing docket to edit — and each used to list the fields by hand.
+ * They drifted: the edit path never loaded `email` or any of the payment
+ * details, and because saving PATCHes the supplier with whatever the form holds,
+ * opening a docket and saving it wrote those back as null. Editing a docket was
+ * quietly erasing the supplier's email and bank account.
+ *
+ * Listing them once means a field added to the form cannot be missed by one path
+ * and blanked by the other.
+ */
+const BLANK_LINE = { materialId: '', description: '', netWeight: '', price: '' };
+const BLANK_LINE_COUNT = 5;
+
+/**
+ * Australian numbers are the overwhelming default for suppliers — this is a
+ * Sydney yard buying from people who drive in — so the field starts on the
+ * country code rather than empty. It is a starting point, not a constraint: the
+ * prefix is editable, and a field left untouched is saved as no phone at all
+ * rather than as the bare prefix (see normalisePhone).
+ *
+ * Deliberately NOT applied to buyers, who are overseas mills and traders.
+ */
+const PHONE_PREFIX = '+61 ';
+
+/** A phone that is still just the prefix is not a phone number. */
+const normalisePhone = (v) => {
+  const t = (v || '').trim();
+  return t === '' || t === PHONE_PREFIX.trim() ? null : t;
+};
+
+const supplierFormValues = (s) => ({
+  name: s?.name || '',
+  saleType: s?.saleType || 'PRIVATE',
+  address: s?.address || '',
+  suburb: s?.suburb || '',
+  phone: s?.phone || PHONE_PREFIX,
+  email: s?.email || '',
+  abn: s?.abn || '',
+  licenceNo: s?.licenceNo || '',
+  bankAccountName: s?.bankAccountName || '',
+  bankBsb: s?.bankBsb || '',
+  bankAccountNo: s?.bankAccountNo || '',
+  payId: s?.payId || '',
+});
+
 export default function NewDocketPage({ defaultType = 'PURCHASE_DOCKET' }) {
   // A purchase docket is quoted to the supplier with GST already in the price —
   // that is the number said at the weighbridge. A tax invoice is the opposite:
@@ -32,10 +80,19 @@ export default function NewDocketPage({ defaultType = 'PURCHASE_DOCKET' }) {
   const [supplierQuery, setSupplierQuery] = useState('');
   const [supplierResults, setSupplierResults] = useState([]);
   const [selectedSupplier, setSelectedSupplier] = useState(null);
-  const [newSupplier, setNewSupplier] = useState({ saleType: 'PRIVATE' });
+  // Built from the same mapper as the picker and the edit path — a fourth
+  // hand-written shape here is exactly how the phone prefix and, before it, the
+  // bank details ended up missing from one path and not another.
+  const [newSupplier, setNewSupplier] = useState(() => supplierFormValues());
   const [isNewSupplier, setIsNewSupplier] = useState(false);
 
-  const [lines, setLines] = useState([{ materialId: '', description: '', netWeight: '', price: '' }]);
+  // A load is rarely one grade. Opening with a single row meant clicking "add
+  // line" for every one of them before any figures could be entered; five rows
+  // is the common case, and blank ones are simply ignored on save — only lines
+  // with a material, a weight and a price are kept.
+  const [lines, setLines] = useState(() =>
+    Array.from({ length: BLANK_LINE_COUNT }, () => ({ ...BLANK_LINE }))
+  );
   const [type, setType] = useState(defaultType);
   // Inclusive by default: the rate agreed at the weighbridge already has GST in it.
   const [taxMode, setTaxMode] = useState(defaultTaxMode);
@@ -73,15 +130,7 @@ export default function NewDocketPage({ defaultType = 'PURCHASE_DOCKET' }) {
         setPaygStatement(d.paygStatement || 'NOT_APPLICABLE');
         setSelectedSupplier(d.supplier);
         setSupplierQuery(d.supplier?.name || '');
-        setNewSupplier({
-          name: d.supplier?.name || '',
-          saleType: d.supplier?.saleType || 'PRIVATE',
-          address: d.supplier?.address || '',
-          suburb: d.supplier?.suburb || '',
-          phone: d.supplier?.phone || '',
-          abn: d.supplier?.abn || '',
-          licenceNo: d.supplier?.licenceNo || '',
-        });
+        setNewSupplier(supplierFormValues(d.supplier));
         setLines(
           d.lineItems.map((li) => ({
             materialId: li.materialId || '',
@@ -160,7 +209,7 @@ export default function NewDocketPage({ defaultType = 'PURCHASE_DOCKET' }) {
   }
 
   function addLine() {
-    setLines((prev) => [...prev, { materialId: '', description: '', netWeight: '', price: '' }]);
+    setLines((prev) => [...prev, { ...BLANK_LINE }]);
   }
 
   function removeLine(idx) {
@@ -170,16 +219,7 @@ export default function NewDocketPage({ defaultType = 'PURCHASE_DOCKET' }) {
   function selectSupplier(s) {
     setSelectedSupplier(s);
     setSupplierQuery(s.name);
-    setNewSupplier({
-      name: s.name,
-      saleType: s.saleType || 'PRIVATE',
-      address: s.address || '',
-      suburb: s.suburb || '',
-      phone: s.phone || '',
-      email: s.email || '',
-      abn: s.abn || '',
-      licenceNo: s.licenceNo || '',
-    });
+    setNewSupplier(supplierFormValues(s));
     setSupplierResults([]);
     setIsNewSupplier(false);
   }
@@ -187,9 +227,17 @@ export default function NewDocketPage({ defaultType = 'PURCHASE_DOCKET' }) {
   function startNewSupplier() {
     setIsNewSupplier(true);
     setSelectedSupplier(null);
-    setNewSupplier({ name: supplierQuery, saleType: 'PRIVATE' });
+    // A genuinely new supplier starts empty, but with every key present so the
+    // inputs stay controlled and a later save cannot send `undefined`.
+    setNewSupplier(supplierFormValues({ name: supplierQuery }));
     setSupplierResults([]);
   }
+
+  // Set by "Save & print" so the submit handler knows to land on the receipt
+  // with the print dialog already opening. A ref rather than state: the click
+  // happens in the same tick as the submit, and a state update would not have
+  // landed by the time handleSubmit reads it.
+  const printAfterSave = useRef(false);
 
   async function handleSubmit(e) {
     e.preventDefault();
@@ -217,10 +265,14 @@ export default function NewDocketPage({ defaultType = 'PURCHASE_DOCKET' }) {
         saleType: newSupplier.saleType || 'PRIVATE',
         address: newSupplier.address || null,
         suburb: newSupplier.suburb || null,
-        phone: newSupplier.phone || null,
+        phone: normalisePhone(newSupplier.phone),
         email: newSupplier.email || null,
         abn: newSupplier.abn || null,
         licenceNo: newSupplier.licenceNo || null,
+        bankAccountName: newSupplier.bankAccountName || null,
+        bankBsb: newSupplier.bankBsb || null,
+        bankAccountNo: newSupplier.bankAccountNo || null,
+        payId: newSupplier.payId || null,
       };
 
       // A picked supplier whose name still matches is updated in place, so edits made
@@ -258,15 +310,18 @@ export default function NewDocketPage({ defaultType = 'PURCHASE_DOCKET' }) {
 
       const pathPrefix = type === 'TAX_INVOICE' ? 'tax-invoices' : 'purchases';
 
+      // The docket page opens on the receipt and prints itself when asked.
+      const suffix = printAfterSave.current ? '?print=receipt' : '';
+
       if (isEdit) {
         await api.patch(`/dockets/${editId}`, payload);
-        navigate(`/${pathPrefix}/${editId}`);
+        navigate(`/${pathPrefix}/${editId}${suffix}`);
         return;
       }
 
       const res = await api.post('/dockets', payload);
       const newDocket = res.data.docket;
-      navigate(`/${pathPrefix}/${newDocket.id}`);
+      navigate(`/${pathPrefix}/${newDocket.id}${suffix}`);
     } catch (err) {
       const apiError = err.response?.data?.error;
       setError(
@@ -275,12 +330,13 @@ export default function NewDocketPage({ defaultType = 'PURCHASE_DOCKET' }) {
       );
     } finally {
       setSubmitting(false);
+      printAfterSave.current = false;
     }
   }
 
   function resetForm() {
     setSuccess(null);
-    setLines([{ materialId: '', netWeight: '', price: '' }]);
+    setLines(Array.from({ length: BLANK_LINE_COUNT }, () => ({ ...BLANK_LINE })));
     setSelectedSupplier(null);
     setSupplierQuery('');
     setIsNewSupplier(false);
@@ -293,7 +349,7 @@ export default function NewDocketPage({ defaultType = 'PURCHASE_DOCKET' }) {
   }
 
   return (
-    <div className="mx-auto max-w-4xl px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
+    <div className="mx-auto max-w-6xl px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
       <h1 className="mb-6 font-display text-2xl font-semibold text-steel-900">
         {isEdit
           ? `Edit ${type === 'TAX_INVOICE' ? 'tax invoice' : 'docket'}`
@@ -373,16 +429,12 @@ export default function NewDocketPage({ defaultType = 'PURCHASE_DOCKET' }) {
               )}
             </div>
 
+            {/* The name is not repeated here. It was: this panel opened with a
+                "Client Name" box holding the same value as the search above it,
+                and the results list dropped straight over that box — so the name
+                being typed was hidden behind a list of other names, in a second
+                field that already said it. One field, typed once. */}
             <div className="mt-4 grid grid-cols-1 gap-3 rounded-md border border-steel-100 bg-paper p-4 sm:grid-cols-2">
-              <input
-                placeholder="Client Name"
-                value={newSupplier.name || supplierQuery || ''}
-                onChange={(e) => {
-                  setSupplierQuery(e.target.value);
-                  setNewSupplier({ ...newSupplier, name: e.target.value });
-                }}
-                className="sm:col-span-2 rounded-md border border-steel-200 px-3 py-2 text-sm"
-              />
                 <input
                   placeholder="Address"
                   value={newSupplier.address || ''}
@@ -428,6 +480,48 @@ export default function NewDocketPage({ defaultType = 'PURCHASE_DOCKET' }) {
                   onChange={(e) => setNewSupplier({ ...newSupplier, abn: e.target.value })}
                   className="rounded-md border border-steel-200 px-3 py-2 text-sm"
                 />
+
+                {/* Saved against the supplier, not the docket, so the next load
+                    from the same seller arrives with these already filled in and
+                    a docket left unpaid can be settled from its own page. */}
+                <div className="sm:col-span-2 mt-1 border-t border-steel-200 pt-3">
+                  <div className="mb-2 text-xs font-semibold uppercase tracking-wider text-steel-500">
+                    Payment details
+                    <span className="ml-2 font-medium normal-case tracking-normal text-steel-400">
+                      Saved to this supplier for next time
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    <input
+                      placeholder="Account name"
+                      value={newSupplier.bankAccountName || ''}
+                      onChange={(e) =>
+                        setNewSupplier({ ...newSupplier, bankAccountName: e.target.value })
+                      }
+                      className="sm:col-span-2 rounded-md border border-steel-200 px-3 py-2 text-sm"
+                    />
+                    <input
+                      placeholder="BSB"
+                      value={newSupplier.bankBsb || ''}
+                      onChange={(e) => setNewSupplier({ ...newSupplier, bankBsb: e.target.value })}
+                      className="num rounded-md border border-steel-200 px-3 py-2 text-sm"
+                    />
+                    <input
+                      placeholder="Account number"
+                      value={newSupplier.bankAccountNo || ''}
+                      onChange={(e) =>
+                        setNewSupplier({ ...newSupplier, bankAccountNo: e.target.value })
+                      }
+                      className="num rounded-md border border-steel-200 px-3 py-2 text-sm"
+                    />
+                    <input
+                      placeholder="or PayID (email or mobile)"
+                      value={newSupplier.payId || ''}
+                      onChange={(e) => setNewSupplier({ ...newSupplier, payId: e.target.value })}
+                      className="sm:col-span-2 rounded-md border border-steel-200 px-3 py-2 text-sm"
+                    />
+                  </div>
+                </div>
               </div>
 
             <button
@@ -553,30 +647,38 @@ export default function NewDocketPage({ defaultType = 'PURCHASE_DOCKET' }) {
             <DiscountField value={discount} onChange={setDiscount} subtotal={subtotal} />
           </div>
 
+          {/* Figures on the dark plate are near-white. They were a mid grey with
+              the total in the accent colour, which measured 4.2:1 and 3.0:1 on
+              this ground — the total, the one number the operator reads back to
+              the supplier, was the least legible thing on the form. */}
           <div className="border-t border-steel-200 bg-steel-950 px-6 py-5">
             <div className="ml-auto max-w-xs space-y-1.5">
-              <div className="flex justify-between text-sm text-steel-400">
-                <span>Subtotal</span>
-                <span className="num">{formatCurrency(subtotal)}</span>
+              <div className="flex justify-between text-sm">
+                <span className="text-steel-300">Subtotal</span>
+                <span className="num font-semibold text-white">{formatCurrency(subtotal)}</span>
               </div>
               {discountAmount > 0 && (
-                <div className="flex justify-between text-sm text-copper-300">
-                  <span>
+                <div className="flex justify-between text-sm">
+                  <span className="text-steel-300">
                     Discount
                     {discount.discountType === 'PERCENT' ? ` (${discount.discountValue}%)` : ''}
                   </span>
-                  <span className="num">− {formatCurrency(discountAmount)}</span>
+                  <span className="num font-semibold text-white">− {formatCurrency(discountAmount)}</span>
                 </div>
               )}
-              {taxMode !== 'NO_TAX' && (
-                <div className="flex justify-between text-sm text-steel-400">
-                  <span>{taxMode === 'INCLUSIVE' ? 'Includes GST' : 'GST (10%)'}</span>
-                  <span className="num">{formatCurrency(gst)}</span>
+              {/* Only when GST is being ADDED. On an inclusive docket the tax is
+                  already inside the total, so the line states a number that is
+                  not part of the sum — it invited adding it on again, and the
+                  printed docket has never shown it either. */}
+              {taxMode === 'EXCLUSIVE' && (
+                <div className="flex justify-between text-sm">
+                  <span className="text-steel-300">GST (10%)</span>
+                  <span className="num font-semibold text-white">{formatCurrency(gst)}</span>
                 </div>
               )}
-              <div className="flex justify-between border-t border-steel-700 pt-2 text-lg font-semibold text-paper">
+              <div className="flex justify-between border-t border-steel-700 pt-2 text-xl font-bold text-white">
                 <span>Total</span>
-                <span className="num text-copper-400">{formatCurrency(total)}</span>
+                <span className="num">{formatCurrency(total)}</span>
               </div>
             </div>
           </div>
@@ -588,13 +690,29 @@ export default function NewDocketPage({ defaultType = 'PURCHASE_DOCKET' }) {
           </div>
         )}
 
-        <div className="mt-6 flex justify-end">
+        <div className="mt-6 flex flex-wrap justify-end gap-3">
           <button
             type="submit"
+            onClick={() => {
+              printAfterSave.current = false;
+            }}
             disabled={submitting}
-            className="rounded-md bg-copper-500 px-6 py-3 text-sm font-semibold text-steel-950 shadow-sm transition-colors hover:bg-copper-400 disabled:opacity-60"
+            className="rounded-md border border-steel-300 bg-white px-6 py-3 text-sm font-semibold text-steel-800 transition-colors hover:bg-paper disabled:opacity-60"
           >
             {submitting ? 'Saving…' : isEdit ? 'Save changes' : 'Save docket'}
+          </button>
+          {/* The weighbridge case: the supplier is standing there waiting for
+              their copy, so saving and printing is one action rather than a
+              save followed by finding the record and choosing a format. */}
+          <button
+            type="submit"
+            onClick={() => {
+              printAfterSave.current = true;
+            }}
+            disabled={submitting}
+            className="rounded-md bg-copper-500 px-6 py-3 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-copper-400 disabled:opacity-60"
+          >
+            {submitting ? 'Saving…' : 'Save & print receipt'}
           </button>
         </div>
       </form>

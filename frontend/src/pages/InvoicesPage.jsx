@@ -21,12 +21,16 @@ const STAGES = {
     newLabel: '+ New invoice',
     basePath: '/export-invoices',
     empty: 'No invoices yet.',
+    noun: 'invoice',
+    blurb: 'Container exports and local sales — GST is set per invoice',
   },
   PACKING_SLIP: {
     title: 'Packing slips',
     newLabel: '+ New packing slip',
     basePath: '/packing-slips',
     empty: 'No packing slips yet. A shipment starts here, then gets priced into an invoice.',
+    noun: 'packing slip',
+    blurb: 'Shipments weighed but not yet priced — the net weight the invoice will bill',
   },
 };
 
@@ -98,24 +102,24 @@ export default function InvoicesPage({ stage = 'INVOICED' }) {
       <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="font-display text-2xl font-semibold text-steel-900">{cfg.title}</h1>
-          <p className="mt-0.5 text-sm text-steel-500">
-            Container exports and local sales — GST is set per invoice
-          </p>
+          <p className="mt-0.5 text-sm text-steel-500">{cfg.blurb}</p>
         </div>
         <div className="flex flex-wrap gap-2">
           <ExportButton
             endpoint="/invoices/export"
+            // `stage` matters: without it the packing-slip list exported the
+            // invoices instead, because the endpoint defaults to priced records.
             params={Object.fromEntries(
-              Object.entries({ search, status, consigneeId, from, to }).filter(([, v]) => v)
+              Object.entries({ search, status, stage, consigneeId, from, to }).filter(([, v]) => v)
             )}
             options={[
-              { label: 'One row per invoice', hint: 'Totals, buyer, container', params: {} },
+              { label: `One row per ${cfg.noun}`, hint: 'Totals, buyer, container', params: {} },
               { label: 'One row per material line', hint: 'Tonnage and price by material', params: { detail: 'lines' } },
             ]}
           />
           <Link
             to={`${cfg.basePath}/new`}
-            className="rounded-lg bg-copper-500 px-4 py-2.5 text-sm font-semibold text-steel-950 hover:bg-copper-400"
+            className="rounded-lg bg-copper-500 px-4 py-2.5 text-sm font-semibold text-white hover:bg-copper-400"
           >
             {cfg.newLabel}
           </Link>

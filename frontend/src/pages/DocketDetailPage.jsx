@@ -1,11 +1,12 @@
-import { useCallback, useEffect, useState } from 'react';
-import { useParams, useNavigate, Link } from 'react-router-dom';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { useParams, useNavigate, useSearchParams, Link } from 'react-router-dom';
 import { format } from 'date-fns';
 import { api } from '../lib/api';
 import { getSettings } from '../lib/settings';
 import { useAuth } from '../context/AuthContext';
 import { formatAud, formatNumber, formatRate, amountInWords } from '../lib/format';
 import ConfirmDialog from '../components/ConfirmDialog';
+import ExportButton from '../components/ExportButton';
 import DocketDocument, { PAYG_LABELS } from '../components/documents/DocketDocument';
 import DocketReceipt from '../components/documents/DocketReceipt';
 
@@ -109,6 +110,10 @@ export default function DocketDetailPage() {
   const [busy, setBusy] = useState(false);
   const [dialog, setDialog] = useState(null);
   const [view, setView] = useState('record');
+  const [searchParams, setSearchParams] = useSearchParams();
+  // "Save & print" on the entry form lands here with ?print=receipt.
+  const wantsReceiptPrint = searchParams.get('print') === 'receipt';
+  const printed = useRef(false);
 
   const load = useCallback(
     () => api.get(`/dockets/${id}`).then((res) => setDocket(res.data.docket)),
@@ -130,6 +135,30 @@ export default function DocketDetailPage() {
       .then((res) => setEvents(res.data.events))
       .catch(() => setEvents([]));
   }, [id, isAdmin]);
+
+  useEffect(() => {
+    if (wantsReceiptPrint) setView('receipt');
+  }, [wantsReceiptPrint]);
+
+  /**
+   * Print once, after the receipt is actually on the page.
+   *
+   * The receipt measures its own rendered height to set the page size, and that
+   * has to have happened before the dialog opens or the slip is cut to the wrong
+   * length. Waiting a frame past paint is what makes the measurement real; the
+   * ref guards against a second dialog if anything re-renders, and the query
+   * parameter is cleared so a refresh or a back-navigation does not reprint.
+   */
+  useEffect(() => {
+    if (!wantsReceiptPrint || printed.current) return;
+    if (!docket || !settings || view !== 'receipt') return;
+    printed.current = true;
+    const t = setTimeout(() => {
+      window.print();
+      setSearchParams({}, { replace: true });
+    }, 450);
+    return () => clearTimeout(t);
+  }, [wantsReceiptPrint, docket, settings, view, setSearchParams]);
 
   const runAction = async (fn, message) => {
     setBusy(true);
@@ -230,7 +259,12 @@ export default function DocketDetailPage() {
             {isVoid ? (
               <button
                 className={btn}
-                disabled={busy}
+                disabled={busy || !isAdmin}
+                title={
+                  !isAdmin
+                    ? 'Only an administrator can restore a voided docket.'
+                    : undefined
+                }
                 onClick={() =>
                   runAction(
                     () => api.post(`/dockets/${docket.id}/restore`),
@@ -243,7 +277,12 @@ export default function DocketDetailPage() {
             ) : (
               <button
                 className={btn}
-                disabled={busy}
+                disabled={busy || !isAdmin}
+                title={
+                  !isAdmin
+                    ? 'Only an administrator can void a docket. Voiding reverses a purchase record, so it sits with whoever signs off the books.'
+                    : undefined
+                }
                 onClick={() =>
                   setDialog({
                     kind: 'void',
@@ -257,9 +296,15 @@ export default function DocketDetailPage() {
                 Void
               </button>
             )}
+            {/* The printed docket is for the supplier; this is the same record
+                as data, for a return or a reconciliation. */}
+            <ExportButton
+              endpoint={`/dockets/${docket.id}/export`}
+              label="Export CSV"
+            />
             <button
               onClick={() => window.print()}
-              className="rounded-md bg-copper-500 px-4 py-2 text-xs font-semibold text-steel-950 hover:bg-copper-400"
+              className="rounded-md bg-copper-500 px-4 py-2 text-xs font-semibold text-white hover:bg-copper-400"
             >
               Print {view === 'receipt' ? 'receipt' : 'docket'}
             </button>
@@ -355,6 +400,42 @@ export default function DocketDetailPage() {
                   </Field>
                 </div>
               </dl>
+
+              {/* Payment is EFT, never cash, and the transfer often happens after
+                  the load has already gone. These are shown on the record so the
+                  docket can be paid from the screen that says what is owed,
+                  rather than from a second lookup. */}
+              {(s?.bankBsb || s?.bankAccountNo || s?.payId || s?.bankAccountName) && (
+                <div className="mt-3 rounded-lg border border-steel-200 bg-paper px-3 py-2.5">
+                  <div className="mb-1.5 text-[10px] font-bold uppercase tracking-[0.1em] text-steel-500">
+                    Pay to
+                  </div>
+                  <dl className="grid grid-cols-2 gap-x-4 gap-y-2">
+                    {s?.bankAccountName && (
+                      <div className="col-span-2">
+                        <Field label="Account name">{s.bankAccountName}</Field>
+                      </div>
+                    )}
+                    {s?.bankBsb && (
+                      <Field label="BSB" mono>
+                        {s.bankBsb}
+                      </Field>
+                    )}
+                    {s?.bankAccountNo && (
+                      <Field label="Account no." mono>
+                        {s.bankAccountNo}
+                      </Field>
+                    )}
+                    {s?.payId && (
+                      <div className="col-span-2">
+                        <Field label="PayID" mono>
+                          {s.payId}
+                        </Field>
+                      </div>
+                    )}
+                  </dl>
+                </div>
+              )}
             </Card>
 
             <Card title="Purchase">

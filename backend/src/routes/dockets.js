@@ -179,6 +179,90 @@ router.get(
  * `detail=lines` gives one row per material line instead of one per document,
  * which is what you want for working out volumes by material.
  */
+/**
+ * GET /api/dockets/:id/export — one docket as a spreadsheet.
+ *
+ * One row per material line, with the docket and supplier repeated on every
+ * row. That redundancy is the point: a single-row-per-docket file with the
+ * materials crammed into one cell cannot be sorted, filtered or summed, and a
+ * two-section file with a header block above a table is not a table at all.
+ * Every row standing on its own is what lets the file be pasted straight into
+ * a return or a reconciliation.
+ *
+ * No route conflict with '/export' above: that is one path segment and this is
+ * two, so Express never confuses the two.
+ */
+router.get(
+  '/:id/export',
+  requireAuth,
+  asyncHandler(async (req, res) => {
+    const d = await prisma.docket.findUnique({
+      where: { id: req.params.id },
+      include: DETAIL_INCLUDE,
+    });
+    if (!d) return res.status(404).json({ error: 'Docket not found' });
+
+    const typeName = d.type === 'TAX_INVOICE' ? 'Tax invoice' : 'Purchase docket';
+    const rows = d.lineItems.length ? d.lineItems : [null];
+
+    sendCsv(
+      res,
+      `shine-docket-${d.docketNumber}`,
+      [
+        { label: 'Docket no.', get: () => d.docketNumber },
+        { label: 'Type', get: () => typeName },
+        { label: 'Status', get: () => d.status },
+        { label: 'Date', get: () => isoDate(d.date) },
+        { label: 'Time', get: () => isoDateTime(d.createdAt).slice(11) },
+        { label: 'Issued', get: () => (d.issuedAt ? isoDateTime(d.issuedAt) : '') },
+
+        { label: 'Supplier', get: () => d.supplier?.name ?? '' },
+        { label: 'Sale type', get: () => (d.supplier?.saleType === 'BUSINESS' ? 'Business' : 'Private') },
+        { label: 'Supplier phone', get: () => d.supplier?.phone ?? '' },
+        { label: 'Supplier email', get: () => d.supplier?.email ?? '' },
+        { label: 'Supplier address', get: () =>
+            [d.supplier?.address, d.supplier?.suburb, d.supplier?.state, d.supplier?.postcode]
+              .filter(Boolean).join(', ') },
+        { label: 'Supplier ABN', get: () => d.supplier?.abn ?? '' },
+        { label: 'Driver licence', get: () => d.supplier?.licenceNo ?? '' },
+        { label: 'Pay to account name', get: () => d.supplier?.bankAccountName ?? '' },
+        { label: 'Pay to BSB', get: () => d.supplier?.bankBsb ?? '' },
+        { label: 'Pay to account no.', get: () => d.supplier?.bankAccountNo ?? '' },
+        { label: 'Pay to PayID', get: () => d.supplier?.payId ?? '' },
+
+        { label: 'Vehicle rego', get: () => d.vehicleReg ?? '' },
+        { label: 'Vehicle model', get: () => d.vehicleModel ?? '' },
+        { label: 'VIN', get: () => d.vehicleVin ?? '' },
+        { label: 'PAYG statement', get: () => d.paygStatement ?? '' },
+
+        { label: 'Line', get: (li) => (li ? d.lineItems.indexOf(li) + 1 : '') },
+        { label: 'Material code', get: (li) => li?.material?.code ?? '' },
+        { label: 'Material', get: (li) => (li ? li.description || li.material?.description || '' : '') },
+        { label: 'Category', get: (li) => li?.material?.category ?? '' },
+        { label: 'Unit', get: (li) => li?.material?.unit ?? '' },
+        { label: 'Net weight', get: (li) => (li ? money(li.netWeight) : '') },
+        { label: 'Rate (AUD)', get: (li) => (li ? money(li.price) : '') },
+        { label: 'Line value (AUD)', get: (li) => (li ? money(li.value) : '') },
+
+        // Document totals repeat on each row. A spreadsheet summing this column
+        // would double-count, so the header says so rather than leaving it to
+        // be discovered.
+        { label: 'Tax mode', get: () => d.taxMode ?? 'EXCLUSIVE' },
+        { label: 'Docket subtotal (AUD)', get: () => money(d.subtotal) },
+        { label: 'Docket discount (AUD)', get: () => money(d.discountAmount) },
+        { label: 'Docket GST (AUD)', get: () => money(d.gst) },
+        { label: 'Docket total (AUD)', get: () => money(d.total) },
+
+        { label: 'Processed by', get: () => d.createdBy?.name ?? '' },
+        { label: 'Amended by', get: () => d.editedBy?.name ?? '' },
+        { label: 'Void reason', get: () => d.voidReason ?? '' },
+        { label: 'Notes', get: () => d.notes ?? '' },
+      ],
+      rows
+    );
+  })
+);
+
 router.get(
   '/export',
   requireAuth,
@@ -447,6 +531,9 @@ router.patch(
 router.post(
   '/:id/void',
   requireAuth,
+  // Voiding reverses a financial record. Creating and issuing a docket is the
+  // yard's ordinary work, so those stay open to STAFF; undoing one is not.
+  requireRole('ADMIN'),
   asyncHandler(async (req, res) => {
     const reason = z.string().min(1).safeParse(req.body?.reason);
     if (!reason.success) {
@@ -488,6 +575,8 @@ router.post(
 router.post(
   '/:id/restore',
   requireAuth,
+  // Admin-only for the same reason as void: this reverses the reversal.
+  requireRole('ADMIN'),
   asyncHandler(async (req, res) => {
     const existing = await prisma.docket.findUnique({
       where: { id: req.params.id },

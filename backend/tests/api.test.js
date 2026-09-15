@@ -18,7 +18,7 @@ if (!hasTestDatabase) {
   console.warn(
     '\n  ! SKIPPING %d API integration tests — TEST_DATABASE_URL is not set.\n' +
       '    These need a scratch PostgreSQL database. See tests/helpers.js.\n',
-    69
+    74
   );
 }
 
@@ -31,7 +31,7 @@ const suite = hasTestDatabase ? describe : describe.skip;
 if (!hasTestDatabase) {
   test(
     'API integration tests are configured',
-    { skip: 'TEST_DATABASE_URL is not set — 69 API tests did NOT run' },
+    { skip: 'TEST_DATABASE_URL is not set — 74 API tests did NOT run' },
     () => {}
   );
 }
@@ -955,5 +955,97 @@ suite('filters and reports', () => {
     assert.equal(res.status, 200);
     assert.ok(res.body.lifetime.count > 0);
     assert.ok(Array.isArray(res.body.materials));
+  });
+});
+
+suite('permissions — reversing a financial record is admin-only', () => {
+  let staffToken;
+
+  before(async () => {
+    if (!hasTestDatabase) return;
+    const email = `staff-${Date.now()}@example.com`;
+    const password = 'StaffPassword12345';
+    const created = await api('POST', '/users', {
+      token,
+      body: { name: 'Yard Staff', email, password, role: 'STAFF' },
+    });
+    assert.equal(created.status, 201, 'staff fixture user was created');
+    const login = await api('POST', '/auth/login', { body: { email, password } });
+    staffToken = login.body.token;
+    assert.ok(staffToken, 'staff fixture user can sign in');
+  });
+
+  // The boundary is deliberately narrow: buying scrap is the yard's job, so
+  // STAFF must keep full use of the thing they do eighty times a day. Only the
+  // reversal is held back.
+  test('STAFF can still create and issue a docket', async () => {
+    const created = await api('POST', '/dockets', {
+      token: staffToken,
+      body: { supplierId: fx.supplier.id, lineItems: [line(fx.materials[0].id)] },
+    });
+    assert.equal(created.status, 201, 'staff can buy');
+
+    const issued = await api('POST', `/dockets/${created.body.docket.id}/issue`, {
+      token: staffToken,
+    });
+    assert.equal(issued.status, 200, 'staff can hand the supplier their copy');
+  });
+
+  test('STAFF cannot void a docket, and the docket is untouched', async () => {
+    const { body } = await createDocket();
+    const id = body.docket.id;
+
+    const refused = await api('POST', `/dockets/${id}/void`, {
+      token: staffToken,
+      body: { reason: 'should not be allowed' },
+    });
+    assert.equal(refused.status, 403);
+
+    // A 403 that still performed the write would be the worst of both worlds.
+    const after = await api('GET', `/dockets/${id}`, { token });
+    assert.equal(after.body.docket.status, 'ACTIVE');
+    assert.equal(after.body.docket.voidReason, null);
+  });
+
+  test('STAFF cannot restore a voided docket', async () => {
+    const { body } = await createDocket();
+    const id = body.docket.id;
+    await api('POST', `/dockets/${id}/void`, { token, body: { reason: 'admin voided it' } });
+
+    const refused = await api('POST', `/dockets/${id}/restore`, { token: staffToken });
+    assert.equal(refused.status, 403);
+
+    const after = await api('GET', `/dockets/${id}`, { token });
+    assert.equal(after.body.docket.status, 'VOID', 'still void');
+  });
+
+  test('STAFF cannot void an export invoice', async () => {
+    const created = await api('POST', '/invoices', {
+      token,
+      body: {
+        invoiceNumber: `PERM-${Math.random().toString(36).slice(2, 10)}`,
+        consigneeId: fx.consignee.id,
+        lineItems: [{ materialId: fx.materials[0].id, netWeightMt: 10, pricePerMt: 1000 }],
+      },
+    });
+    assert.equal(created.status, 201);
+
+    const refused = await api('POST', `/invoices/${created.body.invoice.id}/void`, {
+      token: staffToken,
+      body: { reason: 'should not be allowed' },
+    });
+    assert.equal(refused.status, 403);
+  });
+
+  test('an ADMIN is still able to void and restore', async () => {
+    const { body } = await createDocket();
+    const id = body.docket.id;
+    const voided = await api('POST', `/dockets/${id}/void`, {
+      token,
+      body: { reason: 'admin may' },
+    });
+    assert.equal(voided.status, 200);
+    const restored = await api('POST', `/dockets/${id}/restore`, { token });
+    assert.equal(restored.status, 200);
   });
 });

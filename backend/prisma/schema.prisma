@@ -133,6 +133,24 @@ model Supplier {
   saleType  String   @default("PRIVATE")
   abn       String?
   licenceNo String?
+
+  /// Where this supplier is paid.
+  ///
+  /// The yard does not always pay at the weighbridge — a load is taken, the
+  /// docket is written, and the transfer happens later that day or the next.
+  /// Holding the account on the supplier rather than re-asking every time means
+  /// an unpaid docket can be settled from the record, and the second load from
+  /// the same seller already has the details on it.
+  ///
+  /// Payment is EFT, never cash: NSW scrap metal law requires it, which is why
+  /// this belongs on the record rather than being a convenience.
+  bankAccountName String?
+  bankBsb         String?
+  bankAccountNo   String?
+  /// PayID is an alternative to BSB/account — an email or mobile. Either may be
+  /// filled in; plenty of private sellers have only one of the two.
+  payId           String?
+
   createdAt DateTime @default(now())
 
   dockets Docket[]

@@ -124,7 +124,7 @@ export default function DashboardPage() {
         <div className="flex gap-2">
           <Link
             to="/purchases/new"
-            className="rounded-lg bg-copper-500 px-4 py-2.5 text-sm font-semibold text-steel-950 shadow-sm transition-colors hover:bg-copper-400"
+            className="rounded-lg bg-copper-500 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-copper-400"
           >
             + New purchase
           </Link>
@@ -157,7 +157,11 @@ export default function DashboardPage() {
 
       {data && (
         <div className={loading ? 'opacity-60 transition-opacity' : 'transition-opacity'}>
-          <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          {/* Five tiles in a four-column grid left the fifth stranded on a row
+              of its own beside three empty cells. Five columns at the wide
+              breakpoint gives one clean row, and the steps below it stay even
+              rather than orphaning a tile at every width. */}
+          <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-5">
             <StatTile
               label="Scrap bought"
               value={formatAud(data.purchases.total)}

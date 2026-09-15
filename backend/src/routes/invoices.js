@@ -270,12 +270,106 @@ router.get(
 );
 
 // Declared before '/:id' so Express does not read "export" as an invoice id.
+/**
+ * GET /api/invoices/:id/export — one shipment as a spreadsheet.
+ *
+ * One row per line, with the invoice, buyer and container repeated on every row,
+ * for the same reason as the docket export: every row has to stand on its own
+ * to be sortable and summable.
+ *
+ * Serves a packing slip too. An unpriced slip exports with its weights and
+ * blank money columns rather than columns of zeroes, because a zero is a price
+ * that was agreed and nothing is what a slip actually says.
+ */
+router.get(
+  '/:id/export',
+  requireAuth,
+  asyncHandler(async (req, res) => {
+    const found = await prisma.exportInvoice.findUnique({
+      where: { id: req.params.id },
+      include: DETAIL_INCLUDE,
+    });
+    if (!found) return res.status(404).json({ error: 'Invoice not found' });
+
+    const inv = withParsedSnapshot(found);
+    const isSlip = inv.stage === 'PACKING_SLIP';
+    const cur = inv.currency || 'AUD';
+    const bank = inv.bankSnapshot;
+    const rows = inv.lineItems.length ? inv.lineItems : [null];
+    const containerOf = (li) =>
+      li?.container ?? inv.containers.find((c) => c.id === li?.containerId) ?? null;
+    // Blank, not 0.00, while the shipment is still only weighed.
+    const cash = (v) => (isSlip ? '' : money(v));
+
+    sendCsv(
+      res,
+      `shine-${isSlip ? 'packing-slip' : 'invoice'}-${inv.invoiceNumber}`,
+      [
+        { label: 'Document', get: () => (isSlip ? 'Packing slip' : 'Commercial invoice') },
+        { label: 'Invoice no.', get: () => inv.invoiceNumber },
+        { label: 'Status', get: () => inv.status },
+        { label: 'Date', get: () => isoDate(inv.date) },
+        { label: 'Issued', get: () => (inv.issuedAt ? isoDateTime(inv.issuedAt) : '') },
+        { label: 'Contract no.', get: () => inv.contractNo ?? '' },
+        { label: 'PO no.', get: () => inv.poNumber ?? '' },
+
+        { label: 'Buyer', get: () => inv.consignee?.name ?? '' },
+        { label: 'Buyer country', get: () => inv.consignee?.country ?? '' },
+        { label: 'Buyer email', get: () => inv.consignee?.email ?? '' },
+        { label: 'Buyer phone', get: () => inv.consignee?.phone ?? '' },
+        { label: 'Buyer address', get: () =>
+            [inv.consignee?.street || inv.consignee?.address, inv.consignee?.suburb,
+             inv.consignee?.state, inv.consignee?.postcode, inv.consignee?.country]
+              .filter(Boolean).join(', ') },
+
+        { label: 'Shipping term', get: () => inv.shippingTerm ?? '' },
+        { label: 'Port', get: () => inv.fasPort ?? '' },
+        { label: 'Mode of transport', get: () => inv.modeOfTransport ?? '' },
+        { label: 'Country of origin', get: () => 'Australia' },
+
+        { label: 'Line', get: (li) => (li ? inv.lineItems.indexOf(li) + 1 : '') },
+        { label: 'Container no.', get: (li) => containerOf(li)?.containerNo ?? '' },
+        { label: 'Seal', get: (li) => containerOf(li)?.seal ?? '' },
+        { label: 'Container type', get: (li) => containerOf(li)?.containerType ?? '' },
+        { label: 'Grade', get: (li) => (li ? li.description || li.material?.description || '' : '') },
+        { label: 'Category', get: (li) => li?.material?.category ?? '' },
+        { label: 'Packages', get: (li) => li?.packageCount ?? '' },
+        { label: 'Gross weight (MT)', get: (li) => (li?.grossWeightMt == null ? '' : money(li.grossWeightMt)) },
+        { label: 'Tare weight (MT)', get: (li) => (li?.tareWeightMt == null ? '' : money(li.tareWeightMt)) },
+        { label: 'Net weight (MT)', get: (li) => (li ? money(li.netWeightMt) : '') },
+        { label: `Price per MT (${cur})`, get: (li) => (li ? cash(li.pricePerMt) : '') },
+        { label: `Line amount (${cur})`, get: (li) => (li ? cash(li.total) : '') },
+
+        { label: 'Currency', get: () => (isSlip ? '' : cur) },
+        { label: `Invoice subtotal (${cur})`, get: () => cash(inv.subtotal) },
+        { label: `Invoice discount (${cur})`, get: () => cash(inv.discountAmount) },
+        { label: `Invoice GST (${cur})`, get: () => cash(inv.gst) },
+        { label: `Invoice total (${cur})`, get: () => cash(inv.total) },
+
+        { label: 'Pay to bank', get: () => bank?.bankName ?? '' },
+        { label: 'Pay to BSB', get: () => bank?.bankBsb ?? '' },
+        { label: 'Pay to account no.', get: () => bank?.bankAccountNo ?? '' },
+        { label: 'Pay to SWIFT', get: () => bank?.bankSwift ?? '' },
+
+        { label: 'Raised by', get: () => inv.createdBy?.name ?? '' },
+        { label: 'Amended by', get: () => inv.editedBy?.name ?? '' },
+        { label: 'Void reason', get: () => inv.voidReason ?? '' },
+      ],
+      rows
+    );
+  })
+);
+
 router.get(
   '/export',
   requireAuth,
   asyncHandler(async (req, res) => {
     const where = buildInvoiceWhere(req.query);
     const byLine = String(req.query.detail) === 'lines';
+    // Packing slips and invoices are two different lists, so they must not land
+    // on the same filename — exporting both would overwrite the first.
+    const slips = String(req.query.stage) === 'PACKING_SLIP';
+    const base = slips ? 'shine-packing-slips' : 'shine-sales';
 
     const invoices = await prisma.exportInvoice.findMany({
       where,
@@ -291,7 +385,7 @@ router.get(
 
     if (byLine) {
       const rows = invoices.flatMap((i) => i.lineItems.map((li) => ({ i, li })));
-      return sendCsv(res, 'shine-sales-by-material', [
+      return sendCsv(res, `${base}-by-material`, [
         { label: 'Invoice no.', get: (r) => r.i.invoiceNumber },
         { label: 'Status', get: (r) => r.i.status },
         { label: 'Date', get: (r) => isoDate(r.i.date) },
@@ -310,7 +404,7 @@ router.get(
       ], rows);
     }
 
-    sendCsv(res, 'shine-sales', [
+    sendCsv(res, base, [
       { label: 'Invoice no.', get: (i) => i.invoiceNumber },
       { label: 'Status', get: (i) => i.status },
       { label: 'Date', get: (i) => isoDate(i.date) },
@@ -573,6 +667,8 @@ router.patch(
 router.post(
   '/:id/void',
   requireAuth,
+  // Voiding reverses a financial record — see the note on the docket route.
+  requireRole('ADMIN'),
   asyncHandler(async (req, res) => {
     const reason = z.string().min(1).safeParse(req.body?.reason);
     if (!reason.success) {
@@ -604,6 +700,7 @@ router.post(
 router.post(
   '/:id/restore',
   requireAuth,
+  requireRole('ADMIN'),
   asyncHandler(async (req, res) => {
     const existing = await prisma.exportInvoice.findUnique({
       where: { id: req.params.id },

@@ -86,7 +86,7 @@ export default function BuyersPage() {
           <ExportButton endpoint="/consignees/export" />
           <button
             onClick={() => setForm({ ...BLANK })}
-            className="rounded-lg bg-copper-500 px-4 py-2.5 text-sm font-semibold text-steel-950 hover:bg-copper-400"
+            className="rounded-lg bg-copper-500 px-4 py-2.5 text-sm font-semibold text-white hover:bg-copper-400"
           >
             + Add buyer
           </button>
@@ -198,7 +198,7 @@ export default function BuyersPage() {
           </div>
           <div className="mt-4 flex gap-2">
             <button type="submit" disabled={saving}
-              className="rounded-md bg-copper-500 px-4 py-2 text-sm font-semibold text-steel-950 hover:bg-copper-400 disabled:opacity-60">
+              className="rounded-md bg-copper-500 px-4 py-2 text-sm font-semibold text-white hover:bg-copper-400 disabled:opacity-60">
               {saving ? 'Saving…' : 'Save buyer'}
             </button>
             <button type="button" onClick={() => setForm(null)}
