@@ -8,11 +8,11 @@ import { format } from 'date-fns';
 
 export function Detail({ label, value, mono = true }) {
   return (
-    <div className="border-b border-ink-200 px-3 py-2">
-      <div className="text-[9px] font-bold uppercase tracking-[0.12em] text-ink-500">
+    <div className="flex flex-col gap-0.5 py-2">
+      <div className="text-[9px] font-bold uppercase tracking-[0.15em] text-ink-500">
         {label}
       </div>
-      <div className={`${mono ? 'num' : ''} text-[11px] font-medium text-ink-900`}>
+      <div className={`${mono ? 'num' : ''} text-[12px] font-medium text-ink-900`}>
         {value || '—'}
       </div>
     </div>
@@ -21,12 +21,12 @@ export function Detail({ label, value, mono = true }) {
 
 export function PartyBlock({ heading, name, lines }) {
   return (
-    <div className="px-4 py-3">
-      <div className="mb-1.5 text-[9.5px] font-bold uppercase tracking-[0.12em] text-ink-500">
+    <div className="py-2">
+      <div className="mb-2 text-[10px] font-bold uppercase tracking-[0.15em] text-ink-500">
         {heading}
       </div>
-      <div className="text-[13px] font-bold leading-snug text-ink-900">{name}</div>
-      <div className="mt-1 space-y-0.5 text-[11px] leading-snug text-ink-700">
+      <div className="text-[14px] font-bold leading-snug text-ink-900">{name}</div>
+      <div className="mt-1 space-y-0.5 text-[12px] leading-snug text-ink-700">
         {lines.filter(Boolean).map((line, i) => (
           <div key={i}>{line}</div>
         ))}
@@ -47,12 +47,12 @@ const joinDot = (parts) => parts.filter(Boolean).join('  ·  ');
 export function Masthead({ settings, roleLabel }) {
   const companyName = settings?.companyName || 'Shine Motor Corporation Pty Ltd';
   return (
-    <header className="flex flex-col gap-4 border-b-2 border-ink-900 pb-5 sm:flex-row sm:items-start sm:justify-between sm:gap-8">
+    <header className="flex flex-col gap-4 border-b-2 border-ink-900 pb-6 sm:flex-row sm:items-start sm:justify-between sm:gap-8">
       <div className="min-w-0 shrink-0">
         {settings?.logoUrl ? (
-          <img src={settings.logoUrl} alt={companyName} className="h-20 object-contain object-left" />
+          <img src={settings.logoUrl} alt={companyName} className="h-24 object-contain object-left" />
         ) : (
-          <div className="font-display text-[19px] font-semibold leading-tight text-ink-900">
+          <div className="font-display text-[22px] font-bold leading-tight text-ink-900">
             {companyName}
           </div>
         )}
@@ -60,27 +60,27 @@ export function Masthead({ settings, roleLabel }) {
 
       <div className="min-w-0 sm:text-right">
         {roleLabel && (
-          <div className="mb-1 text-[9.5px] font-bold uppercase tracking-[0.12em] text-ink-500">
+          <div className="mb-2 text-[10px] font-bold uppercase tracking-[0.15em] text-ink-500">
             {roleLabel}
           </div>
         )}
         {settings?.logoUrl && (
-          <div className="font-display text-[13px] font-semibold leading-tight text-ink-900">
+          <div className="font-display text-[15px] font-bold leading-tight text-ink-900">
             {companyName}
           </div>
         )}
-        <div className="mt-0.5 space-y-0.5 text-[10.5px] leading-snug text-ink-700">
+        <div className="mt-1 space-y-0.5 text-[12px] leading-snug text-ink-700">
           {settings?.address && <div>{settings.address}</div>}
-          <div className="num">
+          <div className="num text-ink-500">
             {joinDot([
               settings?.abn && `ABN ${settings.abn}`,
               settings?.acn && `ACN ${settings.acn}`,
             ])}
           </div>
-          <div className="num">
+          <div className="num text-ink-500">
             {joinDot([settings?.phone, settings?.mobile].filter(Boolean))}
           </div>
-          <div>{joinDot([settings?.email, settings?.website])}</div>
+          <div className="text-ink-500">{joinDot([settings?.email, settings?.website])}</div>
         </div>
       </div>
     </header>
@@ -93,20 +93,20 @@ export function Masthead({ settings, roleLabel }) {
  */
 export function ReferenceBlock({ title, references }) {
   return (
-    <div className="px-4 py-3">
-      <div className="mb-3 font-display text-[21px] font-extrabold uppercase leading-none tracking-[-0.01em] text-ink-900">
+    <div className="py-2">
+      <div className="mb-4 font-display text-[26px] font-bold uppercase leading-none tracking-tight text-ink-900">
         {title}
       </div>
-      <table className="w-full text-[11.5px]">
+      <table className="w-full text-[12px]">
         <tbody>
           {references
             .filter(([, value]) => value)
             .map(([label, value, strong]) => (
               <tr key={label}>
-                <td className="py-1 pr-4 text-[10.5px] uppercase tracking-wide text-ink-500">{label}</td>
+                <td className="py-1.5 pr-4 text-[10px] font-bold uppercase tracking-[0.15em] text-ink-500">{label}</td>
                 <td
-                  className={`num py-1 text-right text-ink-900 ${
-                    strong ? 'text-[15px] font-bold' : 'font-semibold'
+                  className={`num py-1.5 text-right text-ink-900 ${
+                    strong ? 'text-[16px] font-bold' : 'font-medium'
                   }`}
                 >
                   {value}
@@ -129,31 +129,31 @@ export function ReferenceBlock({ title, references }) {
  */
 export function TotalsBlock({ words, rows, total, currency = 'AUD', children }) {
   return (
-    <section className="avoid-break flex flex-col gap-4 border-b border-ink-200 py-3 sm:flex-row sm:items-stretch sm:justify-between sm:gap-6">
-      <div className="flex-1 rounded-xl bg-ink-50 px-4 py-3.5">
-        <div className="text-[9.5px] font-bold uppercase tracking-[0.12em] text-ink-500">
+    <section className="avoid-break mt-8 flex flex-col gap-6 sm:flex-row sm:items-stretch sm:justify-between sm:gap-12">
+      <div className="flex-1 py-2">
+        <div className="text-[10px] font-bold uppercase tracking-[0.15em] text-ink-500">
           Amount in words
         </div>
-        <div className="mt-1.5 text-[12px] font-semibold uppercase leading-snug text-ink-900">
+        <div className="mt-2 text-[13px] font-bold uppercase leading-relaxed text-ink-900">
           {words}
         </div>
-        {children}
+        <div className="mt-6 text-[12px]">{children}</div>
       </div>
-      <div className="w-full shrink-0 sm:w-64">
+      <div className="w-full shrink-0 sm:w-[320px]">
         {rows.map(([label, value]) => (
           <div
             key={label}
-            className="flex justify-between border-b border-ink-200 py-1.5 text-[11.5px]"
+            className="flex justify-between border-b border-ink-200 py-2.5 text-[12px]"
           >
-            <span className="text-ink-500">{label}</span>
-            <span className="num font-medium text-ink-900">{value}</span>
+            <span className="font-medium text-ink-600">{label}</span>
+            <span className="num font-bold text-ink-900">{value}</span>
           </div>
         ))}
-        <div className="mt-2 flex items-baseline justify-between rounded-xl bg-ink-900 px-4 py-3.5">
-          <span className="text-[10px] font-bold uppercase tracking-[0.12em] text-ink-300">
+        <div className="mt-4 flex items-baseline justify-between border-b-4 border-t-2 border-ink-900 py-3">
+          <span className="text-[12px] font-bold uppercase tracking-[0.15em] text-ink-900">
             Total {currency}
           </span>
-          <span className="num text-[20px] font-extrabold tracking-tight text-white">{total}</span>
+          <span className="num text-[24px] font-bold tracking-tight text-ink-900">{total}</span>
         </div>
       </div>
     </section>
@@ -181,7 +181,7 @@ export function SignatureBlock({ settings, className = '' }) {
             src={url}
             alt="Company Stamp"
             aria-hidden="true"
-            className="pointer-events-none h-24 w-24 object-contain mix-blend-multiply"
+            className="pointer-events-none h-32 max-w-[280px] object-contain mix-blend-multiply"
           />
         );
       })()}
