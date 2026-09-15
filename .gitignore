@@ -1,3 +1,7 @@
 node_modules/
 .DS_Store
 *.log
+
+# Throwaway connectivity/debug scripts. These have carried live database
+# credentials into a public repository before — keep them out by default.
+test_*.js
