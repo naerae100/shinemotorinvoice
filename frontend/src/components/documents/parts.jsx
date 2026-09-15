@@ -178,14 +178,17 @@ export function SignatureBlock({ settings, companyName, className = '' }) {
         Authorised signature
       </div>
       <div className="relative mt-auto">
-        {settings?.stampUrl && (
-          <img
-            src={settings.stampUrl}
-            alt=""
-            aria-hidden="true"
-            className="pointer-events-none absolute bottom-7 right-2 h-[86px] w-[86px] object-contain mix-blend-multiply"
-          />
-        )}
+        {(() => {
+          const url = settings?.stampUrl || '/branding/stamp.png';
+          return (
+            <img
+              src={url}
+              alt=""
+              aria-hidden="true"
+              className="pointer-events-none absolute bottom-7 right-2 h-[86px] w-[86px] object-contain mix-blend-multiply"
+            />
+          );
+        })()}
         {/* Height enough for a real signature to fit above the rule. */}
         <div className="h-16" />
         <div className="border-b border-ink-400" />
