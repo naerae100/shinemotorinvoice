@@ -165,7 +165,7 @@ export default function InvoicesPage({ stage = 'INVOICED' }) {
         </select>
       </div>
 
-      <div className="mb-4 flex flex-wrap gap-6 rounded-xl border border-steel-200 bg-white px-5 py-3 shadow-ticket">
+      <div className="mb-4 flex min-w-0 flex-wrap gap-6 rounded-xl border border-steel-200 bg-white px-5 py-3 shadow-ticket">
         <div>
           <div className="text-xs uppercase tracking-wider text-steel-400">Matching invoices</div>
           <div className="num text-lg font-semibold text-steel-900">{totalCount}</div>
@@ -207,7 +207,7 @@ export default function InvoicesPage({ stage = 'INVOICED' }) {
               <th className="px-5 py-3 font-medium">Consignee</th>
               <th className="px-5 py-3 font-medium">Container</th>
               <th className="px-5 py-3 font-medium">Date</th>
-              <th className="px-5 py-3 text-right font-medium">Total (AUD)</th>
+              <th className="px-5 py-3 text-right font-medium">Total</th>
               <th className="px-5 py-3 text-right font-medium">Actions</th>
             </tr>
           </thead>

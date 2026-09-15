@@ -1,8 +1,8 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { format } from 'date-fns';
 import { api } from '../lib/api';
-import { formatAud, formatMoney, formatNumber } from '../lib/format';
+import { addressLines, addressOneLine, formatAud, formatMoney, formatNumber } from '../lib/format';
 import DateRangePicker, { PRESETS } from '../components/DateRangePicker';
 import BarList from '../components/charts/BarList';
 import StatTile from '../components/charts/StatTile';
@@ -21,6 +21,14 @@ function Card({ title, action, children }) {
   );
 }
 
+const SORT_OPTIONS = [
+  { value: 'date-desc', label: 'Newest first' },
+  { value: 'date-asc', label: 'Oldest first' },
+  { value: 'total-desc', label: 'Highest value' },
+  { value: 'total-asc', label: 'Lowest value' },
+  { value: 'ref-asc', label: 'Reference A→Z' },
+];
+
 /**
  * One party's complete history — what they trade, how much, and when. `kind`
  * switches between a supplier (who sells scrap to us) and a consignee (who buys
@@ -35,6 +43,11 @@ export default function PartyDetailPage({ kind }) {
   const [data, setData] = useState(null);
   const [error, setError] = useState('');
 
+  // Documents section — search, sort, type filter
+  const [docSearch, setDocSearch] = useState('');
+  const [docSort, setDocSort] = useState('date-desc');
+  const [docType, setDocType] = useState('ALL');
+
   useEffect(() => {
     let cancelled = false;
     api
@@ -46,11 +59,107 @@ export default function PartyDetailPage({ kind }) {
     };
   }, [kind, id, range.from, range.to]);
 
+  // Merge invoices + packing slips into one unified list for the documents table.
+  const allDocs = useMemo(() => {
+    if (!data) return [];
+    if (isSupplier) {
+      const dockets = (data.dockets ?? []).map((d) => ({
+        id: d.id,
+        ref: `#${d.docketNumber}`,
+        type: d.type === 'TAX_INVOICE' ? 'Tax invoice' : 'Purchase docket',
+        typeBadge: d.type === 'TAX_INVOICE' ? 'bg-brand-100 text-brand-700' : 'bg-steel-100 text-steel-600',
+        container: null,
+        date: d.date,
+        total: d.total,
+        currency: 'AUD',
+        status: d.status,
+        path: `${d.type === 'TAX_INVOICE' ? '/tax-invoices' : '/purchases'}/${d.id}`,
+        editPath: `${d.type === 'TAX_INVOICE' ? '/tax-invoices' : '/purchases'}/${d.id}/edit`,
+      }));
+      return dockets;
+    }
+    const invoices = (data.invoices ?? []).map((inv) => ({
+      id: inv.id,
+      ref: inv.invoiceNumber,
+      type: 'Invoice',
+      typeBadge: 'bg-brand-100 text-brand-700',
+      container: (inv.containers ?? []).map((c) => c.containerNo).filter(Boolean).join(', ') || null,
+      date: inv.date,
+      total: inv.total,
+      currency: inv.currency || 'AUD',
+      status: inv.status,
+      stage: inv.stage || 'INVOICED',
+      path: `/export-invoices/${inv.id}`,
+      editPath: `/export-invoices/${inv.id}/edit`,
+    }));
+    const slips = (data.slips ?? []).map((s) => ({
+      id: s.id,
+      ref: s.invoiceNumber,
+      type: 'Packing slip',
+      typeBadge: 'bg-working-amberDim text-working-amber',
+      container: null,
+      date: s.date,
+      total: null,
+      currency: null,
+      netWeightMt: s.netWeightMt,
+      status: 'ACTIVE',
+      stage: 'PACKING_SLIP',
+      path: `/packing-slips/${s.id}`,
+      editPath: `/packing-slips/${s.id}/edit`,
+    }));
+    return [...invoices, ...slips];
+  }, [data, isSupplier]);
+
+  // Filtered + sorted docs
+  const filteredDocs = useMemo(() => {
+    let list = allDocs;
+
+    // Type filter
+    if (docType !== 'ALL') {
+      list = list.filter((d) => d.type === docType);
+    }
+
+    // Search
+    if (docSearch.trim()) {
+      const q = docSearch.trim().toLowerCase();
+      list = list.filter(
+        (d) =>
+          d.ref?.toLowerCase().includes(q) ||
+          d.container?.toLowerCase().includes(q) ||
+          d.type.toLowerCase().includes(q)
+      );
+    }
+
+    // Sort
+    const [field, dir] = docSort.split('-');
+    list = [...list].sort((a, b) => {
+      if (field === 'date') {
+        const diff = new Date(a.date) - new Date(b.date);
+        return dir === 'asc' ? diff : -diff;
+      }
+      if (field === 'total') {
+        const diff = (a.total ?? 0) - (b.total ?? 0);
+        return dir === 'asc' ? diff : -diff;
+      }
+      if (field === 'ref') {
+        return dir === 'asc' ? (a.ref ?? '').localeCompare(b.ref ?? '') : (b.ref ?? '').localeCompare(a.ref ?? '');
+      }
+      return 0;
+    });
+
+    return list;
+  }, [allDocs, docSearch, docSort, docType]);
+
+  // Unique document types for filter dropdown
+  const docTypes = useMemo(() => {
+    const types = [...new Set(allDocs.map((d) => d.type))];
+    return types.sort();
+  }, [allDocs]);
+
   if (error) return <div className="px-4 py-6 sm:px-6 lg:px-8 lg:py-8 text-sm text-working-red">{error}</div>;
   if (!data) return <div className="px-4 py-6 sm:px-6 lg:px-8 lg:py-8 text-sm text-steel-500">Loading…</div>;
 
   const party = isSupplier ? data.supplier : data.consignee;
-  const docs = isSupplier ? data.dockets : data.invoices;
   const color = isSupplier ? SERIES.purchases : SERIES.sales;
   const listPath = isSupplier ? '/clients' : '/buyers';
   const unit = isSupplier ? 'kg' : 'MT';
@@ -64,37 +173,49 @@ export default function PartyDetailPage({ kind }) {
     salesCount: isSupplier ? 0 : p.salesCount,
   }));
 
+  // Build subtitle from structured address
+  const subtitle = isSupplier
+    ? [
+        party.saleType === 'BUSINESS' ? 'Business' : 'Private',
+        addressOneLine(party),
+        party.phone,
+        party.email,
+        party.abn && `ABN ${party.abn}`,
+        party.licenceNo && `Licence ${party.licenceNo}`,
+      ]
+        .filter(Boolean)
+        .join('  ·  ')
+    : [addressOneLine(party), party.phone, party.email]
+        .filter(Boolean)
+        .join('  ·  ');
+
   return (
     <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
       <Link to={listPath} className="text-sm text-steel-500 hover:text-copper-600">
         ← {isSupplier ? 'Clients' : 'Buyers'}
       </Link>
       <div className="mb-5 mt-1 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
-        <div>
+        <div className="min-w-0">
           <h1 className="font-display text-2xl font-semibold text-steel-900">{party.name}</h1>
-          <p className="mt-0.5 text-sm text-steel-500">
-            {isSupplier
-              ? [
-                  party.saleType === 'BUSINESS' ? 'Business' : 'Private',
-                  [party.address, party.suburb, party.postcode].filter(Boolean).join(', '),
-                  party.phone,
-                  party.email,
-                  party.abn && `ABN ${party.abn}`,
-                  party.licenceNo && `Licence ${party.licenceNo}`,
-                ]
-                  .filter(Boolean)
-                  .join('  ·  ')
-              : [party.address, party.country, party.phone, party.email]
-                  .filter(Boolean)
-                  .join('  ·  ')}
-          </p>
+          {subtitle && (
+            <p className="mt-0.5 text-sm text-steel-500">{subtitle}</p>
+          )}
         </div>
-        <Link
-          to={isSupplier ? `/purchases?supplierId=${party.id}` : `/export-invoices?consigneeId=${party.id}`}
-          className="whitespace-nowrap rounded-md border border-steel-300 bg-white px-4 py-2.5 text-sm font-semibold text-steel-700 hover:bg-paper"
-        >
-          All documents →
-        </Link>
+        <div className="flex shrink-0 gap-2">
+          <Link
+            to={listPath}
+            state={{ editId: party.id }}
+            className="rounded-md border border-steel-300 bg-white px-4 py-2.5 text-sm font-semibold text-steel-700 hover:bg-paper"
+          >
+            Edit
+          </Link>
+          <Link
+            to={isSupplier ? `/purchases?supplierId=${party.id}` : `/export-invoices?consigneeId=${party.id}`}
+            className="rounded-md border border-steel-300 bg-white px-4 py-2.5 text-sm font-semibold text-steel-700 hover:bg-paper"
+          >
+            All documents →
+          </Link>
+        </div>
       </div>
 
       <div className="mb-6 rounded-xl border border-steel-200 bg-white p-3 shadow-ticket">
@@ -208,60 +329,133 @@ export default function PartyDetailPage({ kind }) {
             )}
           </Card>
         )}
+      </div>
 
-        <Card title="Recent documents">
-          {docs.length === 0 ? (
-            <div className="py-8 text-center text-sm text-steel-500">Nothing recorded yet.</div>
-          ) : (
-            <div className="max-h-[420px] overflow-auto">
-              <table className="w-full min-w-[420px] text-sm">
-                <thead className="sticky top-0 bg-white">
-                  <tr className="border-b border-steel-100 text-left text-xs uppercase tracking-wider text-steel-500">
-                    <th className="py-2 font-medium">Ref</th>
-                    <th className="py-2 font-medium">Date</th>
-                    <th className="py-2 text-right font-medium">Total</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {docs.map((doc) => {
-                    const isVoid = doc.status === 'VOID';
-                    const to = isSupplier
-                      ? `${doc.type === 'TAX_INVOICE' ? '/tax-invoices' : '/purchases'}/${doc.id}`
-                      : `/export-invoices/${doc.id}`;
-                    return (
-                      <tr
-                        key={doc.id}
-                        className={`border-b border-steel-100 last:border-0 ${isVoid ? 'opacity-50' : ''}`}
+      {/* ── Full documents table with search and sort ──────────────── */}
+      <div className="rounded-xl border border-steel-200 bg-white shadow-ticket">
+        <div className="flex flex-col gap-3 border-b border-steel-100 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+          <h2 className="font-display text-base font-semibold text-steel-900">
+            All documents
+            <span className="ml-2 text-sm font-normal text-steel-400">
+              {filteredDocs.length} of {allDocs.length}
+            </span>
+          </h2>
+          <div className="flex flex-wrap items-center gap-2">
+            <input
+              type="text"
+              placeholder="Search ref, container…"
+              value={docSearch}
+              onChange={(e) => setDocSearch(e.target.value)}
+              className="w-48 rounded-md border border-steel-200 bg-white px-3 py-1.5 text-sm focus:border-copper-500"
+            />
+            {docTypes.length > 1 && (
+              <select
+                value={docType}
+                onChange={(e) => setDocType(e.target.value)}
+                className="rounded-md border border-steel-200 bg-white px-3 py-1.5 text-sm focus:border-copper-500"
+              >
+                <option value="ALL">All types</option>
+                {docTypes.map((t) => (
+                  <option key={t} value={t}>{t}</option>
+                ))}
+              </select>
+            )}
+            <select
+              value={docSort}
+              onChange={(e) => setDocSort(e.target.value)}
+              className="rounded-md border border-steel-200 bg-white px-3 py-1.5 text-sm focus:border-copper-500"
+            >
+              {SORT_OPTIONS.map((o) => (
+                <option key={o.value} value={o.value}>{o.label}</option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[580px] text-sm">
+            <thead>
+              <tr className="border-b border-steel-100 bg-paper text-left text-xs uppercase tracking-wider text-steel-500">
+                <th className="px-5 py-2.5 font-medium">Reference</th>
+                <th className="px-5 py-2.5 font-medium">Type</th>
+                {!isSupplier && <th className="px-5 py-2.5 font-medium">Container</th>}
+                <th className="px-5 py-2.5 font-medium">Date</th>
+                <th className="px-5 py-2.5 text-right font-medium">Total</th>
+                <th className="px-5 py-2.5 text-right font-medium">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filteredDocs.length === 0 && (
+                <tr>
+                  <td colSpan={isSupplier ? 5 : 6} className="px-5 py-10 text-center text-steel-500">
+                    {docSearch ? 'No documents match your search.' : 'No documents yet.'}
+                  </td>
+                </tr>
+              )}
+              {filteredDocs.map((doc) => {
+                const isVoid = doc.status === 'VOID';
+                return (
+                  <tr
+                    key={doc.id}
+                    className={`border-b border-steel-100 last:border-0 hover:bg-paper ${isVoid ? 'opacity-50' : ''}`}
+                  >
+                    <td className="px-5 py-3">
+                      <Link
+                        to={doc.path}
+                        className={`num font-medium text-steel-900 hover:text-copper-600 ${isVoid ? 'line-through' : ''}`}
                       >
-                        <td className="py-2">
+                        {doc.ref}
+                      </Link>
+                      {isVoid && (
+                        <span className="ml-2 rounded bg-working-redDim px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-working-red">
+                          Void
+                        </span>
+                      )}
+                    </td>
+                    <td className="px-5 py-3">
+                      <span className={`rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide ${doc.typeBadge}`}>
+                        {doc.type}
+                      </span>
+                    </td>
+                    {!isSupplier && (
+                      <td className="num px-5 py-3 text-steel-500">
+                        {doc.container || '—'}
+                      </td>
+                    )}
+                    <td className="px-5 py-3 text-steel-500">
+                      {format(new Date(doc.date), 'd MMM yyyy')}
+                    </td>
+                    <td className="num px-5 py-3 text-right font-medium text-steel-900">
+                      {doc.total != null
+                        ? formatMoney(doc.total, doc.currency || 'AUD')
+                        : doc.netWeightMt != null
+                          ? `${formatNumber(doc.netWeightMt, 3)} MT`
+                          : '—'}
+                    </td>
+                    <td className="whitespace-nowrap px-5 py-3">
+                      <div className="flex items-center justify-end gap-1">
+                        <Link
+                          to={doc.path}
+                          className="rounded-md border border-steel-200 bg-white px-2.5 py-1 text-xs font-semibold text-steel-700 hover:bg-paper"
+                        >
+                          View
+                        </Link>
+                        {!isVoid && (
                           <Link
-                            to={to}
-                            className={`num font-medium text-steel-900 hover:text-copper-600 ${
-                              isVoid ? 'line-through' : ''
-                            }`}
+                            to={doc.editPath}
+                            className="rounded-md border border-steel-200 bg-white px-2.5 py-1 text-xs font-semibold text-steel-700 hover:bg-paper"
                           >
-                            {isSupplier ? `#${doc.docketNumber}` : doc.invoiceNumber}
+                            Edit
                           </Link>
-                        </td>
-                        <td className="py-2 text-steel-500">
-                          {format(new Date(doc.date), 'd MMM yyyy')}
-                        </td>
-                        <td className="num py-2 text-right font-medium text-steel-900">
-                          {/* A buyer's invoice is denominated in its own
-                              currency. Printing every one as AUD stated the
-                              wrong currency on every USD sale on this page. */}
-                          {isSupplier
-                            ? formatAud(doc.total)
-                            : formatMoney(doc.total, doc.currency || 'AUD')}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </Card>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   );

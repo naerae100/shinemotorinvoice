@@ -24,67 +24,61 @@ export default function RowActions({ viewTo, onEdit, onVoid, onRestore, isVoid, 
 
   const item = 'block w-full px-3 py-2 text-left text-sm hover:bg-paper';
 
+  const btn = 'rounded-md border border-steel-200 bg-white px-2.5 py-1 text-xs font-semibold text-steel-700 hover:bg-paper';
+
+  const hasMenu = (!isVoid && onVoid) || (isVoid && onRestore);
+
   return (
     <div className="flex items-center justify-end gap-1" ref={ref}>
-      <Link
-        to={viewTo}
-        className="rounded-md border border-steel-200 bg-white px-2.5 py-1 text-xs font-semibold text-steel-700 hover:bg-paper"
-      >
+      <Link to={viewTo} className={btn}>
         View
       </Link>
-      <div className="relative">
-        <button
-          onClick={() => setOpen((v) => !v)}
-          aria-label="More actions"
-          aria-expanded={open}
-          className="rounded-md border border-steel-200 bg-white px-2 py-1 text-xs font-semibold text-steel-600 hover:bg-paper"
-        >
-          ⋯
+      {!isVoid && onEdit && (
+        <button type="button" onClick={onEdit} className={btn}>
+          Edit
         </button>
-        {open && (
-          <div className="absolute right-0 z-20 mt-1 w-44 overflow-hidden rounded-md border border-steel-200 bg-white py-1 shadow-lg">
-            <Link to={viewTo} className={item} onClick={() => setOpen(false)}>
-              View &amp; print PDF
-            </Link>
-            {!isVoid && (
-              <button
-                className={item}
-                onClick={() => {
-                  setOpen(false);
-                  onEdit();
-                }}
-              >
-                Edit
-              </button>
-            )}
-            {!isVoid && (
-              <button
-                className={`${item} text-working-amber`}
-                onClick={() => {
-                  setOpen(false);
-                  onVoid();
-                }}
-              >
-                Void…
-              </button>
-            )}
-            {isVoid && (
-              <button
-                className={`${item} text-working-green`}
-                onClick={() => {
-                  setOpen(false);
-                  onRestore();
-                }}
-              >
-                Restore
-              </button>
-            )}
-            {/* There is deliberately no "delete" here. A docket or invoice
-                number is a legal reference and must survive; voiding keeps the
-                number and the history while removing the value from totals. */}
-          </div>
-        )}
-      </div>
+      )}
+      {hasMenu && (
+        <div className="relative">
+          <button
+            onClick={() => setOpen((v) => !v)}
+            aria-label="More actions"
+            aria-expanded={open}
+            className="rounded-md border border-steel-200 bg-white px-2 py-1 text-xs font-semibold text-steel-600 hover:bg-paper"
+          >
+            ⋯
+          </button>
+          {open && (
+            <div className="absolute right-0 z-20 mt-1 w-44 overflow-hidden rounded-md border border-steel-200 bg-white py-1 shadow-lg">
+              <Link to={viewTo} className={item} onClick={() => setOpen(false)}>
+                View &amp; print PDF
+              </Link>
+              {!isVoid && (
+                <button
+                  className={`${item} text-working-amber`}
+                  onClick={() => {
+                    setOpen(false);
+                    onVoid();
+                  }}
+                >
+                  Void…
+                </button>
+              )}
+              {isVoid && (
+                <button
+                  className={`${item} text-working-green`}
+                  onClick={() => {
+                    setOpen(false);
+                    onRestore();
+                  }}
+                >
+                  Restore
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
