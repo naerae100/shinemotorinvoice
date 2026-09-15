@@ -72,12 +72,30 @@ export default function InvoiceDetailPage() {
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-3">
-          {isSlip && (
+          {isSlip ? (
             <button
               onClick={() => navigate(`/export-invoices/${invoice.id}/edit`)}
               className="rounded-md border border-steel-300 bg-white px-4 py-2.5 text-sm font-semibold text-steel-800 hover:bg-paper"
             >
               Create sales invoice →
+            </button>
+          ) : (
+            // A priced shipment still has a packing list, and its weights are
+            // still the shipment's weights, so it has to stay editable. Editing
+            // here changes both documents at once — they are one record.
+            <button
+              onClick={() => navigate(`/export-invoices/${invoice.id}/edit`)}
+              disabled={invoice.status === 'VOID' || Boolean(invoice.issuedAt)}
+              title={
+                invoice.issuedAt
+                  ? 'This invoice has been issued to the buyer and can no longer be edited. Void it and raise a replacement.'
+                  : invoice.status === 'VOID'
+                    ? 'A voided invoice cannot be edited. Restore it first.'
+                    : 'Edit the shipment — the invoice and its packing list update together.'
+              }
+              className="rounded-md border border-steel-300 bg-white px-4 py-2.5 text-sm font-semibold text-steel-800 hover:bg-paper disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              Edit
             </button>
           )}
           <div

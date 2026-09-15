@@ -30,7 +30,7 @@ const STAGES = {
     basePath: '/packing-slips',
     empty: 'No packing slips yet. A shipment starts here, then gets priced into an invoice.',
     noun: 'packing slip',
-    blurb: 'Shipments weighed but not yet priced — the net weight the invoice will bill',
+    blurb: 'Every shipment and its weights — a slip stays here after it is priced',
   },
 };
 
@@ -55,15 +55,30 @@ export default function InvoicesPage({ stage = 'INVOICED' }) {
   const [error, setError] = useState('');
   const [dialog, setDialog] = useState(null);
   const [busy, setBusy] = useState(false);
+  // A packing slip does not stop existing when it is priced — it travels to the
+  // buyer alongside the invoice, and its weights are still the ones on the
+  // shipment. So this list shows every shipment by default and lets the
+  // unpriced ones be singled out, rather than hiding a slip the moment an
+  // invoice is raised against it.
+  const [slipFilter, setSlipFilter] = useState('ALL');
+  const isSlipList = stage === 'PACKING_SLIP';
+  const effectiveStage = isSlipList ? slipFilter : stage;
 
   const load = useCallback(() => {
     setLoading(true);
     return api
       .get('/invoices', {
         params: Object.fromEntries(
-          Object.entries({ search, status, stage, consigneeId, from, to, page, pageSize: PAGE_SIZE }).filter(
-            ([, v]) => v !== '' && v != null
-          )
+          Object.entries({
+            search,
+            status,
+            stage: effectiveStage,
+            consigneeId,
+            from,
+            to,
+            page,
+            pageSize: PAGE_SIZE,
+          }).filter(([, v]) => v !== '' && v != null)
         ),
       })
       .then((res) => {
@@ -74,7 +89,7 @@ export default function InvoicesPage({ stage = 'INVOICED' }) {
       })
       .catch(() => setError('Could not load invoices.'))
       .finally(() => setLoading(false));
-  }, [search, status, stage, consigneeId, from, to, page]);
+  }, [search, status, effectiveStage, consigneeId, from, to, page]);
 
   useEffect(() => {
     const t = setTimeout(load, 200);
@@ -110,7 +125,9 @@ export default function InvoicesPage({ stage = 'INVOICED' }) {
             // `stage` matters: without it the packing-slip list exported the
             // invoices instead, because the endpoint defaults to priced records.
             params={Object.fromEntries(
-              Object.entries({ search, status, stage, consigneeId, from, to }).filter(([, v]) => v)
+              Object.entries({ search, status, stage: effectiveStage, consigneeId, from, to }).filter(
+                ([, v]) => v
+              )
             )}
             options={[
               { label: `One row per ${cfg.noun}`, hint: 'Totals, buyer, container', params: {} },
@@ -167,11 +184,38 @@ export default function InvoicesPage({ stage = 'INVOICED' }) {
           <option value="ALL">Include voided</option>
           <option value="VOID">Voided only</option>
         </select>
+        {isSlipList && (
+          <div className="flex rounded-md border border-steel-200 bg-white p-0.5">
+            {[
+              ['ALL', 'All shipments'],
+              ['PACKING_SLIP', 'Not yet priced'],
+              ['INVOICED', 'Priced'],
+            ].map(([value, label]) => (
+              <button
+                key={value}
+                type="button"
+                onClick={() => {
+                  setSlipFilter(value);
+                  setPage(1);
+                }}
+                className={`rounded px-3 py-2 text-sm font-semibold ${
+                  slipFilter === value
+                    ? 'bg-steel-900 text-white'
+                    : 'text-steel-600 hover:bg-paper'
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
       <div className="mb-4 flex min-w-0 flex-wrap gap-6 rounded-xl border border-steel-200 bg-white px-5 py-3 shadow-ticket">
         <div>
-          <div className="text-xs uppercase tracking-wider text-steel-400">Matching invoices</div>
+          <div className="text-xs uppercase tracking-wider text-steel-400">
+            {isSlipList ? 'Matching shipments' : 'Matching invoices'}
+          </div>
           <div className="num text-lg font-semibold text-steel-900">{totalCount}</div>
         </div>
         {filteredTotals.length === 0 && (
@@ -249,6 +293,19 @@ export default function InvoicesPage({ stage = 'INVOICED' }) {
                   {inv.applyGst && !isVoid && (
                     <span className="ml-2 rounded bg-steel-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-steel-600">
                       GST
+                    </span>
+                  )}
+                  {/* On the shipment list a slip and its invoice sit side by
+                      side, so each row has to say which it is. */}
+                  {isSlipList && !isVoid && (
+                    <span
+                      className={`ml-2 rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${
+                        inv.stage === 'PACKING_SLIP'
+                          ? 'bg-working-amberDim text-working-amber'
+                          : 'bg-working-greenDim text-working-green'
+                      }`}
+                    >
+                      {inv.stage === 'PACKING_SLIP' ? 'Not yet priced' : 'Priced'}
                     </span>
                   )}
                 </td>

@@ -18,7 +18,7 @@ if (!hasTestDatabase) {
   console.warn(
     '\n  ! SKIPPING %d API integration tests — TEST_DATABASE_URL is not set.\n' +
       '    These need a scratch PostgreSQL database. See tests/helpers.js.\n',
-    74
+    76
   );
 }
 
@@ -31,7 +31,7 @@ const suite = hasTestDatabase ? describe : describe.skip;
 if (!hasTestDatabase) {
   test(
     'API integration tests are configured',
-    { skip: 'TEST_DATABASE_URL is not set — 74 API tests did NOT run' },
+    { skip: 'TEST_DATABASE_URL is not set — 76 API tests did NOT run' },
     () => {}
   );
 }
@@ -407,6 +407,60 @@ suite('invoices', () => {
     assert.equal(Number(priced.body.invoice.total), 44266.2);
     // And it keeps the number it was created under, as the pair is filed together.
     assert.equal(priced.body.invoice.invoiceNumber, slip.body.invoice.invoiceNumber);
+  });
+
+  test('a priced shipment stays editable, and the invoice follows the weights', async () => {
+    const slip = await createInvoice({
+      stage: 'PACKING_SLIP',
+      lineItems: [{ materialId: fx.materials[0].id, netWeightMt: 20.5, pricePerMt: 0 }],
+    });
+    const id = slip.body.invoice.id;
+
+    await api('PATCH', `/invoices/${id}`, {
+      token,
+      body: {
+        stage: 'INVOICED',
+        lineItems: [{ materialId: fx.materials[0].id, netWeightMt: 20.5, pricePerMt: 900 }],
+      },
+    });
+
+    // A weighbridge correction after pricing has to reach both documents: the
+    // packing list and the invoice are one record, so the total must follow.
+    const corrected = await api('PATCH', `/invoices/${id}`, {
+      token,
+      body: { lineItems: [{ materialId: fx.materials[0].id, netWeightMt: 24.5, pricePerMt: 900 }] },
+    });
+    assert.equal(corrected.status, 200);
+    assert.equal(corrected.body.invoice.stage, 'INVOICED', 'a plain edit does not change stage');
+    assert.equal(Number(corrected.body.invoice.lineItems[0].netWeightMt), 24.5);
+    assert.equal(Number(corrected.body.invoice.total), 22050);
+  });
+
+  test('stage only moves forward — a priced invoice cannot be demoted to a slip', async () => {
+    const slip = await createInvoice({
+      stage: 'PACKING_SLIP',
+      lineItems: [{ materialId: fx.materials[0].id, netWeightMt: 10, pricePerMt: 0 }],
+    });
+    const id = slip.body.invoice.id;
+    await api('PATCH', `/invoices/${id}`, {
+      token,
+      body: {
+        stage: 'INVOICED',
+        lineItems: [{ materialId: fx.materials[0].id, netWeightMt: 10, pricePerMt: 1000 }],
+      },
+    });
+
+    // Opening a priced shipment through its packing-slip view and saving must
+    // not push it back: that would drop a real sale out of every total, report
+    // and buyer ranking with nothing said.
+    const demoted = await api('PATCH', `/invoices/${id}`, {
+      token,
+      body: { stage: 'PACKING_SLIP' },
+    });
+    assert.equal(demoted.status, 409);
+
+    const after = await api('GET', `/invoices/${id}`, { token });
+    assert.equal(after.body.invoice.stage, 'INVOICED', 'still an invoice');
   });
 
   test('an export invoice is GST-free by default', async () => {

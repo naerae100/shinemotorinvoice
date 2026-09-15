@@ -325,8 +325,11 @@ export default function NewInvoicePage({ mode = 'invoice' }) {
         consigneeId,
         currency,
         // Saving the invoice form is what promotes a packing slip; there is no
-        // separate "convert" step to forget.
-        stage: isPacking ? 'PACKING_SLIP' : 'INVOICED',
+        // separate "convert" step to forget. But stage only moves forward: a
+        // shipment already priced stays INVOICED even when it is opened through
+        // its packing-slip view, because the route someone happened to arrive
+        // by must never demote a real sale.
+        stage: loadedStage === 'INVOICED' ? 'INVOICED' : isPacking ? 'PACKING_SLIP' : 'INVOICED',
         ...shipping,
         // A packing slip states no money at all, so it carries no discount and
         // no GST — they would be decisions made before there is a price to

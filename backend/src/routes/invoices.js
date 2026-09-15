@@ -540,6 +540,7 @@ router.patch(
         id: true,
         invoiceNumber: true,
         status: true,
+        stage: true,
         currency: true,
         issuedAt: true,
         applyGst: true,
@@ -558,6 +559,18 @@ router.patch(
       return res.status(409).json({
         error:
           'This invoice has been issued to the buyer and can no longer be edited. Void it and raise a replacement.',
+      });
+    }
+
+    // Stage only ever moves forward. A priced invoice can still be opened and
+    // edited through its packing-slip view — it is one record, so the slip and
+    // the invoice are always the same figures — but saving from that view must
+    // not push it back to PACKING_SLIP, which would drop a real sale out of
+    // every total, report and buyer ranking without anyone being told.
+    if (existing.stage === 'INVOICED' && data.stage === 'PACKING_SLIP') {
+      return res.status(409).json({
+        error:
+          'This shipment has already been priced into an invoice. Edit it here and the packing list updates with it; it cannot be turned back into an unpriced slip.',
       });
     }
 
