@@ -9,7 +9,7 @@ import { format } from 'date-fns';
 export function Detail({ label, value, mono = true }) {
   return (
     <div className="flex flex-col gap-0.5 py-2">
-      <div className="text-[9px] font-bold uppercase tracking-[0.15em] text-ink-500">
+      <div className="text-[9px] font-bold uppercase tracking-[0.15em] text-brand-700">
         {label}
       </div>
       <div className={`${mono ? 'num' : ''} text-[12px] font-medium text-ink-900`}>
@@ -22,7 +22,7 @@ export function Detail({ label, value, mono = true }) {
 export function PartyBlock({ heading, name, lines }) {
   return (
     <div className="py-2">
-      <div className="mb-2 text-[10px] font-bold uppercase tracking-[0.15em] text-ink-500">
+      <div className="mb-1.5 text-[10px] font-bold uppercase tracking-[0.15em] text-brand-700">
         {heading}
       </div>
       <div className="text-[14px] font-bold leading-snug text-ink-900">{name}</div>
@@ -47,12 +47,12 @@ const joinDot = (parts) => parts.filter(Boolean).join('  ·  ');
 export function Masthead({ settings, roleLabel }) {
   const companyName = settings?.companyName || 'Shine Motor Corporation Pty Ltd';
   return (
-    <header className="flex flex-col gap-4 border-b-2 border-ink-900 pb-6 sm:flex-row sm:items-start sm:justify-between sm:gap-8">
+    <header className="flex flex-col gap-4 border-b-[3px] border-brand-900 pb-4 sm:flex-row sm:items-start sm:justify-between sm:gap-8">
       <div className="min-w-0 shrink-0">
         {settings?.logoUrl ? (
-          <img src={settings.logoUrl} alt={companyName} className="h-24 object-contain object-left" />
+          <img src={settings.logoUrl} alt={companyName} className="h-20 object-contain object-left" />
         ) : (
-          <div className="font-display text-[22px] font-bold leading-tight text-ink-900">
+          <div className="font-display text-[22px] font-bold leading-tight text-brand-900">
             {companyName}
           </div>
         )}
@@ -60,12 +60,12 @@ export function Masthead({ settings, roleLabel }) {
 
       <div className="min-w-0 sm:text-right">
         {roleLabel && (
-          <div className="mb-2 text-[10px] font-bold uppercase tracking-[0.15em] text-ink-500">
+          <div className="mb-1 text-[10px] font-bold uppercase tracking-[0.15em] text-brand-700">
             {roleLabel}
           </div>
         )}
         {settings?.logoUrl && (
-          <div className="font-display text-[15px] font-bold leading-tight text-ink-900">
+          <div className="font-display text-[15px] font-bold leading-tight text-brand-900">
             {companyName}
           </div>
         )}
@@ -94,7 +94,7 @@ export function Masthead({ settings, roleLabel }) {
 export function ReferenceBlock({ title, references }) {
   return (
     <div className="py-2">
-      <div className="mb-4 font-display text-[26px] font-bold uppercase leading-none tracking-tight text-ink-900">
+      <div className="mb-3 font-display text-[26px] font-bold uppercase leading-none tracking-tight text-brand-900">
         {title}
       </div>
       <table className="w-full text-[12px]">
@@ -103,9 +103,9 @@ export function ReferenceBlock({ title, references }) {
             .filter(([, value]) => value)
             .map(([label, value, strong]) => (
               <tr key={label}>
-                <td className="py-1.5 pr-4 text-[10px] font-bold uppercase tracking-[0.15em] text-ink-500">{label}</td>
+                <td className="py-1 pr-4 text-[10px] font-bold uppercase tracking-[0.15em] text-brand-700">{label}</td>
                 <td
-                  className={`num py-1.5 text-right text-ink-900 ${
+                  className={`num py-1 text-right text-ink-900 ${
                     strong ? 'text-[16px] font-bold' : 'font-medium'
                   }`}
                 >
@@ -129,31 +129,31 @@ export function ReferenceBlock({ title, references }) {
  */
 export function TotalsBlock({ words, rows, total, currency = 'AUD', children }) {
   return (
-    <section className="avoid-break mt-8 flex flex-col gap-6 sm:flex-row sm:items-stretch sm:justify-between sm:gap-12">
-      <div className="flex-1 py-2">
-        <div className="text-[10px] font-bold uppercase tracking-[0.15em] text-ink-500">
+    <section className="avoid-break mt-6 flex flex-col gap-6 sm:flex-row sm:items-stretch sm:justify-between sm:gap-12">
+      <div className="flex-1 py-1">
+        <div className="text-[10px] font-bold uppercase tracking-[0.15em] text-brand-700">
           Amount in words
         </div>
-        <div className="mt-2 text-[13px] font-bold uppercase leading-relaxed text-ink-900">
+        <div className="mt-1.5 text-[13px] font-bold uppercase leading-relaxed text-ink-900">
           {words}
         </div>
-        <div className="mt-6 text-[12px]">{children}</div>
+        <div className="mt-4 text-[12px]">{children}</div>
       </div>
       <div className="w-full shrink-0 sm:w-[320px]">
         {rows.map(([label, value]) => (
           <div
             key={label}
-            className="flex justify-between border-b border-ink-200 py-2.5 text-[12px]"
+            className="flex justify-between border-b border-ink-200 py-2 text-[12px]"
           >
             <span className="font-medium text-ink-600">{label}</span>
             <span className="num font-bold text-ink-900">{value}</span>
           </div>
         ))}
-        <div className="mt-4 flex items-baseline justify-between border-b-4 border-t-2 border-ink-900 py-3">
-          <span className="text-[12px] font-bold uppercase tracking-[0.15em] text-ink-900">
+        <div className="mt-3 flex items-baseline justify-between border-b-[3px] border-t-2 border-brand-900 py-2.5">
+          <span className="text-[12px] font-bold uppercase tracking-[0.15em] text-brand-900">
             Total {currency}
           </span>
-          <span className="num text-[24px] font-bold tracking-tight text-ink-900">{total}</span>
+          <span className="num text-[24px] font-bold tracking-tight text-brand-900">{total}</span>
         </div>
       </div>
     </section>
@@ -181,7 +181,7 @@ export function SignatureBlock({ settings, className = '' }) {
             src={url}
             alt="Company Stamp"
             aria-hidden="true"
-            className="pointer-events-none h-32 max-w-[280px] object-contain mix-blend-multiply"
+            className="pointer-events-none h-24 max-w-[280px] object-contain mix-blend-multiply"
           />
         );
       })()}
