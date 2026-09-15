@@ -94,9 +94,11 @@ export function Masthead({ settings, roleLabel }) {
 export function ReferenceBlock({ title, references }) {
   return (
     <div className="py-2">
-      <div className="mb-3 font-display text-[26px] font-bold uppercase leading-none tracking-tight text-ink-900">
-        {title}
-      </div>
+      {title && (
+        <div className="mb-3 font-display text-[26px] font-bold uppercase leading-none tracking-tight text-ink-900">
+          {title}
+        </div>
+      )}
       <table className="w-full text-[12px]">
         <tbody>
           {references

@@ -64,7 +64,6 @@ export default function PackingListDocument({ invoice, settings }) {
           />
         </div>
         <ReferenceBlock
-          title="Packing List"
           references={[
             ['Invoice no.', invoice.invoiceNumber, true],
             ['Invoice date', format(new Date(invoice.date), 'dd MMM yyyy')],

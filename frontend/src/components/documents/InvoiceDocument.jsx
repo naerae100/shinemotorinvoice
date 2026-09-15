@@ -38,7 +38,6 @@ export default function InvoiceDocument({ invoice, settings }) {
           />
         </div>
         <ReferenceBlock
-          title="Commercial Invoice"
           references={[
             ['Invoice no.', invoice.invoiceNumber, true],
             ['Invoice date', format(new Date(invoice.date), 'dd MMM yyyy')],
