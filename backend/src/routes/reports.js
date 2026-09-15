@@ -1,5 +1,13 @@
 import { Router } from 'express';
 import { prisma } from '../config/prisma.js';
+import {
+  boundaryInstant,
+  zonedInstant,
+  zonedParts,
+  zonedDayKey,
+  zonedMonthKey,
+  zonedWeekKey,
+} from '../lib/timezone.js';
 import { requireAuth } from '../middleware/auth.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 
@@ -120,29 +128,26 @@ export function invalidateDashboardCache() {
 
 function parseRange(query) {
   const now = new Date();
-  const valid = (d) => d && !Number.isNaN(d.getTime());
+  const here = zonedParts(now);
 
-  let to = query.to ? new Date(String(query.to)) : null;
-  let from = query.from ? new Date(String(query.from)) : null;
+  // Bounds are business dates in the yard's timezone, not the server's. See
+  // src/lib/timezone.js for why that distinction moved a whole day of trading.
+  let to = boundaryInstant(query.to, 'end');
+  let from = boundaryInstant(query.from, 'start');
+
   // Fall back to the current month rather than erroring on a mistyped date.
-  if (!valid(to)) to = now;
-  if (!valid(from)) from = new Date(now.getFullYear(), now.getMonth(), 1);
+  if (!to) to = zonedInstant(here.year, here.month, here.day, 23, 59, 59, 999);
+  if (!from) from = zonedInstant(here.year, here.month, 1);
 
-  if (!String(query.to || '').includes('T')) to.setHours(23, 59, 59, 999);
   return { from, to };
 }
 
-const pad = (n) => String(n).padStart(2, '0');
-const dayKey = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-const monthKey = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}`;
-
-/** Monday-based ISO-ish week key, so a "week" matches how a yard thinks about it. */
-function weekKey(d) {
-  const x = new Date(d);
-  x.setHours(0, 0, 0, 0);
-  x.setDate(x.getDate() - ((x.getDay() + 6) % 7));
-  return dayKey(x);
-}
+// Bucket keys are business days too. Computing them from the server clock put
+// a 9am Sydney docket in the previous day's column, so the chart disagreed with
+// the docket it was drawn from.
+const dayKey = zonedDayKey;
+const monthKey = zonedMonthKey;
+const weekKey = zonedWeekKey;
 
 const KEY_FOR = { day: dayKey, week: weekKey, month: monthKey };
 
@@ -154,19 +159,22 @@ function buildSeries(from, to, granularity, datasets) {
   const keyFn = KEY_FOR[granularity] || dayKey;
   const buckets = new Map();
 
-  const cursor = new Date(from);
-  cursor.setHours(0, 0, 0, 0);
-  if (granularity === 'month') cursor.setDate(1);
-  if (granularity === 'week') cursor.setDate(cursor.getDate() - ((cursor.getDay() + 6) % 7));
+  // Walk business days, not server days. Midday is used as each step's instant
+  // so a daylight-saving change — 2am on a Sunday in April and October — cannot
+  // push a step onto the wrong side of midnight and drop or repeat a column.
+  const start = zonedParts(from);
+  let cursor = zonedInstant(start.year, start.month, start.day, 12);
 
   while (cursor <= to) {
     const key = keyFn(cursor);
     if (!buckets.has(key)) {
       buckets.set(key, Object.fromEntries(Object.keys(datasets).flatMap((n) => [[n, 0], [`${n}Count`, 0]])));
     }
-    if (granularity === 'month') cursor.setMonth(cursor.getMonth() + 1);
-    else if (granularity === 'week') cursor.setDate(cursor.getDate() + 7);
-    else cursor.setDate(cursor.getDate() + 1);
+    const at = zonedParts(cursor);
+    // Date.UTC normalises overflow, so day 32 and month 13 roll over correctly.
+    if (granularity === 'month') cursor = zonedInstant(at.year, at.month + 1, 1, 12);
+    else if (granularity === 'week') cursor = zonedInstant(at.year, at.month, at.day + 7, 12);
+    else cursor = zonedInstant(at.year, at.month, at.day + 1, 12);
   }
 
   for (const [name, rows] of Object.entries(datasets)) {

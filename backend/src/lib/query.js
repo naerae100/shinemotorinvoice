@@ -1,3 +1,5 @@
+import { boundaryInstant } from './timezone.js';
+
 /**
  * Query-string values arrive as arbitrary strings. Passing `Number('abc')` (NaN)
  * or `new Date('nonsense')` (Invalid Date) straight into a Prisma filter makes it
@@ -16,16 +18,16 @@ export function numberFilter(min, max) {
 }
 
 export function dateFilter(from, to) {
-  const start = from ? new Date(String(from)) : null;
-  const end = to ? new Date(String(to)) : null;
-  const validStart = start && !Number.isNaN(start.getTime());
-  const validEnd = end && !Number.isNaN(end.getTime());
-  // A bare date means midnight; take the whole of the closing day.
-  if (validEnd && !String(to).includes('T')) end.setHours(23, 59, 59, 999);
+  // Bare dates are business dates, resolved against the yard's timezone rather
+  // than the server's. `new Date('2026-09-16')` parses as UTC midnight, which on
+  // a UTC host put everything recorded before 10am Sydney into the day before —
+  // see src/lib/timezone.js.
+  const start = boundaryInstant(from, 'start');
+  const end = boundaryInstant(to, 'end');
 
   const filter = {
-    ...(validStart ? { gte: start } : {}),
-    ...(validEnd ? { lte: end } : {}),
+    ...(start ? { gte: start } : {}),
+    ...(end ? { lte: end } : {}),
   };
   return Object.keys(filter).length ? filter : undefined;
 }
