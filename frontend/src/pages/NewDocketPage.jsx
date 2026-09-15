@@ -535,7 +535,11 @@ export default function NewDocketPage({ defaultType = 'PURCHASE_DOCKET' }) {
               onClick={() => setShowVehicle((v) => !v)}
               className="mt-3 text-sm font-medium text-steel-500 hover:text-copper-600"
             >
-              {showVehicle ? '− Hide' : '+ Add'} vehicle details (cash for cars)
+              {/* Was "(cash for cars)". The yard does not pay cash — NSW scrap
+                  metal law requires EFT — so the label described something the
+                  business does not do, on the one form a supplier may be
+                  looking at over the operator's shoulder. */}
+              {showVehicle ? '− Hide' : '+ Add'} vehicle details (end-of-life vehicles)
             </button>
             {showVehicle && (
               <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-3">
