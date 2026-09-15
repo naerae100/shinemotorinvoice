@@ -85,7 +85,7 @@ export default function PackingListDocument({ invoice, settings }) {
   let serial = 0;
 
   return (
-    <div className="print-sheet relative mx-auto flex min-h-[297mm] flex-col rounded-md border border-ink-200 bg-white p-6 shadow-xl sm:p-10 lg:p-12">
+    <div className="print-sheet relative mx-auto flex min-h-[297mm] flex-col rounded-md border border-ink-200 bg-white p-6 shadow-xl sm:p-10 lg:p-12 text-[13px]">
       {invoice.status === 'VOID' && <VoidStamp reason={invoice.voidReason} />}
       <Masthead settings={settings} roleLabel="Exporter / Shipper" />
 
@@ -142,14 +142,14 @@ export default function PackingListDocument({ invoice, settings }) {
       )}
 
       <div className="-mx-1 mt-8 overflow-x-auto px-1 print:mx-0 print:overflow-visible print:px-0">
-        <table className="w-full min-w-[520px] text-[12px]">
+        <table className="w-full min-w-[520px] text-[13px]">
           <thead>
             <tr className="border-b-2 border-ink-900 text-left uppercase tracking-[0.15em] text-ink-900">
-              <th className="w-10 py-3 print:py-2 text-[10px] font-bold">SI. No.</th>
-              <th className="py-3 print:py-2 text-[10px] font-bold">Product</th>
-              <th className="w-28 py-3 print:py-2 text-right text-[10px] font-bold">Gross weight (MT)</th>
-              <th className="w-28 py-3 print:py-2 text-right text-[10px] font-bold">Tare weight (MT)</th>
-              <th className="w-28 py-3 print:py-2 text-right text-[10px] font-bold">
+              <th className="w-10 py-3 print:py-2 text-[11px] font-bold">SI. No.</th>
+              <th className="py-3 print:py-2 text-[11px] font-bold">Product</th>
+              <th className="w-28 py-3 print:py-2 text-right text-[11px] font-bold">Gross weight (MT)</th>
+              <th className="w-28 py-3 print:py-2 text-right text-[11px] font-bold">Tare weight (MT)</th>
+              <th className="w-28 py-3 print:py-2 text-right text-[11px] font-bold">
                 Net weight (MT)
               </th>
             </tr>
@@ -160,11 +160,11 @@ export default function PackingListDocument({ invoice, settings }) {
                 {containers.length > 1 && (
                   <tr className="bg-ink-50">
                     <td colSpan={5} className="border-b border-ink-200 px-3 py-3 print:py-2">
-                      <span className="num text-[11px] font-bold text-ink-900">
+                      <span className="num text-[12px] font-bold text-ink-900">
                         {group.container?.containerNo || 'Not assigned to a container'}
                       </span>
                       {group.container && (
-                        <span className="ml-3 text-[10px] font-medium text-ink-500">
+                        <span className="ml-3 text-[11px] font-medium text-ink-500">
                           {[
                             group.container.containerType,
                             group.container.seal && `Seal ${group.container.seal}`,
@@ -185,30 +185,28 @@ export default function PackingListDocument({ invoice, settings }) {
                     li.material?.description &&
                     li.description !== li.material.description;
                   return (
-                    <tr key={li.id}>
-                      <td className="num border-b border-ink-100 py-4 print:py-2 align-top text-ink-400">
+                  <tr key={li.id}>
+                      <td className="num border-b border-ink-100 py-5 print:py-3 align-top text-ink-500 font-medium">
                         {serial}
                       </td>
-                      <td className="border-b border-ink-100 py-4 print:py-2 align-top text-[13px] font-bold text-ink-900">
+                      <td className="border-b border-ink-100 py-5 print:py-3 align-top text-[14px] font-bold text-ink-900">
                         {heading}
-                        {/* "(13 bags)", "(16 IBC)" — how the goods are made up is
-                            part of what is being declared, not a note about it. */}
                         {li.packageCount && (
-                          <span className="font-medium text-ink-500"> ({li.packageCount})</span>
+                          <span className="font-semibold text-ink-600"> ({li.packageCount})</span>
                         )}
                         {showMaterial && (
-                          <div className="mt-0.5 text-[11px] font-medium text-ink-500">
+                          <div className="mt-1 text-[12px] font-medium text-ink-500">
                             {li.material.description}
                           </div>
                         )}
                       </td>
-                      <td className="num border-b border-ink-100 py-4 print:py-2 text-right align-top font-medium text-ink-800">
+                      <td className="num border-b border-ink-100 py-5 print:py-3 text-right align-top font-semibold text-ink-800">
                         {weight(li.grossWeightMt)}
                       </td>
-                      <td className="num border-b border-ink-100 py-4 print:py-2 text-right align-top font-medium text-ink-800">
+                      <td className="num border-b border-ink-100 py-5 print:py-3 text-right align-top font-semibold text-ink-800">
                         {weight(li.tareWeightMt)}
                       </td>
-                      <td className="num border-b border-ink-100 py-4 print:py-2 text-right align-top font-bold text-ink-900">
+                      <td className="num border-b border-ink-100 py-5 print:py-3 text-right align-top font-bold text-[14px] text-ink-900">
                         {formatNumber(li.netWeightMt, 3)}
                       </td>
                     </tr>
@@ -220,12 +218,12 @@ export default function PackingListDocument({ invoice, settings }) {
           <tfoot>
             <tr>
               <td />
-              <td className="py-4 print:py-2 text-[11px] font-bold uppercase tracking-[0.15em] text-ink-900">
+              <td className="py-5 print:py-3 text-[12px] font-bold uppercase tracking-[0.15em] text-ink-900">
                 Total net weight
               </td>
               <td />
               <td />
-              <td className="num py-4 print:py-2 text-right font-bold text-ink-900">
+              <td className="num py-5 print:py-3 text-right font-bold text-[14px] text-ink-900">
                 {formatNumber(totals.net, 3)}
               </td>
             </tr>
@@ -233,21 +231,23 @@ export default function PackingListDocument({ invoice, settings }) {
         </table>
       </div>
 
-      <section className="avoid-break mt-12 grid grid-cols-1 gap-8 pt-4 sm:grid-cols-2">
-        <div>
-          <div className="mb-1 text-[9.5px] font-bold uppercase tracking-[0.15em] text-brand-600">
+      <section className="avoid-break mt-12 flex flex-col gap-10">
+        <div className="flex justify-end">
+          <SignatureBlock settings={settings} className="sm:w-80 shrink-0" />
+        </div>
+
+        <div className="border-t-2 border-ink-900 pt-8">
+          <div className="mb-3 text-[12px] font-bold uppercase tracking-[0.15em] text-brand-600 text-center">
             Declaration
           </div>
-          <p className="text-[11px] font-bold leading-relaxed text-ink-800">
+          <p className="text-[13px] font-bold leading-relaxed text-ink-800 text-center max-w-3xl mx-auto">
             All the goods are from Australia.
           </p>
-          <p className="mt-1 text-[10px] leading-relaxed text-ink-600">
+          <p className="mt-2 text-[12px] font-medium leading-relaxed text-ink-600 text-center max-w-3xl mx-auto">
             We declare that the particulars given above are true and correct, and that the packages
             described are those presented for shipment.
           </p>
         </div>
-
-        <SignatureBlock settings={settings} className="sm:w-64" />
       </section>
 
       <div className="mt-auto pt-8">
