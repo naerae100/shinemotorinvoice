@@ -259,7 +259,7 @@ export default function PartyDetailPage({ kind }) {
               key: m.material.id,
               label: m.material.description,
               value: m.value,
-              sub: `${formatNumber(m.weight, 2)} ${unit} across ${m.lines} ${m.lines === 1 ? 'line' : 'lines'}`,
+              sub: `${formatNumber(m.weight, 3)} ${unit} across ${m.lines} ${m.lines === 1 ? 'line' : 'lines'}`,
             }))}
             color={color}
             emptyLabel="Nothing in this period."

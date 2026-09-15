@@ -81,7 +81,7 @@ export const materialItem = (m, unit = 'kg') => ({
   key: m.material.id,
   label: m.material.description,
   value: m.value,
-  sub: `${formatNumber(m.weight, 2)} ${unit}`,
+  sub: `${formatNumber(m.weight, 3)} ${unit}`,
 });
 
 export const clientItem = (c) => ({

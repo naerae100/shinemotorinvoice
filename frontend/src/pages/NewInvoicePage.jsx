@@ -867,13 +867,17 @@ export default function NewInvoicePage({ mode = 'invoice' }) {
                       <div className="mt-3 flex flex-wrap items-end justify-between gap-3">
                         <div className="w-40">
                           <label className={labelCls}>Price / MT ({currency})</label>
+                          {/* "any", not "0.01": a contract rate is agreed to
+                              three decimals and the browser rejects anything
+                              off a coarser step, so a real price could not be
+                              typed. The docket form already allowed it. */}
                           <input
                             type="number"
-                            step="0.01"
+                            step="any"
                             min="0"
                             inputMode="decimal"
                             aria-label="Price per MT"
-                            placeholder="0.00"
+                            placeholder="0.000"
                             value={line.pricePerMt}
                             onChange={(e) => updateLine(idx, 'pricePerMt', e.target.value)}
                             className={`num ${field}`}

@@ -1,5 +1,5 @@
 import { format } from 'date-fns';
-import { addressLines, formatMoney, formatNumber, amountInWords } from '../../lib/format';
+import { addressLines, formatMoney, formatNumber, amountInWords, formatRate } from '../../lib/format';
 import {
   Detail,
   PartyBlock,
@@ -101,7 +101,7 @@ export default function InvoiceDocument({ invoice, settings }) {
                     {formatNumber(li.netWeightMt, 3)}
                   </td>
                   <td className="num border-b border-ink-100 py-2.5 print:py-2 text-right align-top font-semibold text-ink-800">
-                    {formatNumber(li.pricePerMt, 2)}
+                    {formatRate(li.pricePerMt)}
                   </td>
                   <td className="num border-b border-ink-100 py-2.5 print:py-2 text-right align-top font-bold text-[13px] text-ink-900">
                     {formatNumber(li.total, 2)}

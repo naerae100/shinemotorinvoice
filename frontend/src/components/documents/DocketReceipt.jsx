@@ -199,7 +199,7 @@ export default function DocketReceipt({ docket, settings }) {
               </div>
               <div className="flex justify-between gap-2 pl-4">
                 <span className="num">
-                  {formatNumber(li.netWeight, 2)} {unit} @ {formatRate(li.price)}
+                  {formatNumber(li.netWeight, 3)} {unit} @ {formatRate(li.price)}
                 </span>
                 <span className="num font-bold">{formatNumber(li.value, 2)}</span>
               </div>
@@ -214,7 +214,7 @@ export default function DocketReceipt({ docket, settings }) {
         label={`Total weight (${docket.lineItems.length} ${
           docket.lineItems.length === 1 ? 'line' : 'lines'
         })`}
-        value={formatNumber(totalWeight, 2)}
+        value={formatNumber(totalWeight, 3)}
       />
 
       {rule}
