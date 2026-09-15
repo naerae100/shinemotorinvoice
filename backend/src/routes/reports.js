@@ -12,6 +12,69 @@ const router = Router();
 const ACTIVE = { status: 'ACTIVE' };
 
 /**
+ * Reporting only ever means priced sales. A packing slip is an ExportInvoice row
+ * too, but it has no prices yet, so counting one would add a zero-value sale to
+ * every average, count and buyer ranking on the dashboard.
+ */
+const SALES = { status: 'ACTIVE', stage: 'INVOICED' };
+
+/**
+ * Shipments grouped by the contract they were shipped under.
+ *
+ * The contract number is the reference a buyer files and pays against, and one
+ * contract routinely covers two or three separate container shipments. Totals
+ * are kept per currency and never added together: a contract part-shipped in
+ * AUD and part in USD has two totals, and one number claiming to be their sum
+ * would be a fiction.
+ *
+ * Shipments with no contract number are collected under a null key rather than
+ * dropped — they are still the buyer's shipments.
+ */
+function buildContracts(shipments) {
+  const byContract = new Map();
+  for (const s of shipments) {
+    const key = s.contractNo || null;
+    if (!byContract.has(key)) {
+      byContract.set(key, {
+        contractNo: key,
+        shipments: [],
+        totals: {},
+        netWeightMt: 0,
+        slipCount: 0,
+        invoiceCount: 0,
+      });
+    }
+    const c = byContract.get(key);
+    const isSlip = s.stage === 'PACKING_SLIP' || s.netWeightMt !== undefined;
+    const net =
+      s.netWeightMt ??
+      (s.lineItems ?? []).reduce((sum, li) => sum + Number(li.netWeightMt), 0);
+    c.netWeightMt += net;
+    if (isSlip) {
+      c.slipCount += 1;
+    } else {
+      c.invoiceCount += 1;
+      const cur = s.currency || 'AUD';
+      c.totals[cur] = (c.totals[cur] ?? 0) + Number(s.total ?? 0);
+    }
+    c.shipments.push({
+      id: s.id,
+      invoiceNumber: s.invoiceNumber,
+      date: s.date,
+      stage: isSlip ? 'PACKING_SLIP' : 'INVOICED',
+      currency: s.currency ?? null,
+      total: isSlip ? null : Number(s.total ?? 0),
+      netWeightMt: net,
+    });
+  }
+  return [...byContract.values()].sort((a, b) => {
+    if (a.contractNo === null) return 1;
+    if (b.contractNo === null) return -1;
+    return a.contractNo.localeCompare(b.contractNo);
+  });
+}
+
+/**
  * Small in-process cache so flicking between date ranges doesn't re-query.
  * It is per-instance and short-lived by design — this is a latency smoother,
  * not a source of truth. Bounded because the key includes an arbitrary date
@@ -140,7 +203,7 @@ router.get(
 
     const dateRange = { gte: from, lte: to };
     const docketWhere = { ...ACTIVE, date: dateRange };
-    const invoiceWhere = { ...ACTIVE, date: dateRange };
+    const invoiceWhere = { ...SALES, date: dateRange };
 
     // The equivalent window immediately before this one, so every headline
     // number can be read as a movement rather than a bare figure. A total means
@@ -232,7 +295,7 @@ router.get(
         include: { supplier: { select: { id: true, name: true } } },
       }),
       prisma.exportInvoice.findMany({
-        where: ACTIVE,
+        where: SALES,
         orderBy: { date: 'desc' },
         take: 6,
         include: { consignee: { select: { id: true, name: true } } },
@@ -243,7 +306,7 @@ router.get(
         _sum: { total: true },
       }),
       prisma.exportInvoice.aggregate({
-        where: { ...ACTIVE, date: prevRange, currency: 'AUD' },
+        where: { ...SALES, date: prevRange, currency: 'AUD' },
         _count: { _all: true },
         _sum: { total: true },
       }),
@@ -465,17 +528,17 @@ router.get(
     const consignee = await prisma.consignee.findUnique({ where: { id: req.params.id } });
     if (!consignee) return res.status(404).json({ error: 'Consignee not found' });
 
-    const inRange = { ...ACTIVE, consigneeId: consignee.id, date: { gte: from, lte: to } };
+    const inRange = { ...SALES, consigneeId: consignee.id, date: { gte: from, lte: to } };
 
     // One wave rather than five sequential round trips — see the supplier route.
-    const [rangeAgg, lifetimeAgg, materials, rows, invoices] = await Promise.all([
+    const [rangeAgg, lifetimeAgg, materials, rows, invoices, slips] = await Promise.all([
       prisma.exportInvoice.aggregate({
         where: inRange,
         _count: { _all: true },
         _sum: { total: true, gst: true },
       }),
       prisma.exportInvoice.aggregate({
-        where: { ...ACTIVE, consigneeId: consignee.id },
+        where: { ...SALES, consigneeId: consignee.id },
         _count: { _all: true },
         _sum: { total: true },
       }),
@@ -489,8 +552,17 @@ router.get(
       }),
       prisma.exportInvoice.findMany({ where: inRange, select: { date: true, total: true } }),
       prisma.exportInvoice.findMany({
-        where: { consigneeId: consignee.id },
+        where: { ...SALES, consigneeId: consignee.id },
         include: { lineItems: { include: { material: true } } },
+        orderBy: { date: 'desc' },
+        take: 50,
+      }),
+      // Every shipment for this buyer, priced or not. A packing slip is work in
+      // progress on their account and belongs on their page next to the
+      // invoices, not hidden until someone prices it.
+      prisma.exportInvoice.findMany({
+        where: { status: 'ACTIVE', stage: 'PACKING_SLIP', consigneeId: consignee.id },
+        include: { lineItems: { select: { netWeightMt: true } }, containers: true },
         orderBy: { date: 'desc' },
         take: 50,
       }),
@@ -526,6 +598,20 @@ router.get(
           value: Number(m._sum.total ?? 0),
         })),
       invoices,
+      slips: slips.map((s) => ({
+        id: s.id,
+        invoiceNumber: s.invoiceNumber,
+        date: s.date,
+        contractNo: s.contractNo,
+        poNumber: s.poNumber,
+        containers: s.containers.length,
+        netWeightMt: s.lineItems.reduce((sum, li) => sum + Number(li.netWeightMt), 0),
+      })),
+      // The contract is what the buyer files against, and one contract often
+      // covers two or three shipments. Grouping here rather than in the page
+      // keeps the arithmetic — which is per currency, never summed across —
+      // next to the query that produced it.
+      contracts: buildContracts([...invoices, ...slips]),
     });
   })
 );

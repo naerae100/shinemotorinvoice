@@ -335,6 +335,80 @@ suite('invoices', () => {
     });
   }
 
+  test('export grades and purchase materials are separate vocabularies', async () => {
+    const purchase = await api('GET', '/materials?kind=PURCHASE', { token });
+    const exported = await api('GET', '/materials?kind=EXPORT', { token });
+    assert.equal(purchase.status, 200);
+    assert.equal(exported.status, 200);
+    // The seeded price list is PURCHASE, so no purchase row may claim to be an
+    // export grade and vice versa; a docket must never offer a selling name.
+    assert.ok(purchase.body.materials.every((m) => m.kind === 'PURCHASE'));
+    assert.ok(exported.body.materials.every((m) => m.kind === 'EXPORT'));
+
+    const all = await api('GET', '/materials', { token });
+    assert.ok(all.body.materials.length >= purchase.body.materials.length);
+  });
+
+  test('a new record is an invoice unless it says otherwise', async () => {
+    const res = await createInvoice();
+    assert.equal(res.body.invoice.stage, 'INVOICED');
+  });
+
+  test('a packing slip is saved at the packing-slip stage', async () => {
+    const res = await createInvoice({
+      stage: 'PACKING_SLIP',
+      lineItems: [{ materialId: fx.materials[0].id, netWeightMt: 23.298, pricePerMt: 0 }],
+    });
+    assert.equal(res.status, 201);
+    assert.equal(res.body.invoice.stage, 'PACKING_SLIP');
+    assert.equal(Number(res.body.invoice.total), 0);
+  });
+
+  test('the sales list excludes packing slips, and the slip list excludes sales', async () => {
+    const slip = await createInvoice({
+      stage: 'PACKING_SLIP',
+      lineItems: [{ materialId: fx.materials[0].id, netWeightMt: 12, pricePerMt: 0 }],
+    });
+    const sale = await createInvoice();
+    const slipNo = slip.body.invoice.invoiceNumber;
+    const saleNo = sale.body.invoice.invoiceNumber;
+
+    // An unpriced slip in the sales list would read as a sale worth nothing.
+    const sales = await api('GET', '/invoices?pageSize=200', { token });
+    const salesNumbers = sales.body.invoices.map((i) => i.invoiceNumber);
+    assert.ok(salesNumbers.includes(saleNo));
+    assert.ok(!salesNumbers.includes(slipNo));
+
+    const slips = await api('GET', '/invoices?stage=PACKING_SLIP&pageSize=200', { token });
+    const slipNumbers = slips.body.invoices.map((i) => i.invoiceNumber);
+    assert.ok(slipNumbers.includes(slipNo));
+    assert.ok(!slipNumbers.includes(saleNo));
+  });
+
+  test('pricing a packing slip turns it into an invoice, keeping its net weight', async () => {
+    const slip = await createInvoice({
+      stage: 'PACKING_SLIP',
+      lineItems: [{ materialId: fx.materials[0].id, netWeightMt: 23.298, pricePerMt: 0 }],
+    });
+    const id = slip.body.invoice.id;
+
+    const priced = await api('PATCH', `/invoices/${id}`, {
+      token,
+      body: {
+        stage: 'INVOICED',
+        lineItems: [{ materialId: fx.materials[0].id, netWeightMt: 23.298, pricePerMt: 1900 }],
+      },
+    });
+
+    assert.equal(priced.status, 200);
+    assert.equal(priced.body.invoice.stage, 'INVOICED');
+    // The weight the packing list stated is the weight that gets billed.
+    assert.equal(Number(priced.body.invoice.lineItems[0].netWeightMt), 23.298);
+    assert.equal(Number(priced.body.invoice.total), 44266.2);
+    // And it keeps the number it was created under, as the pair is filed together.
+    assert.equal(priced.body.invoice.invoiceNumber, slip.body.invoice.invoiceNumber);
+  });
+
   test('an export invoice is GST-free by default', async () => {
     const res = await createInvoice();
     assert.equal(res.status, 201);

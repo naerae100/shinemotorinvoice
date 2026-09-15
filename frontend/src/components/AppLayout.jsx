@@ -12,7 +12,15 @@ const NAV_GROUPS = [
     // Dockets and tax invoices live in one history, filtered on the page.
     items: [{ to: '/purchases', label: 'Purchases' }],
   },
-  { title: 'Selling', items: [{ to: '/export-invoices', label: 'Sales invoices' }] },
+    {
+    title: 'Selling',
+    // In the order the work actually happens: the goods are weighed onto a
+    // packing slip first, and the invoice prices what the slip established.
+    items: [
+      { to: '/packing-slips', label: 'Packing slips' },
+      { to: '/export-invoices', label: 'Sales invoices' },
+    ],
+  },
   {
     title: 'Records',
     items: [

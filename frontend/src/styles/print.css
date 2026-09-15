@@ -9,6 +9,13 @@
   margin: 12mm 12mm 14mm;
 }
 
+/* The receipt's page size is NOT set here. It prints on an 80mm roll rather
+   than a sheet, and @page is global with no way to scope it to one element:
+   a named page (@page receipt + `page: receipt`) is ignored, because the page
+   context is established by the root box long before the receipt is reached.
+   DocketReceipt injects its own @page rule for as long as it is mounted, which
+   is exactly the interval during which the roll size should apply. */
+
 @media print {
   html,
   body {
@@ -83,6 +90,25 @@
   .print-sheet > section,
   .print-sheet > div {
     break-inside: auto;
+  }
+
+  .receipt-sheet {
+    width: 72mm !important;
+    /* Centred on the 80mm roll: the head is wider than the print, and hugging
+       the left edge puts the right-hand figures nearest the tear line. */
+    margin: 0 auto !important;
+    box-shadow: none !important;
+    /* A thermal head is one bit deep. Anything it cannot resolve either burns
+       solid or disappears, so the receipt prints as pure black on bare paper
+       and every rule is a real border rather than a tint. */
+    color: #000 !important;
+    background: #fff !important;
+  }
+
+  /* The roll has no page height, so nothing on a receipt may break — a receipt
+     split across two "pages" comes out as two separate slips. */
+  .receipt-sheet * {
+    break-inside: avoid;
   }
 
   a {

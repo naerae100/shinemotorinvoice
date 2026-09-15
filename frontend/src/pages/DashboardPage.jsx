@@ -36,7 +36,9 @@ function EmptyState({ children, action }) {
 }
 
 export default function DashboardPage() {
-  const initial = PRESETS.thisMonth();
+  // Opens on today: the dashboard is checked to see what has happened so far
+  // this morning, not to review the month.
+  const initial = PRESETS.today();
   const [range, setRange] = useState({ from: initial.from, to: initial.to, granularity: 'day' });
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);

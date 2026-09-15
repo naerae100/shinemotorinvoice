@@ -3,7 +3,36 @@ import { Link } from 'react-router-dom';
 import { api } from '../lib/api';
 import ExportButton from '../components/ExportButton';
 
-const BLANK = { name: '', country: '', address: '', email: '', phone: '' };
+const BLANK = {
+  name: '',
+  street: '',
+  suburb: '',
+  state: '',
+  postcode: '',
+  country: '',
+  address: '',
+  email: '',
+  phone: '',
+  abn: '',
+  website: '',
+  groupName: '',
+  defaultCurrency: '',
+  defaultShippingTerm: '',
+  notes: '',
+};
+
+const L = 'mb-1 block text-xs font-medium text-steel-500';
+
+/** A labelled field. The form was a wall of placeholder-only inputs, which lose
+ *  their label the moment anything is typed into them. */
+function Field({ label, className = '', children }) {
+  return (
+    <div className={className}>
+      <label className={L}>{label}</label>
+      {children}
+    </div>
+  );
+}
 
 export default function BuyersPage() {
   const [buyers, setBuyers] = useState([]);
@@ -83,17 +112,89 @@ export default function BuyersPage() {
           <h2 className="mb-3 font-display text-base font-semibold text-steel-900">
             {form.id ? 'Edit buyer' : 'New buyer'}
           </h2>
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <input required placeholder="Company name" value={form.name}
-              onChange={(e) => setForm({ ...form, name: e.target.value })} className={`sm:col-span-2 ${field}`} />
-            <input placeholder="Address" value={form.address || ''}
-              onChange={(e) => setForm({ ...form, address: e.target.value })} className={field} />
-            <input placeholder="Country" value={form.country || ''}
-              onChange={(e) => setForm({ ...form, country: e.target.value })} className={field} />
-            <input type="email" placeholder="Email" value={form.email || ''}
-              onChange={(e) => setForm({ ...form, email: e.target.value })} className={field} />
-            <input placeholder="Phone" value={form.phone || ''}
-              onChange={(e) => setForm({ ...form, phone: e.target.value })} className={field} />
+          <div className="grid grid-cols-1 gap-x-3 gap-y-3 sm:grid-cols-6">
+            <Field label="Registered company name" className="sm:col-span-4">
+              <input required placeholder="e.g. Greenland Trading Pvt Ltd" value={form.name}
+                onChange={(e) => setForm({ ...form, name: e.target.value })} className={field} />
+            </Field>
+            <Field label="Trades as / group" className="sm:col-span-2">
+              <input placeholder="e.g. HANWA" value={form.groupName || ''}
+                onChange={(e) => setForm({ ...form, groupName: e.target.value })} className={field} />
+            </Field>
+
+            <Field label="Street address" className="sm:col-span-6">
+              <input placeholder="Unit G, 1/F., 16–18 Mau Lam Street" value={form.street || ''}
+                onChange={(e) => setForm({ ...form, street: e.target.value })} className={field} />
+            </Field>
+            <Field label="Suburb / city" className="sm:col-span-2">
+              <input placeholder="Jordan, Kowloon" value={form.suburb || ''}
+                onChange={(e) => setForm({ ...form, suburb: e.target.value })} className={field} />
+            </Field>
+            <Field label="State / province" className="sm:col-span-2">
+              <input placeholder="NSW" value={form.state || ''}
+                onChange={(e) => setForm({ ...form, state: e.target.value })} className={field} />
+            </Field>
+            <Field label="Postcode" className="sm:col-span-1">
+              <input placeholder="2565" value={form.postcode || ''}
+                onChange={(e) => setForm({ ...form, postcode: e.target.value })} className={`num ${field}`} />
+            </Field>
+            <Field label="Country" className="sm:col-span-1">
+              <input placeholder="Hong Kong" value={form.country || ''}
+                onChange={(e) => setForm({ ...form, country: e.target.value })} className={field} />
+            </Field>
+
+            <Field label="Email" className="sm:col-span-3">
+              <input type="email" placeholder="docs@buyer.com" value={form.email || ''}
+                onChange={(e) => setForm({ ...form, email: e.target.value })} className={field} />
+            </Field>
+            <Field label="Phone" className="sm:col-span-3">
+              <input placeholder="+852 8228 3234" value={form.phone || ''}
+                onChange={(e) => setForm({ ...form, phone: e.target.value })} className={`num ${field}`} />
+            </Field>
+
+            <Field label="ABN / company no." className="sm:col-span-2">
+              <input placeholder="Registration number" value={form.abn || ''}
+                onChange={(e) => setForm({ ...form, abn: e.target.value })} className={`num ${field}`} />
+            </Field>
+            <Field label="Website" className="sm:col-span-4">
+              <input placeholder="www.buyer.com" value={form.website || ''}
+                onChange={(e) => setForm({ ...form, website: e.target.value })} className={field} />
+            </Field>
+
+            {/* Prefilled onto each new invoice, because a buyer almost always
+                trades on the same terms in the same currency. Both stay
+                editable per invoice. */}
+            <Field label="Usual currency" className="sm:col-span-2">
+              <select value={form.defaultCurrency || ''}
+                onChange={(e) => setForm({ ...form, defaultCurrency: e.target.value })} className={field}>
+                <option value="">Not set</option>
+                <option value="AUD">AUD</option>
+                <option value="USD">USD</option>
+              </select>
+            </Field>
+            <Field label="Usual shipping term" className="sm:col-span-4">
+              <input placeholder="FAS Sydney" value={form.defaultShippingTerm || ''}
+                onChange={(e) => setForm({ ...form, defaultShippingTerm: e.target.value })} className={field} />
+            </Field>
+
+            {/* The blob every imported buyer arrived with. Shown only when it is
+                the address actually on file, so it can be read across into the
+                fields above rather than silently disagreeing with them. */}
+            {form.address && !form.street && (
+              <Field label="Address as imported" className="sm:col-span-6">
+                <input value={form.address}
+                  onChange={(e) => setForm({ ...form, address: e.target.value })}
+                  className={`${field} bg-working-amberDim`} />
+                <p className="mt-1 text-[11px] text-steel-500">
+                  Imported as one line. Copy it into the fields above and it will print properly.
+                </p>
+              </Field>
+            )}
+
+            <Field label="Notes" className="sm:col-span-6">
+              <input placeholder="Anything worth knowing about this buyer" value={form.notes || ''}
+                onChange={(e) => setForm({ ...form, notes: e.target.value })} className={field} />
+            </Field>
           </div>
           <div className="mt-4 flex gap-2">
             <button type="submit" disabled={saving}

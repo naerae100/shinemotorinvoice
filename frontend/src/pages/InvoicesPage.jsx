@@ -10,7 +10,28 @@ import ExportButton from '../components/ExportButton';
 
 const PAGE_SIZE = 25;
 
-export default function InvoicesPage() {
+/**
+ * Packing slips and sales invoices are the same record at two stages, so they
+ * are the same list twice: the columns, filters, search and row actions are
+ * identical, and only the stage being listed, the wording and the links differ.
+ */
+const STAGES = {
+  INVOICED: {
+    title: 'Sales invoices',
+    newLabel: '+ New invoice',
+    basePath: '/export-invoices',
+    empty: 'No invoices yet.',
+  },
+  PACKING_SLIP: {
+    title: 'Packing slips',
+    newLabel: '+ New packing slip',
+    basePath: '/packing-slips',
+    empty: 'No packing slips yet. A shipment starts here, then gets priced into an invoice.',
+  },
+};
+
+export default function InvoicesPage({ stage = 'INVOICED' }) {
+  const cfg = STAGES[stage];
   const { isAdmin } = useAuth();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -36,7 +57,7 @@ export default function InvoicesPage() {
     return api
       .get('/invoices', {
         params: Object.fromEntries(
-          Object.entries({ search, status, consigneeId, from, to, page, pageSize: PAGE_SIZE }).filter(
+          Object.entries({ search, status, stage, consigneeId, from, to, page, pageSize: PAGE_SIZE }).filter(
             ([, v]) => v !== '' && v != null
           )
         ),
@@ -49,7 +70,7 @@ export default function InvoicesPage() {
       })
       .catch(() => setError('Could not load invoices.'))
       .finally(() => setLoading(false));
-  }, [search, status, consigneeId, from, to, page]);
+  }, [search, status, stage, consigneeId, from, to, page]);
 
   useEffect(() => {
     const t = setTimeout(load, 200);
@@ -76,7 +97,7 @@ export default function InvoicesPage() {
     <div className="mx-auto max-w-6xl px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
       <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="font-display text-2xl font-semibold text-steel-900">Sales invoices</h1>
+          <h1 className="font-display text-2xl font-semibold text-steel-900">{cfg.title}</h1>
           <p className="mt-0.5 text-sm text-steel-500">
             Container exports and local sales — GST is set per invoice
           </p>
@@ -93,10 +114,10 @@ export default function InvoicesPage() {
             ]}
           />
           <Link
-            to="/export-invoices/new"
+            to={`${cfg.basePath}/new`}
             className="rounded-lg bg-copper-500 px-4 py-2.5 text-sm font-semibold text-steel-950 hover:bg-copper-400"
           >
-            + New sales invoice
+            {cfg.newLabel}
           </Link>
         </div>
       </div>
@@ -201,7 +222,7 @@ export default function InvoicesPage() {
             {!loading && invoices.length === 0 && (
               <tr>
                 <td colSpan={6} className="px-5 py-10 text-center text-steel-500">
-                  No export invoices yet.
+                  {cfg.empty}
                 </td>
               </tr>
             )}
@@ -211,7 +232,7 @@ export default function InvoicesPage() {
               <tr key={inv.id} className={`border-b border-steel-100 last:border-0 hover:bg-paper ${isVoid ? 'opacity-60' : ''}`}>
                 <td className="px-5 py-3">
                   <Link
-                    to={`/export-invoices/${inv.id}`}
+                    to={`${cfg.basePath}/${inv.id}`}
                     className={`num font-medium text-steel-900 hover:text-copper-600 ${isVoid ? 'line-through' : ''}`}
                   >
                     {inv.invoiceNumber}
@@ -249,10 +270,10 @@ export default function InvoicesPage() {
                 </td>
                 <td className="px-5 py-3">
                   <RowActions
-                    viewTo={`/export-invoices/${inv.id}`}
+                    viewTo={`${cfg.basePath}/${inv.id}`}
                     isVoid={isVoid}
                     isAdmin={isAdmin}
-                    onEdit={() => navigate(`/export-invoices/${inv.id}/edit`)}
+                    onEdit={() => navigate(`${cfg.basePath}/${inv.id}/edit`)}
                     onVoid={() =>
                       setDialog({
                         kind: 'void',

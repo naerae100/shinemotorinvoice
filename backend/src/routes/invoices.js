@@ -67,6 +67,9 @@ const invoiceBase = z.object({
   date: z.string().datetime().optional(),
   consigneeId: z.string(),
   currency: z.enum(CURRENCIES).default('AUD'),
+  // Which stage this record is at. A packing slip carries weights and no
+  // prices; pricing it is what turns it into an invoice.
+  stage: z.enum(['PACKING_SLIP', 'INVOICED']).default('INVOICED'),
   shippingTerm: z.string().optional().nullable(),
   fasPort: z.string().optional().nullable(),
   poNumber: z.string().optional().nullable(),
@@ -99,7 +102,9 @@ const invoicePatchSchema = invoiceBase.partial().refine(containerRefsResolve, CO
 const DETAIL_INCLUDE = {
   consignee: true,
   containers: { orderBy: { position: 'asc' } },
-  lineItems: { include: { material: true }, orderBy: { position: 'asc' } },
+  // `container` as well as `material`: the invoice names the container a line
+  // travelled in, and without this include that name silently never printed.
+  lineItems: { include: { material: true, container: true }, orderBy: { position: 'asc' } },
   createdBy: { select: { id: true, name: true } },
   editedBy: { select: { id: true, name: true } },
   voidedBy: { select: { id: true, name: true } },
@@ -187,8 +192,13 @@ function withParsedSnapshot(invoice) {
 
 /** Shared by the list, its totals and the CSV export. */
 function buildInvoiceWhere(query) {
-  const { search, consigneeId, materialId, from, to, status } = query;
+  const { search, consigneeId, materialId, from, to, status, stage } = query;
   return {
+    // Packing slips and invoices live in one table but are two different
+    // screens. Defaulting to INVOICED keeps unpriced slips out of the sales
+    // list, its totals and its CSV, where a row worth 0 would read as a sale
+    // that earned nothing.
+    ...(stage === 'ALL' ? {} : { stage: stage ? String(stage) : 'INVOICED' }),
     ...(consigneeId ? { consigneeId: String(consigneeId) } : {}),
     ...(status === 'ALL' ? {} : { status: status ? String(status) : 'ACTIVE' }),
     ...(materialId ? { lineItems: { some: { materialId: String(materialId) } } } : {}),
@@ -373,6 +383,7 @@ router.post(
           date: data.date ? new Date(data.date) : undefined,
           consigneeId: data.consigneeId,
           currency: data.currency,
+          stage: data.stage,
           shippingTerm: data.shippingTerm,
           fasPort: data.fasPort,
           poNumber: data.poNumber,
@@ -399,7 +410,10 @@ router.post(
       return tx.exportInvoice.findUnique({ where: { id: created.id }, include: DETAIL_INCLUDE });
     });
 
-    await pushSalesInvoiceToXero(invoice);
+    // A packing slip is not a sale. Pushing one would raise a zero-value sales
+    // invoice in Xero for goods nobody has been billed for yet. It reaches Xero
+    // when it is priced, which is an update that carries stage INVOICED.
+    if (invoice.stage !== 'PACKING_SLIP') await pushSalesInvoiceToXero(invoice);
 
     // Saved either way — refusing would lose the operator's typing — but the
     // document would print with no account for the buyer to pay into, so say so.
@@ -483,6 +497,8 @@ router.patch(
         ...(data.date ? { date: new Date(data.date) } : {}),
         ...(data.consigneeId ? { consigneeId: data.consigneeId } : {}),
         ...(data.currency ? { currency: data.currency } : {}),
+        // The packing slip becoming an invoice is this one field changing.
+        ...(data.stage ? { stage: data.stage } : {}),
         ...(currencyChanged ? { bankSnapshot: rebankedSnapshot } : {}),
         ...(data.shippingTerm !== undefined ? { shippingTerm: data.shippingTerm } : {}),
         ...(data.fasPort !== undefined ? { fasPort: data.fasPort } : {}),
@@ -545,7 +561,10 @@ router.patch(
       });
     });
 
-    await pushSalesInvoiceToXero(invoice);
+    // A packing slip is not a sale. Pushing one would raise a zero-value sales
+    // invoice in Xero for goods nobody has been billed for yet. It reaches Xero
+    // when it is priced, which is an update that carries stage INVOICED.
+    if (invoice.stage !== 'PACKING_SLIP') await pushSalesInvoiceToXero(invoice);
 
     res.json({ invoice: withParsedSnapshot(invoice) });
   })

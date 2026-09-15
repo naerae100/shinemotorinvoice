@@ -14,8 +14,46 @@ const UNITS = [
 
 const BLANK = { code: '', description: '', category: '', unit: 'KG', currentPrice: '' };
 
+/**
+ * Two catalogues, not one list.
+ *
+ * The yard buys under one set of names and sells under another — the same metal
+ * is paid for as "Copper Bright Wire" and shipped as "Mill Berry". Showing them
+ * together would be 54 rows in two vocabularies with nothing to say which is
+ * which, and an operator could price a docket off a grade that only exists on
+ * an export invoice.
+ */
+const KINDS = {
+  PURCHASE: {
+    label: 'Buying',
+    title: 'Materials & pricing',
+    adminBlurb: 'Update rates as the market moves. Changes apply to new dockets immediately.',
+    staffBlurb: 'Current buy rates. Contact an admin to update pricing.',
+    addLabel: '+ Add material',
+    exportLabel: 'Export price list',
+    empty: 'No materials match.',
+    // Bought by the kilo off a standing price list.
+    defaultUnit: 'KG',
+    showPrice: true,
+  },
+  EXPORT: {
+    label: 'Export grades',
+    title: 'Export grades',
+    adminBlurb:
+      'The trade grades the yard sells under, as named on packing lists and commercial invoices. Priced per contract, so no standing rate is held here.',
+    staffBlurb: 'The trade grades the yard sells under on export documents.',
+    addLabel: '+ Add grade',
+    exportLabel: 'Export grade list',
+    empty: 'No grades match.',
+    defaultUnit: 'TONNE',
+    showPrice: false,
+  },
+};
+
 export default function MaterialsPage() {
   const { isAdmin } = useAuth();
+  const [kind, setKind] = useState('PURCHASE');
+  const cfg = KINDS[kind];
   const [materials, setMaterials] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -31,11 +69,11 @@ export default function MaterialsPage() {
   const load = useCallback(
     () =>
       api
-        .get('/materials', { params: { includeInactive: true } })
+        .get('/materials', { params: { includeInactive: true, kind } })
         .then((res) => setMaterials(res.data.materials))
         .catch(() => setError('Could not load materials.'))
         .finally(() => setLoading(false)),
-    []
+    [kind]
   );
 
   useEffect(() => {
@@ -90,6 +128,8 @@ export default function MaterialsPage() {
     setError('');
     try {
       const payload = {
+        // A grade added while looking at a catalogue belongs to that catalogue.
+        kind,
         code: form.code === '' || form.code === null ? null : Number(form.code),
         description: form.description.trim(),
         category: form.category?.trim() || null,
@@ -129,34 +169,60 @@ export default function MaterialsPage() {
     <div className="mx-auto max-w-5xl px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
       <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
         <div>
-          <h1 className="font-display text-2xl font-semibold text-steel-900">Materials &amp; pricing</h1>
+          <h1 className="font-display text-2xl font-semibold text-steel-900">{cfg.title}</h1>
           <p className="mt-0.5 text-sm text-steel-500">
-            {isAdmin
-              ? 'Update rates as the market moves. Changes apply to new dockets immediately.'
-              : 'Current buy rates. Contact an admin to update pricing.'}
+            {isAdmin ? cfg.adminBlurb : cfg.staffBlurb}
           </p>
         </div>
         <div className="flex shrink-0 flex-wrap gap-2">
           <ExportButton
             endpoint="/materials/export"
-            label="Export price list"
-            params={showInactive ? { includeInactive: 'true' } : {}}
+            label={cfg.exportLabel}
+            params={{ kind, ...(showInactive ? { includeInactive: 'true' } : {}) }}
           />
           {isAdmin && (
             <button
-              onClick={() => setForm({ ...BLANK })}
+              onClick={() => setForm({ ...BLANK, unit: cfg.defaultUnit })}
               className="rounded-lg bg-copper-500 px-4 py-2.5 text-sm font-semibold text-steel-950 shadow-sm transition-colors hover:bg-copper-400"
             >
-              + Add material
+              {cfg.addLabel}
             </button>
           )}
         </div>
       </div>
 
+      <div
+        role="tablist"
+        aria-label="Catalogue"
+        className="mb-4 flex w-fit rounded-lg border border-steel-200 bg-white p-0.5"
+      >
+        {Object.entries(KINDS).map(([key, k]) => (
+          <button
+            key={key}
+            role="tab"
+            aria-selected={kind === key}
+            onClick={() => {
+              setKind(key);
+              setForm(null);
+              setSearch('');
+            }}
+            className={`rounded-md px-4 py-2 text-sm font-semibold transition ${
+              kind === key ? 'bg-steel-900 text-paper' : 'text-steel-500 hover:text-steel-800'
+            }`}
+          >
+            {k.label}
+          </button>
+        ))}
+      </div>
+
       <div className="mb-4 flex flex-wrap items-center gap-3">
         <input
           type="text"
-          placeholder="Search materials, codes or categories…"
+          placeholder={
+            kind === 'EXPORT'
+              ? 'Search grades or categories…'
+              : 'Search materials, codes or categories…'
+          }
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           className={`${field} max-w-sm flex-1 bg-white`}
@@ -270,7 +336,7 @@ export default function MaterialsPage() {
         <div className="py-12 text-center text-sm text-steel-500">Loading…</div>
       ) : grouped.length === 0 ? (
         <div className="rounded-xl border border-dashed border-steel-300 py-14 text-center">
-          <p className="text-sm text-steel-500">No materials match that search.</p>
+          <p className="text-sm text-steel-500">{cfg.empty}</p>
         </div>
       ) : (
         <div className="space-y-5">
@@ -312,7 +378,14 @@ export default function MaterialsPage() {
                         {UNITS.find((u) => u.value === m.unit)?.label ?? m.unit}
                       </td>
                       <td className="w-32 py-2.5 pr-2 text-right">
-                        {editingPriceId === m.id ? (
+                        {/* An export grade is priced per contract against the
+                            market on the day, so it holds no standing rate. The
+                            zero it stores is the absence of a price, and
+                            printing it as "AUD 0.00" read as a grade worth
+                            nothing rather than one priced elsewhere. */}
+                        {!cfg.showPrice ? (
+                          <span className="text-xs italic text-steel-400">Per contract</span>
+                        ) : editingPriceId === m.id ? (
                           <div className="flex items-center justify-end gap-1.5">
                             <input
                               type="number"

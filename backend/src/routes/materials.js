@@ -8,6 +8,9 @@ import { sendCsv, money, isoDate } from '../lib/csv.js';
 const router = Router();
 
 const materialSchema = z.object({
+  // "PURCHASE" is the 33-item price list the yard buys on; "EXPORT" is the
+  // trade-grade catalogue it sells under.
+  kind: z.enum(['PURCHASE', 'EXPORT']).default('PURCHASE'),
   code: z.number().int().optional().nullable(),
   description: z.string().min(1),
   category: z.string().optional().nullable(),
@@ -21,10 +24,20 @@ router.get(
   '/',
   requireAuth,
   asyncHandler(async (req, res) => {
-    const { includeInactive } = req.query;
+    const { includeInactive, kind } = req.query;
     const materials = await prisma.material.findMany({
-      where: includeInactive === 'true' ? {} : { active: true },
-      orderBy: [{ code: 'asc' }, { description: 'asc' }],
+      where: {
+        ...(includeInactive === 'true' ? {} : { active: true }),
+        // Buying names and selling names are different vocabularies; a caller
+        // asks for the one it is going to print. Omitting `kind` returns both,
+        // which is what the price-list screen wants.
+        ...(kind ? { kind: String(kind) } : {}),
+      },
+      // Export grades have no code, so they order by category then name.
+      orderBy:
+        kind === 'EXPORT'
+          ? [{ category: 'asc' }, { description: 'asc' }]
+          : [{ code: 'asc' }, { description: 'asc' }],
     });
     res.json({ materials });
   })
@@ -36,7 +49,10 @@ router.get(
   requireAuth,
   asyncHandler(async (req, res) => {
     const materials = await prisma.material.findMany({
-      where: req.query.includeInactive === 'true' ? {} : { active: true },
+      where: {
+        ...(req.query.includeInactive === 'true' ? {} : { active: true }),
+        ...(req.query.kind ? { kind: String(req.query.kind) } : {}),
+      },
       orderBy: [{ category: 'asc' }, { code: 'asc' }],
     });
     sendCsv(res, 'shine-price-list', [

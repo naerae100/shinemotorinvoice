@@ -19,6 +19,11 @@ const TAX_MODE_OPTIONS = [
 ];
 
 export default function NewDocketPage({ defaultType = 'PURCHASE_DOCKET' }) {
+  // A purchase docket is quoted to the supplier with GST already in the price —
+  // that is the number said at the weighbridge. A tax invoice is the opposite:
+  // it states a price and adds GST to it, so each document type opens on the
+  // treatment it is actually written under.
+  const defaultTaxMode = defaultType === 'TAX_INVOICE' ? 'EXCLUSIVE' : 'INCLUSIVE';
   const navigate = useNavigate();
   const { id: editId } = useParams();
   const isEdit = Boolean(editId);
@@ -33,12 +38,13 @@ export default function NewDocketPage({ defaultType = 'PURCHASE_DOCKET' }) {
   const [lines, setLines] = useState([{ materialId: '', description: '', netWeight: '', price: '' }]);
   const [type, setType] = useState(defaultType);
   // Inclusive by default: the rate agreed at the weighbridge already has GST in it.
-  const [taxMode, setTaxMode] = useState('INCLUSIVE');
+  const [taxMode, setTaxMode] = useState(defaultTaxMode);
   const [paygStatement, setPaygStatement] = useState('NOT_APPLICABLE');
 
   useEffect(() => {
     setType(defaultType);
-  }, [defaultType]);
+    setTaxMode(defaultTaxMode);
+  }, [defaultType, defaultTaxMode]);
   const [vehicle, setVehicle] = useState({ reg: '', model: '', vin: '' });
   const [showVehicle, setShowVehicle] = useState(false);
 
@@ -49,7 +55,10 @@ export default function NewDocketPage({ defaultType = 'PURCHASE_DOCKET' }) {
   const [successPath, setSuccessPath] = useState('purchases');
 
   useEffect(() => {
-    api.get('/materials').then((res) => setMaterials(res.data.materials));
+    // A docket is written in the names the yard buys under.
+    api
+      .get('/materials', { params: { kind: 'PURCHASE' } })
+      .then((res) => setMaterials(res.data.materials));
   }, []);
 
   // Edit mode: hydrate the form from the stored docket.
@@ -60,7 +69,7 @@ export default function NewDocketPage({ defaultType = 'PURCHASE_DOCKET' }) {
       .then(({ data }) => {
         const d = data.docket;
         setType(d.type);
-        setTaxMode(d.taxMode || 'INCLUSIVE');
+        setTaxMode(d.taxMode || defaultTaxMode);
         setPaygStatement(d.paygStatement || 'NOT_APPLICABLE');
         setSelectedSupplier(d.supplier);
         setSupplierQuery(d.supplier?.name || '');

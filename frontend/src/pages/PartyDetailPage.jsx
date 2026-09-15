@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { format } from 'date-fns';
 import { api } from '../lib/api';
-import { formatAud, formatNumber } from '../lib/format';
+import { formatAud, formatMoney, formatNumber } from '../lib/format';
 import DateRangePicker, { PRESETS } from '../components/DateRangePicker';
 import BarList from '../components/charts/BarList';
 import StatTile from '../components/charts/StatTile';
@@ -145,6 +145,70 @@ export default function PartyDetailPage({ kind }) {
           />
         </Card>
 
+        {!isSupplier && (
+          <Card title="Contracts">
+            {(data.contracts ?? []).length === 0 ? (
+              <div className="py-8 text-center text-sm text-steel-500">
+                Nothing recorded yet.
+              </div>
+            ) : (
+              <div className="max-h-[420px] space-y-3 overflow-auto">
+                {/* One contract routinely covers two or three shipments, so the
+                    contract is the heading and its shipments sit under it —
+                    which is how the buyer refers to them. */}
+                {data.contracts.map((c) => (
+                  <div
+                    key={c.contractNo ?? 'none'}
+                    className="rounded-lg border border-steel-200 bg-paper/50 p-3"
+                  >
+                    <div className="flex flex-wrap items-baseline justify-between gap-2">
+                      <div className="num text-sm font-semibold text-steel-900">
+                        {c.contractNo ?? (
+                          <span className="font-sans italic text-steel-400">No contract number</span>
+                        )}
+                      </div>
+                      <div className="num text-sm font-semibold text-steel-900">
+                        {Object.keys(c.totals).length === 0
+                          ? '—'
+                          : Object.entries(c.totals)
+                              .map(([cur, amt]) => formatMoney(amt, cur))
+                              .join('  ·  ')}
+                      </div>
+                    </div>
+                    <div className="mt-0.5 text-xs text-steel-500">
+                      {c.shipments.length} {c.shipments.length === 1 ? 'shipment' : 'shipments'}
+                      {c.slipCount > 0 && ` · ${c.slipCount} not yet priced`} ·{' '}
+                      <span className="num">{formatNumber(c.netWeightMt, 3)}</span> MT
+                    </div>
+                    <div className="mt-2 space-y-1">
+                      {c.shipments.map((sh) => (
+                        <div key={sh.id} className="flex items-baseline justify-between gap-2 text-xs">
+                          <Link
+                            to={`${sh.stage === 'PACKING_SLIP' ? '/packing-slips' : '/export-invoices'}/${sh.id}`}
+                            className="num font-medium text-steel-700 hover:text-copper-600"
+                          >
+                            {sh.invoiceNumber}
+                          </Link>
+                          <span className="text-steel-400">
+                            {format(new Date(sh.date), 'd MMM yyyy')}
+                          </span>
+                          <span className="num flex-1 text-right text-steel-600">
+                            {sh.stage === 'PACKING_SLIP' ? (
+                              <span className="font-sans text-working-amber">Packing slip</span>
+                            ) : (
+                              formatMoney(sh.total, sh.currency || 'AUD')
+                            )}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </Card>
+        )}
+
         <Card title="Recent documents">
           {docs.length === 0 ? (
             <div className="py-8 text-center text-sm text-steel-500">Nothing recorded yet.</div>
@@ -183,7 +247,12 @@ export default function PartyDetailPage({ kind }) {
                           {format(new Date(doc.date), 'd MMM yyyy')}
                         </td>
                         <td className="num py-2 text-right font-medium text-steel-900">
-                          {formatAud(isSupplier ? doc.total : doc.total)}
+                          {/* A buyer's invoice is denominated in its own
+                              currency. Printing every one as AUD stated the
+                              wrong currency on every USD sale on this page. */}
+                          {isSupplier
+                            ? formatAud(doc.total)
+                            : formatMoney(doc.total, doc.currency || 'AUD')}
                         </td>
                       </tr>
                     );

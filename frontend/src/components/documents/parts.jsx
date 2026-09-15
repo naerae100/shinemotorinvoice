@@ -119,8 +119,15 @@ export function ReferenceBlock({ title, references }) {
   );
 }
 
-/** Amount-in-words on the left, the running totals on the right. */
-export function TotalsBlock({ words, rows, total, children }) {
+/**
+ * Amount-in-words on the left, the running totals on the right.
+ *
+ * `currency` labels the plate. It is a required-in-practice prop rather than a
+ * constant because the plate used to read "Total AUD" on every document: a USD
+ * invoice printed "Total AUD" directly above "USD 39,495.30", which states two
+ * different currencies for one figure on the largest element of the page.
+ */
+export function TotalsBlock({ words, rows, total, currency = 'AUD', children }) {
   return (
     <section className="avoid-break flex flex-col gap-4 border-b border-ink-200 py-3 sm:flex-row sm:items-stretch sm:justify-between sm:gap-6">
       <div className="flex-1 rounded-xl bg-ink-50 px-4 py-3.5">
@@ -144,12 +151,54 @@ export function TotalsBlock({ words, rows, total, children }) {
         ))}
         <div className="mt-2 flex items-baseline justify-between rounded-xl bg-ink-900 px-4 py-3.5">
           <span className="text-[10px] font-bold uppercase tracking-[0.12em] text-ink-300">
-            Total AUD
+            Total {currency}
           </span>
           <span className="num text-[20px] font-extrabold tracking-tight text-white">{total}</span>
         </div>
       </div>
     </section>
+  );
+}
+
+/**
+ * The company's execution of the document: room to sign, the stamp, and who is
+ * signing. Shared, because a packing list and its invoice are handed over as a
+ * pair and any difference between the two blocks reads as one of them being a
+ * different document.
+ *
+ * The stamp is sized and placed to sit across the signature rule the way a
+ * rubber stamp actually lands on paper — overlapping the line, not parked in the
+ * margin beside it — and multiplied into the page so the rule shows through it
+ * instead of being covered by an opaque white square.
+ */
+export function SignatureBlock({ settings, companyName, className = '' }) {
+  return (
+    <div className={`relative flex flex-col ${className}`}>
+      <div className="mb-1.5 text-[9.5px] font-bold uppercase tracking-[0.12em] text-brand-600">
+        Authorised signature
+      </div>
+      <div className="relative mt-auto">
+        {settings?.stampUrl && (
+          <img
+            src={settings.stampUrl}
+            alt=""
+            aria-hidden="true"
+            className="pointer-events-none absolute bottom-7 right-2 h-[86px] w-[86px] object-contain mix-blend-multiply"
+          />
+        )}
+        {/* Height enough for a real signature to fit above the rule. */}
+        <div className="h-16" />
+        <div className="border-b border-ink-400" />
+        {/* Kept clear of the stamp's column so the company name is never read
+            through a ring of stamp ink. */}
+        <div className="mt-1 pr-24 text-[11px] font-bold leading-snug text-ink-800">
+          For and on behalf of {companyName}
+        </div>
+        <div className="text-[9.5px] uppercase tracking-[0.12em] text-ink-500">
+          Authorised signatory
+        </div>
+      </div>
+    </div>
   );
 }
 

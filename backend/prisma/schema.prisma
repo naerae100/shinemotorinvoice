@@ -85,6 +85,19 @@ model Material {
   id           String   @id @default(cuid())
   code         Int?     @unique
   description  String
+
+  // "PURCHASE" | "EXPORT"
+  //
+  // The yard buys and sells the same metal under different names. A supplier is
+  // paid for "Copper Bright Wire" off the price list; the same metal is sold to
+  // an overseas mill as "Mill Berry", the trade grade the buyer's contract is
+  // written in. Keeping both in one table under a kind means a docket offers the
+  // buying names and an export invoice the selling ones, without either list
+  // having to carry the other's vocabulary.
+  //
+  // Defaults to PURCHASE so the existing 33-item price list is unaffected.
+  kind         String   @default("PURCHASE")
+
   category     String?
   unit         String   @default("KG")
   currentPrice Decimal
@@ -94,6 +107,8 @@ model Material {
 
   docketLines  DocketLineItem[]
   invoiceLines InvoiceLineItem[]
+
+  @@index([kind])
 }
 
 // ─────────────────────────────────────────────
@@ -104,9 +119,15 @@ model Material {
 model Supplier {
   id        String   @id @default(cuid())
   name      String
+
+  // A postal address in the parts a delivery or a statement actually needs.
+  // `address` is the street line; state and country were missing entirely, so
+  // an address could not be written out in full on a printed document.
   address   String?
   suburb    String?
+  state     String?
   postcode  String?
+  country   String?
   phone     String?
   email     String?
   saleType  String   @default("PRIVATE")
@@ -216,7 +237,21 @@ model DocketLineItem {
 model Consignee {
   id      String  @id @default(cuid())
   name    String
+
+  /// The address as one blob. Every one of the 91 buyers imported from the
+  /// export archive arrived this way — street, city and country run together in
+  /// a single cell — and it is kept as the fallback for those, and as what
+  /// still prints when the parts below have not been filled in.
   address String?
+
+  /// The same address in its parts, which is what a commercial document and a
+  /// customs form actually ask for. Filled in going forward; the blob above is
+  /// what an un-revisited imported buyer still shows.
+  street   String?
+  suburb   String?
+  state    String?
+  postcode String?
+
   email   String?
   phone   String?
   country String?
@@ -281,6 +316,19 @@ model ExportInvoice {
   // it; a USD invoice is recorded in USD only, with no AUD equivalent.
   currency String @default("AUD")
 
+  // "PACKING_SLIP" | "INVOICED"
+  //
+  // A shipment is one record with two stages, not two records. It starts as a
+  // packing slip — the goods weighed onto it, gross/tare/net, no prices — and
+  // becomes an invoice when those net weights are priced. Holding both stages
+  // on one row is what guarantees the weight customs clears and the weight the
+  // buyer is billed for are the same number; two tables could drift apart, and
+  // the packing list already prints the invoice's own number.
+  //
+  // Defaults to INVOICED so every row written before this field existed — the
+  // whole imported archive included — stays an invoice.
+  stage String @default("INVOICED")
+
   shippingTerm    String?
   fasPort         String?
   poNumber        String?
@@ -333,6 +381,7 @@ model ExportInvoice {
   @@index([date])
   @@index([consigneeId])
   @@index([status])
+  @@index([stage])
 }
 
 // One shipment can fill several containers, and the goods in each are listed

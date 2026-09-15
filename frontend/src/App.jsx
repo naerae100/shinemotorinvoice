@@ -77,6 +77,19 @@ export default function App() {
               />
               <Route path="export-invoices/new" element={<NewInvoicePage />} />
               <Route path="export-invoices" element={<InvoicesPage />} />
+
+              {/* A packing slip is the same record at an earlier stage, so it
+                  reuses the same three screens with the stage switched. */}
+              <Route
+                path="packing-slips/new"
+                element={<NewInvoicePage key="slip-new" mode="packing" />}
+              />
+              <Route path="packing-slips" element={<InvoicesPage key="slips" stage="PACKING_SLIP" />} />
+              <Route path="packing-slips/:id" element={<InvoiceDetailPage key="slip-detail" />} />
+              <Route
+                path="packing-slips/:id/edit"
+                element={<NewInvoicePage key="slip-edit" mode="packing" />}
+              />
               <Route path="export-invoices/:id" element={<InvoiceDetailPage />} />
               <Route path="export-invoices/:id/edit" element={<NewInvoicePage key="inv-edit" />} />
               <Route path="clients" element={<ClientsPage />} />

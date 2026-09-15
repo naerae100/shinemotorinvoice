@@ -121,3 +121,33 @@ export function amountInWords(amount, currency = 'AUD') {
 
   return `${negative ? 'Minus ' : ''}${currency} ${words} Only`;
 }
+
+/**
+ * A party's postal address as the lines it should print on.
+ *
+ * Addresses arrive two ways. Everything entered from here on has its parts —
+ * street, suburb, state, postcode — and every buyer imported from the export
+ * archive has only a single blob in `address`. So the parts are preferred when
+ * any of them is filled in, and the blob is the fallback; an imported buyer
+ * keeps printing exactly as it does today until someone fills the parts in.
+ *
+ * Returns an array of lines, street first, then "Suburb STATE 2565", then the
+ * country — the shape a commercial document and a customs form expect.
+ */
+export function addressLines(party) {
+  if (!party) return [];
+  const hasParts = Boolean(party.street || party.suburb || party.state || party.postcode);
+  const locality = [party.suburb, party.state, party.postcode].filter(Boolean).join(' ');
+
+  if (!hasParts) {
+    return [party.address, party.country].filter(Boolean);
+  }
+  // `address` is the street line on a supplier and the legacy blob on a buyer,
+  // so it is only used here when there is no explicit street.
+  return [party.street || party.address, locality, party.country].filter(Boolean);
+}
+
+/** The same address on one line, for tables and list rows. */
+export function addressOneLine(party) {
+  return addressLines(party).join(', ');
+}

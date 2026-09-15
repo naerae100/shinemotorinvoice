@@ -12,7 +12,13 @@ const optionalEmail = z.string().email().optional().nullable().or(z.literal(''))
 
 const consigneeSchema = z.object({
   name: z.string().min(1),
+  // The single-blob address kept for the imported archive; the parts below are
+  // what gets filled in from here on.
   address: z.string().optional().nullable(),
+  street: z.string().optional().nullable(),
+  suburb: z.string().optional().nullable(),
+  state: z.string().optional().nullable(),
+  postcode: z.string().optional().nullable(),
   email: optionalEmail,
   phone: z.string().optional().nullable(),
   country: z.string().optional().nullable(),

@@ -1,5 +1,5 @@
 import { format } from 'date-fns';
-import { formatAud, formatNumber, formatRate, amountInWords } from '../../lib/format';
+import { addressLines, formatAud, formatNumber, formatRate, amountInWords } from '../../lib/format';
 import { Detail, Masthead, ReferenceBlock, TotalsBlock, DocumentFooter, discountLabel, VoidStamp } from './parts';
 
 export const PAYG_LABELS = {
@@ -66,10 +66,9 @@ export default function DocketDocument({ docket, settings }) {
           </div>
           <div className="text-[15px] font-bold leading-snug text-ink-900">{s?.name}</div>
           <div className="mt-1.5 space-y-[3px] text-[11.5px] font-medium leading-snug text-ink-700">
-            {s?.address && <div>{s.address}</div>}
-            {(s?.suburb || s?.postcode) && (
-              <div>{[s.suburb, s.postcode].filter(Boolean).join(' ')}</div>
-            )}
+            {addressLines(s).map((line, i) => (
+              <div key={i}>{line}</div>
+            ))}
             {s?.phone && <div className="num">Phone {s.phone}</div>}
             {s?.abn && <div className="num">ABN {s.abn}</div>}
             {s?.licenceNo && <div className="num">Licence {s.licenceNo}</div>}
@@ -169,7 +168,7 @@ export default function DocketDocument({ docket, settings }) {
           // exclusive docket has an amount being added, and only that is shown.
           ...(taxMode === 'EXCLUSIVE' ? [['GST (10%)', formatAud(docket.gst)]] : []),
         ]}
-        total={formatAud(docket.total)}
+        total={formatNumber(docket.total, 2)}
       >
         {docket.notes && (
           <div className="mt-3">

@@ -3,7 +3,19 @@ import { Link } from 'react-router-dom';
 import { api } from '../lib/api';
 import ExportButton from '../components/ExportButton';
 
-const BLANK = { name: '', saleType: 'PRIVATE', address: '', suburb: '', postcode: '', phone: '', email: '', abn: '', licenceNo: '' };
+const BLANK = { name: '', saleType: 'PRIVATE', address: '', suburb: '', state: 'NSW', postcode: '', country: 'Australia', phone: '', email: '', abn: '', licenceNo: '' };
+
+const L = 'mb-1 block text-xs font-medium text-steel-500';
+
+/** A labelled field — a placeholder disappears as soon as anything is typed. */
+function Field({ label, className = '', children }) {
+  return (
+    <div className={className}>
+      <label className={L}>{label}</label>
+      {children}
+    </div>
+  );
+}
 
 export default function ClientsPage() {
   const [clients, setClients] = useState([]);
@@ -74,27 +86,56 @@ export default function ClientsPage() {
           <h2 className="mb-3 font-display text-base font-semibold text-steel-900">
             {form.id ? `Edit ${form.name}` : 'New client'}
           </h2>
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-            <input required placeholder="Name" value={form.name}
-              onChange={(e) => setForm({ ...form, name: e.target.value })} className={`sm:col-span-2 ${field}`} />
-            <select value={form.saleType} onChange={(e) => setForm({ ...form, saleType: e.target.value })} className={field}>
-              <option value="PRIVATE">Private seller</option>
-              <option value="BUSINESS">Business</option>
-            </select>
-            <input placeholder="Address" value={form.address || ''}
-              onChange={(e) => setForm({ ...form, address: e.target.value })} className={field} />
-            <input placeholder="Suburb" value={form.suburb || ''}
-              onChange={(e) => setForm({ ...form, suburb: e.target.value })} className={field} />
-            <input placeholder="Postcode" value={form.postcode || ''}
-              onChange={(e) => setForm({ ...form, postcode: e.target.value })} className={field} />
-            <input placeholder="Phone" value={form.phone || ''}
-              onChange={(e) => setForm({ ...form, phone: e.target.value })} className={field} />
-            <input type="email" placeholder="Email" value={form.email || ''}
-              onChange={(e) => setForm({ ...form, email: e.target.value })} className={field} />
-            <input placeholder="ABN (if business)" value={form.abn || ''}
-              onChange={(e) => setForm({ ...form, abn: e.target.value })} className={field} />
-            <input placeholder="Driver licence no." value={form.licenceNo || ''}
-              onChange={(e) => setForm({ ...form, licenceNo: e.target.value })} className={field} />
+          <div className="grid grid-cols-1 gap-x-3 gap-y-3 sm:grid-cols-6">
+            <Field label="Name or company" className="sm:col-span-4">
+              <input required placeholder="e.g. J & M Metals Pty Ltd" value={form.name}
+                onChange={(e) => setForm({ ...form, name: e.target.value })} className={field} />
+            </Field>
+            <Field label="Seller type" className="sm:col-span-2">
+              <select value={form.saleType} onChange={(e) => setForm({ ...form, saleType: e.target.value })} className={field}>
+                <option value="PRIVATE">Private seller</option>
+                <option value="BUSINESS">Business</option>
+              </select>
+            </Field>
+
+            <Field label="Street address" className="sm:col-span-6">
+              <input placeholder="12 Smithfield Road" value={form.address || ''}
+                onChange={(e) => setForm({ ...form, address: e.target.value })} className={field} />
+            </Field>
+            <Field label="Suburb" className="sm:col-span-2">
+              <input placeholder="Liverpool" value={form.suburb || ''}
+                onChange={(e) => setForm({ ...form, suburb: e.target.value })} className={field} />
+            </Field>
+            <Field label="State" className="sm:col-span-2">
+              <input placeholder="NSW" value={form.state || ''}
+                onChange={(e) => setForm({ ...form, state: e.target.value })} className={field} />
+            </Field>
+            <Field label="Postcode" className="sm:col-span-1">
+              <input placeholder="2170" value={form.postcode || ''}
+                onChange={(e) => setForm({ ...form, postcode: e.target.value })} className={`num ${field}`} />
+            </Field>
+            <Field label="Country" className="sm:col-span-1">
+              <input placeholder="Australia" value={form.country || ''}
+                onChange={(e) => setForm({ ...form, country: e.target.value })} className={field} />
+            </Field>
+
+            <Field label="Phone" className="sm:col-span-3">
+              <input placeholder="0412 887 331" value={form.phone || ''}
+                onChange={(e) => setForm({ ...form, phone: e.target.value })} className={`num ${field}`} />
+            </Field>
+            <Field label="Email" className="sm:col-span-3">
+              <input type="email" placeholder="accounts@client.com.au" value={form.email || ''}
+                onChange={(e) => setForm({ ...form, email: e.target.value })} className={field} />
+            </Field>
+
+            <Field label="ABN (if business)" className="sm:col-span-3">
+              <input placeholder="44 213 887 002" value={form.abn || ''}
+                onChange={(e) => setForm({ ...form, abn: e.target.value })} className={`num ${field}`} />
+            </Field>
+            <Field label="Driver licence no." className="sm:col-span-3">
+              <input placeholder="Required for a private scrap sale" value={form.licenceNo || ''}
+                onChange={(e) => setForm({ ...form, licenceNo: e.target.value })} className={`num ${field}`} />
+            </Field>
           </div>
           <div className="mt-4 flex gap-2">
             <button type="submit" disabled={saving}

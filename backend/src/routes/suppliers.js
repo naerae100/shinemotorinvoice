@@ -12,7 +12,9 @@ const supplierSchema = z.object({
   name: z.string().min(1),
   address: z.string().optional().nullable(),
   suburb: z.string().optional().nullable(),
+  state: z.string().optional().nullable(),
   postcode: z.string().optional().nullable(),
+  country: z.string().optional().nullable(),
   phone: z.string().optional().nullable(),
   // Blank is allowed — plenty of walk-in sellers have no email at all — but a
   // value that is present must actually look like one.

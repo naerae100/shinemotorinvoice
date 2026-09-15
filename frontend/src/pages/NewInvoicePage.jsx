@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { api } from '../lib/api';
-import { formatMoney, round2 } from '../lib/format';
+import { addressLines, formatMoney, formatNumber, round2 } from '../lib/format';
 import DiscountField, { applyDiscount } from '../components/DiscountField';
 import ComboField from '../components/ComboField';
 
@@ -43,10 +43,29 @@ const emptyConsignee = {
   defaultShippingTerm: '',
 };
 
-export default function NewInvoicePage() {
+/**
+ * One form, two stages.
+ *
+ * A shipment is entered once as a packing slip — the goods and what they weigh —
+ * and priced afterwards into the invoice. Both stages capture the same lines,
+ * containers and references, so this is the same form with the money hidden
+ * rather than a second screen: the net weight the packing slip establishes is
+ * the number the invoice multiplies, and keeping one form is what stops the two
+ * from being entered twice and disagreeing.
+ */
+export default function NewInvoicePage({ mode = 'invoice' }) {
   const navigate = useNavigate();
   const { id: editId } = useParams();
   const isEdit = Boolean(editId);
+  const isPacking = mode === 'packing';
+  const basePath = isPacking ? '/packing-slips' : '/export-invoices';
+  // Set when an existing record is loaded, so the invoice form can tell a plain
+  // edit from the moment a packing slip is being priced into an invoice.
+  const [loadedStage, setLoadedStage] = useState(null);
+  const pricingUp = !isPacking && loadedStage === 'PACKING_SLIP';
+  // Unpriced slips, offered when starting an invoice from scratch so the
+  // shipment already recorded can be picked up rather than typed again.
+  const [openSlips, setOpenSlips] = useState([]);
   const [loadingInvoice, setLoadingInvoice] = useState(Boolean(editId));
 
   const [materials, setMaterials] = useState([]);
@@ -63,11 +82,17 @@ export default function NewInvoicePage() {
   const [shipping, setShipping] = useState({
     shippingTerm: 'FAS',
     fasPort: '',
-    poNumber: '',
     contractNo: '',
     modeOfTransport: 'Sea',
   });
-  const [containers, setContainers] = useState([]);
+  // A container shipment always names at least one container, so the fields are
+  // present from the start rather than behind "+ Add container". Starting empty
+  // meant the operator never saw them and the document printed "—" where the
+  // container number, seal and type should be. Editing loads whatever the
+  // record actually has.
+  const [containers, setContainers] = useState(() =>
+    editId ? [] : [{ ...emptyContainer }]
+  );
 
   const [lines, setLines] = useState([{ ...emptyLine }]);
   const [discount, setDiscount] = useState({ discountType: 'NONE', discountValue: 0 });
@@ -79,7 +104,9 @@ export default function NewInvoicePage() {
 
   useEffect(() => {
     Promise.all([
-      api.get('/materials').then((res) => res.data.materials),
+      // An export document is written in the trade grades the buyer's contract
+      // names — "Mill Berry", not "Copper Bright Wire".
+      api.get('/materials', { params: { kind: 'EXPORT' } }).then((res) => res.data.materials),
       api.get('/consignees').then((res) => res.data.consignees),
     ])
       .then(([mats, cons]) => {
@@ -88,6 +115,16 @@ export default function NewInvoicePage() {
       })
       .catch(() => setError('Could not load materials or consignees.'));
   }, []);
+
+  // Only when starting a fresh invoice. Editing one, or pricing a slip, is
+  // already working on a specific record.
+  useEffect(() => {
+    if (isPacking || isEdit) return;
+    api
+      .get('/invoices', { params: { stage: 'PACKING_SLIP', pageSize: 100 } })
+      .then((res) => setOpenSlips(res.data.invoices ?? []))
+      .catch(() => setOpenSlips([]));
+  }, [isPacking, isEdit]);
 
   // Edit mode: hydrate from the stored invoice.
   useEffect(() => {
@@ -104,10 +141,10 @@ export default function NewInvoicePage() {
           discountValue: Number(inv.discountValue) || 0,
         });
         setCurrency(inv.currency || 'AUD');
+        setLoadedStage(inv.stage || 'INVOICED');
         setShipping({
           shippingTerm: inv.shippingTerm || '',
           fasPort: inv.fasPort || '',
-          poNumber: inv.poNumber || '',
           contractNo: inv.contractNo || '',
           modeOfTransport: inv.modeOfTransport || '',
         });
@@ -152,6 +189,8 @@ export default function NewInvoicePage() {
     [lines]
   );
   const { discountAmount, gst, total } = applyDiscount(subtotal, discount, applyGst ? 'EXCLUSIVE' : 'NO_TAX');
+  // What a packing slip is for: the figure the invoice will later price.
+  const totalNetWeight = lines.reduce((sum, l) => sum + (parseFloat(l.netWeightMt) || 0), 0);
 
   function updateLine(idx, field, value) {
     setLines((prev) => {
@@ -244,10 +283,14 @@ export default function NewInvoicePage() {
     if (!consigneeId) return setError('Select or add a consignee.');
 
     const validLines = lines.filter(
-      (l) => (l.materialId || l.description.trim()) && l.netWeightMt && l.pricePerMt
+      (l) => (l.materialId || l.description.trim()) && l.netWeightMt && (isPacking || l.pricePerMt)
     );
     if (validLines.length === 0) {
-      return setError('Add at least one line with a product, weight and price.');
+      return setError(
+        isPacking
+          ? 'Add at least one line with a product and a net weight.'
+          : 'Add at least one line with a product, weight and price.'
+      );
     }
 
     setSubmitting(true);
@@ -257,9 +300,15 @@ export default function NewInvoicePage() {
         invoiceNumber: invoiceNumber.trim(),
         consigneeId,
         currency,
+        // Saving the invoice form is what promotes a packing slip; there is no
+        // separate "convert" step to forget.
+        stage: isPacking ? 'PACKING_SLIP' : 'INVOICED',
         ...shipping,
-        ...discount,
-        applyGst,
+        // A packing slip states no money at all, so it carries no discount and
+        // no GST — they would be decisions made before there is a price to
+        // apply them to.
+        ...(isPacking ? { discountType: 'NONE', discountValue: 0 } : discount),
+        applyGst: isPacking ? false : applyGst,
         containers: containers.map((c) => ({
           containerNo: c.containerNo || null,
           seal: c.seal || null,
@@ -273,22 +322,24 @@ export default function NewInvoicePage() {
           grossWeightMt: num(l.grossWeightMt),
           tareWeightMt: num(l.tareWeightMt),
           netWeightMt: parseFloat(l.netWeightMt),
-          pricePerMt: parseFloat(l.pricePerMt),
+          // Zero rather than null: the column is required, and a packing slip
+          // is a statement about weight that says nothing about price yet.
+          pricePerMt: isPacking ? 0 : parseFloat(l.pricePerMt),
         })),
       };
 
       if (isEdit) {
         await api.patch(`/invoices/${editId}`, payload);
-        navigate(`/export-invoices/${editId}`);
+        navigate(`${basePath}/${editId}`);
         return;
       }
       const res = await api.post('/invoices', payload);
-      navigate(`/export-invoices/${res.data.invoice.id}`);
+      navigate(`${basePath}/${res.data.invoice.id}`);
     } catch (err) {
       const apiError = err.response?.data?.error;
       setError(
         (typeof apiError === 'string' ? apiError : apiError?.formErrors?.join(', ')) ||
-          'Could not save invoice.'
+          (isPacking ? 'Could not save packing slip.' : 'Could not save invoice.')
       );
     } finally {
       setSubmitting(false);
@@ -304,50 +355,81 @@ export default function NewInvoicePage() {
 
   return (
     <div className="mx-auto max-w-4xl px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
-      <h1 className="mb-6 font-display text-2xl font-semibold text-steel-900">
-        {isEdit ? 'Edit invoice' : 'New sales invoice'}
+      <h1 className="font-display text-2xl font-semibold text-steel-900">
+        {isPacking
+          ? isEdit
+            ? 'Edit packing slip'
+            : 'New packing slip'
+          : pricingUp
+            ? 'Price into a sales invoice'
+            : isEdit
+              ? 'Edit invoice'
+              : 'New sales invoice'}
       </h1>
+      {/* Pricing is the one moment the operator is looking at a document that
+          already exists and is about to change kind, so it says so plainly. */}
+      <p className="mb-6 mt-1 text-sm text-steel-500">
+        {isPacking
+          ? 'Record the goods and what they weigh. Prices come later, when this is priced into a sales invoice.'
+          : pricingUp
+            ? 'The weights below came from the packing slip and are the figures being billed. Add a price per tonne to each line; saving turns this into a sales invoice.'
+            : 'A commercial invoice for a container shipment.'}
+      </p>
+
+      {/* A shipment is normally weighed onto a packing slip first, so an
+          invoice typed from scratch is usually one that already exists as a
+          slip. Picking it here goes to that record and prices it, rather than
+          creating a second record for the same container — which would be two
+          net weights for one shipment, free to disagree. */}
+      {!isPacking && !isEdit && openSlips.length > 0 && (
+        <div className="mb-5 rounded-xl border border-steel-200 bg-white p-4 shadow-ticket">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <div className="text-sm font-semibold text-steel-900">
+                Start from a packing slip
+              </div>
+              <div className="mt-0.5 text-xs text-steel-500">
+                {openSlips.length} shipment{openSlips.length === 1 ? ' is' : 's are'} weighed but not
+                yet priced. Pick one to price it instead of entering it again.
+              </div>
+            </div>
+            <select
+              aria-label="Packing slip to price"
+              defaultValue=""
+              onChange={(e) => e.target.value && navigate(`/export-invoices/${e.target.value}/edit`)}
+              className="w-full rounded-lg border border-steel-200 bg-paper px-3 py-2 text-sm focus:bg-white sm:w-72"
+            >
+              <option value="">Choose a packing slip…</option>
+              {openSlips.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.invoiceNumber} — {s.consignee?.name ?? 'Unknown buyer'}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+      )}
 
       <form onSubmit={handleSubmit}>
         <div className="overflow-hidden rounded-xl border border-steel-200 bg-white shadow-ticket">
           <div className="flex items-center justify-between bg-steel-900 px-6 py-4">
-            <div className="font-semibold text-paper">Export invoice</div>
+            <div className="font-semibold text-paper">
+              {isPacking ? 'Packing slip' : 'Export invoice'}
+            </div>
             <div className="text-xs text-steel-400">Container shipment</div>
           </div>
 
-          <div className="grid grid-cols-1 gap-4 border-b border-steel-100 px-4 py-5 sm:grid-cols-2 sm:px-6">
+          {/* ── Header: reference numbers ─────────────────────────── */}
+          <div className={`grid gap-4 border-b border-steel-100 px-4 py-5 sm:px-6 ${isPacking ? 'grid-cols-1 sm:grid-cols-2' : 'grid-cols-1 sm:grid-cols-3'}`}>
             <div>
-              <label className={labelCls}>Invoice number</label>
+              <label className={labelCls}>
+                {isPacking ? 'Packing slip number' : 'Invoice number'}
+              </label>
               <input
                 value={invoiceNumber}
                 onChange={(e) => setInvoiceNumber(e.target.value)}
                 placeholder="e.g. SMC-2026-018"
                 className={`num ${field}`}
-              />
-            </div>
-            <div>
-              <label className={labelCls}>Currency</label>
-              <select
-                value={currency}
-                onChange={(e) => setCurrency(e.target.value)}
-                className={field}
-              >
-                {CURRENCIES.map((c) => (
-                  <option key={c} value={c}>
-                    {c}
-                  </option>
-                ))}
-              </select>
-              <p className="mt-1 text-[11px] text-steel-400">
-                Sets the payment account printed on the invoice.
-              </p>
-            </div>
-            <div>
-              <label className={labelCls}>PO number</label>
-              <input
-                value={shipping.poNumber}
-                onChange={(e) => setShipping({ ...shipping, poNumber: e.target.value })}
-                className={field}
               />
             </div>
             <div>
@@ -359,125 +441,25 @@ export default function NewInvoicePage() {
                 className={`num ${field}`}
               />
             </div>
-          </div>
-
-          <div className="border-b border-steel-100 px-6 py-5">
-            <label className={labelCls}>Consignee</label>
-            {addingConsignee ? (
-              <div className="rounded-lg border border-steel-200 bg-paper p-4">
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                  {[
-                    ['name', 'Consignee name (as it should print)', true],
-                    ['groupName', 'Buyer group (if they bill through several)'],
-                    ['address', 'Address'],
-                    ['country', 'Country'],
-                    ['email', 'Email'],
-                    ['phone', 'Phone'],
-                    ['abn', 'ABN'],
-                    ['website', 'Website'],
-                  ].map(([key, placeholder, autoFocus]) => (
-                    <input
-                      key={key}
-                      autoFocus={autoFocus}
-                      placeholder={placeholder}
-                      value={newConsignee[key]}
-                      onChange={(e) => setNewConsignee({ ...newConsignee, [key]: e.target.value })}
-                      className={field}
-                    />
-                  ))}
-                  <select
-                    value={newConsignee.defaultCurrency}
-                    onChange={(e) =>
-                      setNewConsignee({ ...newConsignee, defaultCurrency: e.target.value })
-                    }
-                    className={field}
-                  >
-                    <option value="">Usual currency (optional)</option>
-                    {CURRENCIES.map((c) => (
-                      <option key={c} value={c}>
-                        {c}
-                      </option>
-                    ))}
-                  </select>
-                  <input
-                    placeholder="Usual shipping term (e.g. FAS)"
-                    value={newConsignee.defaultShippingTerm}
-                    onChange={(e) =>
-                      setNewConsignee({ ...newConsignee, defaultShippingTerm: e.target.value })
-                    }
-                    className={field}
-                  />
-                </div>
-                <div className="mt-3 flex gap-2">
-                <button
-                  type="button"
-                  onClick={handleAddConsignee}
-                  className="whitespace-nowrap rounded-md bg-copper-500 px-3 py-2 text-sm font-semibold text-steel-950 hover:bg-copper-400"
-                >
-                  Add
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setAddingConsignee(false)}
-                  className="whitespace-nowrap rounded-md border border-steel-200 px-3 py-2 text-sm text-steel-600"
-                >
-                  Cancel
-                </button>
-                </div>
-              </div>
-            ) : (
-              <div className="flex items-center gap-3">
+            {!isPacking && (
+              <div>
+                <label className={labelCls}>Currency</label>
                 <select
-                  value={consigneeId}
-                  onChange={(e) => selectConsignee(e.target.value)}
+                  value={currency}
+                  onChange={(e) => setCurrency(e.target.value)}
                   className={field}
                 >
-                  <option value="">Select consignee…</option>
-                  {consignees.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.name}
-                      {c.country ? ` — ${c.country}` : ''}
+                  {CURRENCIES.map((c) => (
+                    <option key={c} value={c}>
+                      {c}
                     </option>
                   ))}
                 </select>
-                <button
-                  type="button"
-                  onClick={() => setAddingConsignee(true)}
-                  className="whitespace-nowrap text-sm font-medium text-copper-600 hover:text-copper-700"
-                >
-                  + New
-                </button>
               </div>
             )}
           </div>
 
-          <div className="grid grid-cols-1 gap-4 border-b border-steel-100 px-4 py-5 sm:grid-cols-2 lg:grid-cols-3 sm:px-6">
-            <ComboField
-              label="Shipping term"
-              value={shipping.shippingTerm}
-              onChange={(v) => setShipping({ ...shipping, shippingTerm: v })}
-              options={SHIPPING_TERMS}
-              placeholder="e.g. FOB — or type your own"
-            />
-            <ComboField
-              label="Port"
-              value={shipping.fasPort}
-              onChange={(v) => setShipping({ ...shipping, fasPort: v })}
-              options={['Port Botany, Sydney', 'Port of Melbourne', 'Port of Brisbane', 'Fremantle', 'Port Adelaide']}
-              placeholder="e.g. Port Botany"
-            />
-            <ComboField
-              label="Mode of transport"
-              value={shipping.modeOfTransport}
-              onChange={(v) => setShipping({ ...shipping, modeOfTransport: v })}
-              options={TRANSPORT_MODES}
-              placeholder="e.g. Sea"
-            />
-          </div>
-
-          {/* A shipment can fill more than one container, and each carries its
-              own goods — which is why the container number used to end up typed
-              into the description. */}
+          {/* ── Containers (above consignee — the physical shipment first) ── */}
           <div className="border-b border-steel-100 px-4 py-5 sm:px-6">
             <div className="mb-2 flex items-center justify-between">
               <label className={labelCls}>Containers</label>
@@ -543,130 +525,325 @@ export default function NewInvoicePage() {
             )}
           </div>
 
+          {/* ── Consignee ────────────────────────────────────────── */}
+          <div className="border-b border-steel-100 px-6 py-5">
+            <label className={labelCls}>Consignee</label>
+            {addingConsignee ? (
+              <div className="rounded-lg border border-steel-200 bg-paper p-4">
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  {[
+                    ['name', 'Consignee name (as it should print)', true],
+                    ['groupName', 'Buyer group (if they bill through several)'],
+                    ['address', 'Address'],
+                    ['country', 'Country'],
+                    ['email', 'Email'],
+                    ['phone', 'Phone'],
+                    ['abn', 'ABN'],
+                    ['website', 'Website'],
+                  ].map(([key, placeholder, autoFocus]) => (
+                    <input
+                      key={key}
+                      autoFocus={autoFocus}
+                      placeholder={placeholder}
+                      value={newConsignee[key]}
+                      onChange={(e) => setNewConsignee({ ...newConsignee, [key]: e.target.value })}
+                      className={field}
+                    />
+                  ))}
+                  <select
+                    value={newConsignee.defaultCurrency}
+                    onChange={(e) =>
+                      setNewConsignee({ ...newConsignee, defaultCurrency: e.target.value })
+                    }
+                    className={field}
+                  >
+                    <option value="">Usual currency (optional)</option>
+                    {CURRENCIES.map((c) => (
+                      <option key={c} value={c}>
+                        {c}
+                      </option>
+                    ))}
+                  </select>
+                  <input
+                    placeholder="Usual shipping term (e.g. FAS)"
+                    value={newConsignee.defaultShippingTerm}
+                    onChange={(e) =>
+                      setNewConsignee({ ...newConsignee, defaultShippingTerm: e.target.value })
+                    }
+                    className={field}
+                  />
+                </div>
+                <div className="mt-3 flex gap-2">
+                <button
+                  type="button"
+                  onClick={handleAddConsignee}
+                  className="whitespace-nowrap rounded-md bg-copper-500 px-3 py-2 text-sm font-semibold text-steel-950 hover:bg-copper-400"
+                >
+                  Add
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setAddingConsignee(false)}
+                  className="whitespace-nowrap rounded-md border border-steel-200 px-3 py-2 text-sm text-steel-600"
+                >
+                  Cancel
+                </button>
+                </div>
+              </div>
+            ) : (
+              <>
+                <div className="flex items-center gap-3">
+                  <select
+                    value={consigneeId}
+                    onChange={(e) => selectConsignee(e.target.value)}
+                    className={field}
+                  >
+                    <option value="">Select consignee…</option>
+                    {consignees.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.name}
+                        {c.country ? ` — ${c.country}` : ''}
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    type="button"
+                    onClick={() => setAddingConsignee(true)}
+                    className="whitespace-nowrap text-sm font-medium text-copper-600 hover:text-copper-700"
+                  >
+                    + New
+                  </button>
+                </div>
+                {/* Detail card — shown when a consignee is selected so the
+                    operator can confirm the address and contact details that
+                    will print on the document, and jump to edit if wrong. */}
+                {consigneeId && (() => {
+                  const c = consignees.find((x) => x.id === consigneeId);
+                  if (!c) return null;
+                  const addr = addressLines(c);
+                  const details = [c.email, c.phone].filter(Boolean);
+                  return (
+                    <div className="mt-3 rounded-lg border border-steel-200 bg-paper/60 px-4 py-3">
+                      <div className="flex items-start justify-between gap-4">
+                        <div className="min-w-0 text-sm text-steel-700">
+                          <div className="font-semibold text-steel-900">{c.name}</div>
+                          {addr.length > 0 && (
+                            <div className="mt-1 text-steel-600">
+                              {addr.join(', ')}
+                            </div>
+                          )}
+                          {details.length > 0 && (
+                            <div className="mt-1 text-steel-500">
+                              {details.join(' · ')}
+                            </div>
+                          )}
+                          {c.groupName && (
+                            <div className="mt-1 text-xs text-steel-400">Group: {c.groupName}</div>
+                          )}
+                        </div>
+                        <a
+                          href="/buyers"
+                          target="_blank"
+                          rel="noreferrer"
+                          className="shrink-0 text-xs font-medium text-copper-600 hover:text-copper-700"
+                        >
+                          Edit buyer ↗
+                        </a>
+                      </div>
+                    </div>
+                  );
+                })()}
+              </>
+            )}
+          </div>
+
+          <div className="grid grid-cols-1 gap-4 border-b border-steel-100 px-4 py-5 sm:grid-cols-2 lg:grid-cols-3 sm:px-6">
+            <ComboField
+              label="Shipping term"
+              value={shipping.shippingTerm}
+              onChange={(v) => setShipping({ ...shipping, shippingTerm: v })}
+              options={SHIPPING_TERMS}
+              placeholder="e.g. FOB — or type your own"
+            />
+            <ComboField
+              label="Port"
+              value={shipping.fasPort}
+              onChange={(v) => setShipping({ ...shipping, fasPort: v })}
+              options={['Port Botany, Sydney', 'Port of Melbourne', 'Port of Brisbane', 'Fremantle', 'Port Adelaide']}
+              placeholder="e.g. Port Botany"
+            />
+            <ComboField
+              label="Mode of transport"
+              value={shipping.modeOfTransport}
+              onChange={(v) => setShipping({ ...shipping, modeOfTransport: v })}
+              options={TRANSPORT_MODES}
+              placeholder="e.g. Sea"
+            />
+          </div>
+
           <div className="px-6 py-5">
-            <div className="mb-2 hidden gap-2 text-xs font-medium uppercase tracking-wider text-steel-500 md:grid md:grid-cols-[minmax(160px,1.2fr)_minmax(150px,1fr)_84px_84px_84px_96px_104px_28px]">
-              <div>Material (optional)</div>
-              <div>Description</div>
-              <div>Gross MT</div>
-              <div>Tare MT</div>
-              <div>Net MT</div>
-              <div>Price / MT</div>
-              <div className="text-right">Total</div>
-              <div />
-            </div>
-            <div className="space-y-2">
+            {/* One card per line rather than one row.
+
+                The row was a fixed-pixel grid of up to eight columns, which
+                could not fit the card it sat in: the Total heading was cut off
+                and the amount printed past the right-hand edge. Widths that are
+                declared in pixels cannot adapt, so the fix is to stop declaring
+                them — each line is now a small card whose fields wrap, and the
+                arithmetic is grouped the way it is actually read: gross minus
+                tare gives net, and net times price gives the amount. */}
+            <div className="space-y-3">
               {lines.map((line, idx) => {
                 const value =
                   (parseFloat(line.netWeightMt) || 0) * (parseFloat(line.pricePerMt) || 0);
                 return (
                   <div
                     key={idx}
-                    className="grid grid-cols-2 items-center gap-2 rounded-lg border border-steel-200 bg-paper/60 p-3 md:grid-cols-[minmax(160px,1.2fr)_minmax(150px,1fr)_84px_84px_84px_96px_104px_28px] md:rounded-none md:border-0 md:bg-transparent md:p-0"
+                    className="rounded-xl border border-steel-200 bg-white p-4 shadow-sm transition-colors focus-within:border-copper-400"
                   >
-                    <select
-                      aria-label="Material"
-                      value={line.materialId}
-                      onChange={(e) => updateLine(idx, 'materialId', e.target.value)}
-                      className="col-span-2 min-w-0 rounded-md border border-steel-200 bg-white px-2.5 py-2 text-sm md:col-span-1 md:bg-paper md:focus:bg-white"
-                    >
-                      <option value="">One-off — type below</option>
-                      {materials.map((m) => (
-                        <option key={m.id} value={m.id}>
-                          {m.code ? `${m.code}. ` : ''}
-                          {m.description}
-                        </option>
-                      ))}
-                    </select>
-                    <div className="col-span-2 min-w-0 md:col-span-1">
-                      <input
-                        aria-label="Description"
-                        placeholder="As printed on the invoice"
-                        value={line.description}
-                        onChange={(e) => updateLine(idx, 'description', e.target.value)}
-                        className="w-full rounded-md border border-steel-200 bg-white px-2.5 py-2 text-sm md:bg-paper md:focus:bg-white"
-                      />
-                      <div className="mt-1 flex gap-1">
+                    <div className="flex items-center gap-3">
+                      <span className="num flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-steel-100 text-xs font-semibold text-steel-600">
+                        {idx + 1}
+                      </span>
+                      <select
+                        aria-label="Material"
+                        value={line.materialId}
+                        onChange={(e) => updateLine(idx, 'materialId', e.target.value)}
+                        className="min-w-0 flex-1 rounded-lg border border-steel-200 bg-paper px-3 py-2 text-sm font-medium focus:bg-white"
+                      >
+                        <option value="">Select a grade…</option>
+                        {materials.map((m) => (
+                          <option key={m.id} value={m.id}>
+                            {m.code ? `${m.code}. ` : ''}
+                            {m.description}
+                          </option>
+                        ))}
+                      </select>
+                      {containers.length > 0 && (
+                        <select
+                          aria-label="Container"
+                          value={line.containerIndex}
+                          onChange={(e) => updateLine(idx, 'containerIndex', e.target.value)}
+                          className="num w-36 shrink-0 rounded-lg border border-steel-200 bg-paper px-2 py-2 text-xs focus:bg-white"
+                        >
+                          <option value="">No container</option>
+                          {containers.map((c, i) => (
+                            <option key={i} value={i}>
+                              {c.containerNo || `Container ${i + 1}`}
+                            </option>
+                          ))}
+                        </select>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => removeLine(idx)}
+                        disabled={lines.length === 1}
+                        className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-lg text-steel-300 hover:bg-working-redDim hover:text-working-red disabled:opacity-30"
+                        aria-label={`Remove line ${idx + 1}`}
+                      >
+                        ×
+                      </button>
+                    </div>
+
+                    <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+                      <div className="min-w-0 flex-1">
+                        <label className={labelCls}>Description as printed</label>
+                        <input
+                          aria-label="Description"
+                          placeholder={
+                            line.materialId
+                              ? 'Leave blank to use the grade name'
+                              : 'e.g. Millberry — Grade B'
+                          }
+                          value={line.description}
+                          onChange={(e) => updateLine(idx, 'description', e.target.value)}
+                          className={field}
+                        />
+                      </div>
+                      <div className="w-full sm:w-40">
+                        <label className={labelCls}>Packages</label>
                         <input
                           aria-label="Packages"
                           placeholder="13 bags"
                           value={line.packageCount}
                           onChange={(e) => updateLine(idx, 'packageCount', e.target.value)}
-                          className="w-1/2 rounded-md border border-steel-200 bg-white px-2 py-1 text-[11px] md:bg-paper"
+                          className={field}
                         />
-                        {containers.length > 0 && (
-                          <select
-                            aria-label="Container"
-                            value={line.containerIndex}
-                            onChange={(e) => updateLine(idx, 'containerIndex', e.target.value)}
-                            className="w-1/2 rounded-md border border-steel-200 bg-white px-2 py-1 text-[11px] md:bg-paper"
-                          >
-                            <option value="">No container</option>
-                            {containers.map((c, i) => (
-                              <option key={i} value={String(i)}>
-                                {c.containerNo || `Container ${i + 1}`}
-                              </option>
-                            ))}
-                          </select>
-                        )}
                       </div>
                     </div>
-                    <input
-                      type="number"
-                      step="0.001"
-                      min="0"
-                      inputMode="decimal"
-                      aria-label="Gross weight"
-                      placeholder="Gross"
-                      value={line.grossWeightMt}
-                      onChange={(e) => updateLine(idx, 'grossWeightMt', e.target.value)}
-                      className="num rounded-md border border-steel-200 bg-white px-2.5 py-2 text-sm md:bg-paper md:focus:bg-white"
-                    />
-                    <input
-                      type="number"
-                      step="0.001"
-                      min="0"
-                      inputMode="decimal"
-                      aria-label="Tare weight"
-                      placeholder="Tare"
-                      value={line.tareWeightMt}
-                      onChange={(e) => updateLine(idx, 'tareWeightMt', e.target.value)}
-                      className="num rounded-md border border-steel-200 bg-white px-2.5 py-2 text-sm md:bg-paper md:focus:bg-white"
-                    />
-                    <input
-                      type="number"
-                      step="0.001"
-                      min="0"
-                      inputMode="decimal"
-                      aria-label="Net weight"
-                      placeholder="Net"
-                      value={line.netWeightMt}
-                      onChange={(e) => updateLine(idx, 'netWeightMt', e.target.value)}
-                      className="num rounded-md border border-steel-200 bg-white px-2.5 py-2 text-sm md:bg-paper md:focus:bg-white"
-                    />
-                    <input
-                      type="number"
-                      step="0.01"
-                      min="0"
-                      inputMode="decimal"
-                      aria-label="Price per MT"
-                      placeholder="Price / MT"
-                      value={line.pricePerMt}
-                      onChange={(e) => updateLine(idx, 'pricePerMt', e.target.value)}
-                      className="num rounded-md border border-steel-200 bg-white px-2.5 py-2 text-sm md:bg-paper md:focus:bg-white"
-                    />
-                    <div className="num text-sm font-medium text-steel-900 md:text-right">
-                      <span className="text-xs text-steel-400 md:hidden">Total </span>
-                      {value > 0 ? formatMoney(value, currency) : '—'}
+
+                    {/* Weights read as the sum they are, so a mistyped tare is
+                        visible as a net that does not look right. */}
+                    <div className="mt-3 flex flex-wrap items-end gap-2 rounded-lg bg-paper/70 p-3">
+                      <div className="min-w-[92px] flex-1">
+                        <label className={labelCls}>Gross MT</label>
+                        <input
+                          type="number"
+                          step="0.001"
+                          min="0"
+                          inputMode="decimal"
+                          aria-label="Gross weight"
+                          placeholder="0.000"
+                          value={line.grossWeightMt}
+                          onChange={(e) => updateLine(idx, 'grossWeightMt', e.target.value)}
+                          className={`num ${field}`}
+                        />
+                      </div>
+                      <span className="pb-2 text-lg font-medium text-steel-300">−</span>
+                      <div className="min-w-[92px] flex-1">
+                        <label className={labelCls}>Tare MT</label>
+                        <input
+                          type="number"
+                          step="0.001"
+                          min="0"
+                          inputMode="decimal"
+                          aria-label="Tare weight"
+                          placeholder="0.000"
+                          value={line.tareWeightMt}
+                          onChange={(e) => updateLine(idx, 'tareWeightMt', e.target.value)}
+                          className={`num ${field}`}
+                        />
+                      </div>
+                      <span className="pb-2 text-lg font-medium text-steel-300">=</span>
+                      <div className="min-w-[92px] flex-1">
+                        <label className={`${labelCls} font-semibold text-steel-700`}>Net MT</label>
+                        <input
+                          type="number"
+                          step="0.001"
+                          min="0"
+                          inputMode="decimal"
+                          aria-label="Net weight"
+                          placeholder="0.000"
+                          value={line.netWeightMt}
+                          onChange={(e) => updateLine(idx, 'netWeightMt', e.target.value)}
+                          className={`num ${field} border-steel-300 font-semibold`}
+                        />
+                      </div>
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => removeLine(idx)}
-                      disabled={lines.length === 1}
-                      className="ml-auto flex h-8 w-8 items-center justify-center rounded-md text-steel-400 hover:bg-working-redDim hover:text-working-red disabled:opacity-30"
-                      aria-label="Remove line"
-                    >
-                      ×
-                    </button>
+
+                    {!isPacking && (
+                      <div className="mt-3 flex flex-wrap items-end justify-between gap-3">
+                        <div className="w-40">
+                          <label className={labelCls}>Price / MT ({currency})</label>
+                          <input
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            inputMode="decimal"
+                            aria-label="Price per MT"
+                            placeholder="0.00"
+                            value={line.pricePerMt}
+                            onChange={(e) => updateLine(idx, 'pricePerMt', e.target.value)}
+                            className={`num ${field}`}
+                          />
+                        </div>
+                        <div className="text-right">
+                          <div className={labelCls}>Line total</div>
+                          <div className="num text-lg font-semibold text-steel-900">
+                            {value > 0 ? formatMoney(value, currency) : '—'}
+                          </div>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 );
               })}
@@ -680,6 +857,7 @@ export default function NewInvoicePage() {
             </button>
           </div>
 
+          {!isPacking && (
           <div className="grid grid-cols-1 gap-6 border-t border-steel-100 px-4 py-5 sm:grid-cols-2 sm:px-6">
             <DiscountField value={discount} onChange={setDiscount} subtotal={subtotal} />
             <div>
@@ -700,8 +878,15 @@ export default function NewInvoicePage() {
               </p>
             </div>
           </div>
+          )}
 
           <div className="border-t border-steel-200 bg-steel-950 px-6 py-5">
+            {isPacking ? (
+              <div className="ml-auto flex max-w-xs items-baseline justify-between border-t border-steel-700 pt-2 text-lg font-semibold text-paper">
+                <span>Total net weight</span>
+                <span className="num text-copper-400">{formatNumber(totalNetWeight, 3)} MT</span>
+              </div>
+            ) : (
             <div className="ml-auto max-w-xs space-y-1.5">
               <div className="flex justify-between text-sm text-steel-400">
                 <span>Subtotal</span>
@@ -723,10 +908,11 @@ export default function NewInvoicePage() {
                 </div>
               )}
               <div className="flex justify-between border-t border-steel-700 pt-2 text-lg font-semibold text-paper">
-                <span>Total AUD</span>
+                <span>Total {currency}</span>
                 <span className="num text-copper-400">{formatMoney(total, currency)}</span>
               </div>
             </div>
+            )}
           </div>
         </div>
 
@@ -742,7 +928,17 @@ export default function NewInvoicePage() {
             disabled={submitting}
             className="rounded-md bg-copper-500 px-6 py-3 text-sm font-semibold text-steel-950 shadow-sm transition-colors hover:bg-copper-400 disabled:opacity-60"
           >
-            {submitting ? 'Saving…' : isEdit ? 'Save changes' : 'Save invoice'}
+            {submitting
+              ? 'Saving…'
+              : isPacking
+                ? isEdit
+                  ? 'Save packing slip'
+                  : 'Create packing slip'
+                : pricingUp
+                  ? 'Create sales invoice'
+                  : isEdit
+                    ? 'Save changes'
+                    : 'Save invoice'}
           </button>
         </div>
       </form>
