@@ -171,36 +171,20 @@ export function TotalsBlock({ words, rows, total, currency = 'AUD', children }) 
  * margin beside it — and multiplied into the page so the rule shows through it
  * instead of being covered by an opaque white square.
  */
-export function SignatureBlock({ settings, companyName, className = '' }) {
+export function SignatureBlock({ settings, className = '' }) {
   return (
-    <div className={`relative flex flex-col ${className}`}>
-      <div className="mb-1.5 text-[9.5px] font-bold uppercase tracking-[0.12em] text-brand-600">
-        Authorised signature
-      </div>
-      <div className="relative mt-auto">
-        {(() => {
-          const url = settings?.stampUrl || '/branding/stamp.png';
-          return (
-            <img
-              src={url}
-              alt=""
-              aria-hidden="true"
-              className="pointer-events-none absolute bottom-7 right-2 h-[86px] w-[86px] object-contain mix-blend-multiply"
-            />
-          );
-        })()}
-        {/* Height enough for a real signature to fit above the rule. */}
-        <div className="h-16" />
-        <div className="border-b border-ink-400" />
-        {/* Kept clear of the stamp's column so the company name is never read
-            through a ring of stamp ink. */}
-        <div className="mt-1 pr-24 text-[11px] font-bold leading-snug text-ink-800">
-          For and on behalf of {companyName}
-        </div>
-        <div className="text-[9.5px] uppercase tracking-[0.12em] text-ink-500">
-          Authorised signatory
-        </div>
-      </div>
+    <div className={`relative flex flex-col items-end ${className}`}>
+      {(() => {
+        const url = settings?.stampUrl || '/branding/stamp.png';
+        return (
+          <img
+            src={url}
+            alt="Company Stamp"
+            aria-hidden="true"
+            className="pointer-events-none h-24 w-24 object-contain mix-blend-multiply"
+          />
+        );
+      })()}
     </div>
   );
 }
