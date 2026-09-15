@@ -6,7 +6,6 @@ import {
   PartyBlock,
   Masthead,
   ReferenceBlock,
-  SignatureBlock,
   DocumentFooter,
   VoidStamp,
 } from './parts';
@@ -146,7 +145,7 @@ export default function PackingListDocument({ invoice, settings }) {
         <thead>
           <tr className="bg-ink-900 text-left uppercase tracking-[0.1em] text-white">
             <th className="w-10 rounded-tl-xl px-3 py-3 print:py-1.5 text-[9.5px] font-bold">SI. No.</th>
-            <th className="px-2 py-3 print:py-1.5 text-[9.5px] font-bold">Description of goods</th>
+            <th className="px-2 py-3 print:py-1.5 text-[9.5px] font-bold">Product</th>
             <th className="w-28 px-2 py-3 print:py-1.5 text-right text-[9.5px] font-bold">Gross weight (MT)</th>
             <th className="w-28 px-2 py-3 print:py-1.5 text-right text-[9.5px] font-bold">Tare weight (MT)</th>
             <th className="w-28 rounded-tr-xl px-3 py-3 print:py-1.5 text-right text-[9.5px] font-bold">
@@ -221,10 +220,10 @@ export default function PackingListDocument({ invoice, settings }) {
           <tr className="bg-ink-100 font-semibold">
             <td className="rounded-bl-xl" />
             <td className="px-2 py-3 print:py-1.5 text-[10px] font-bold uppercase tracking-[0.12em] text-ink-700">
-              Total weights
+              Total net weight
             </td>
-            <td className="num px-2 py-3 print:py-1.5 text-right text-ink-900">{weight(totals.gross)}</td>
-            <td className="num px-2 py-3 print:py-1.5 text-right text-ink-900">{weight(totals.tare)}</td>
+            <td />
+            <td />
             <td className="num rounded-br-xl px-3 py-3 print:py-1.5 text-right text-ink-900">
               {formatNumber(totals.net, 3)}
             </td>
@@ -233,7 +232,7 @@ export default function PackingListDocument({ invoice, settings }) {
       </table>
       </div>
 
-      <section className="avoid-break grid grid-cols-1 gap-8 pt-5 sm:grid-cols-2">
+      <section className="avoid-break pt-5">
         <div>
           <div className="mb-1.5 text-[9.5px] font-bold uppercase tracking-[0.12em] text-brand-600">
             Declaration
@@ -246,8 +245,6 @@ export default function PackingListDocument({ invoice, settings }) {
             described are those presented for shipment.
           </p>
         </div>
-
-        <SignatureBlock settings={settings} companyName={companyName} />
       </section>
 
       <div className="mt-auto pt-6">
