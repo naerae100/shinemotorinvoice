@@ -1,0 +1,7 @@
+{
+  "name": "shine-metals-monorepo",
+  "private": true,
+  "scripts": {
+    "postinstall": "cd backend && npm install && npx prisma generate"
+  }
+}
