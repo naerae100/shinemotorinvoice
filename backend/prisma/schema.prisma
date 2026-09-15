@@ -36,6 +36,7 @@ model User {
   docketsCreated  Docket[]        @relation("DocketCreatedBy")
   docketsEdited   Docket[]        @relation("DocketEditedBy")
   docketsVoided   Docket[]        @relation("DocketVoidedBy")
+  docketsPaid     Docket[]        @relation("DocketPaidBy")
   invoicesCreated ExportInvoice[] @relation("InvoiceCreatedBy")
   invoicesEdited  ExportInvoice[] @relation("InvoiceEditedBy")
   invoicesVoided  ExportInvoice[] @relation("InvoiceVoidedBy")
@@ -58,7 +59,8 @@ model AuditEvent {
   // Denormalised so the trail still names someone after a user row is edited.
   actorEmail String?
 
-  // Action values: "CREATE" | "UPDATE" | "VOID" | "RESTORE" | "ISSUE" | "LOGIN" | "LOGIN_FAILED"
+  // Action values: "CREATE" | "UPDATE" | "VOID" | "RESTORE" | "ISSUE" | "PAY" |
+  // "UNPAY" | "LOGIN" | "LOGIN_FAILED"
   action   String
   entity   String // "Docket" | "ExportInvoice" | "User" | ...
   entityId String
@@ -183,6 +185,26 @@ model Docket {
 
   paygStatement String?
 
+  // PaymentStatus values: "PAID" | "UNPAID".
+  //
+  // Defaults to PAID because settling on the spot is the ordinary case, and
+  // because every docket already in the system was settled at the time — a
+  // default of UNPAID would make the whole history read as money owed. UNPAID
+  // is the deliberate exception: the manager with bank access is not on site,
+  // so the goods are bought, the supplier's account details are taken, and the
+  // transfer happens later.
+  paymentStatus    String    @default("PAID")
+  paidAt           DateTime?
+  // "TRANSFER" | "PAYID" | "CHEQUE". Cash is deliberately not an option: NSW
+  // scrap metal law requires payment by EFT, so offering it would be inviting
+  // the system to record an unlawful transaction.
+  paymentMethod    String?
+  // Bank reference, receipt number, or whatever makes the payment findable
+  // again when the supplier rings up asking about it.
+  paymentReference String?
+  paidById         String?
+  paidBy           User?     @relation("DocketPaidBy", fields: [paidById], references: [id])
+
   // Status values: "ACTIVE" | "VOID". Voided records keep their docket number and
   // stay in history for the audit trail, but are excluded from every total.
   status     String    @default("ACTIVE")
@@ -227,6 +249,10 @@ model Docket {
   @@index([date])
   @@index([supplierId])
   @@index([status])
+  // The "to pay" run filters on this every time it is opened, and it is the
+  // one query that must stay quick while the unpaid list is short and the
+  // paid history behind it grows without limit.
+  @@index([paymentStatus])
 }
 
 model DocketLineItem {

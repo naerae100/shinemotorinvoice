@@ -18,7 +18,7 @@ if (!hasTestDatabase) {
   console.warn(
     '\n  ! SKIPPING %d API integration tests — TEST_DATABASE_URL is not set.\n' +
       '    These need a scratch PostgreSQL database. See tests/helpers.js.\n',
-    76
+    83
   );
 }
 
@@ -31,7 +31,7 @@ const suite = hasTestDatabase ? describe : describe.skip;
 if (!hasTestDatabase) {
   test(
     'API integration tests are configured',
-    { skip: 'TEST_DATABASE_URL is not set — 76 API tests did NOT run' },
+    { skip: 'TEST_DATABASE_URL is not set — 83 API tests did NOT run' },
     () => {}
   );
 }
@@ -1101,5 +1101,104 @@ suite('permissions — reversing a financial record is admin-only', () => {
     assert.equal(voided.status, 200);
     const restored = await api('POST', `/dockets/${id}/restore`, { token });
     assert.equal(restored.status, 200);
+  });
+});
+
+suite('dockets — paying the supplier', () => {
+  let staffToken;
+
+  before(async () => {
+    if (!hasTestDatabase) return;
+    const email = `payer-${Date.now()}@example.com`;
+    const password = 'StaffPassword12345';
+    await api('POST', '/users', {
+      token,
+      body: { name: 'Yard Staff', email, password, role: 'STAFF' },
+    });
+    staffToken = (await api('POST', '/auth/login', { body: { email, password } })).body.token;
+  });
+
+  test('a docket is paid by default, stamped with who and when', async () => {
+    const { body } = await createDocket();
+    assert.equal(body.docket.paymentStatus, 'PAID');
+    assert.ok(body.docket.paidAt, 'settled on the spot, so the time is recorded');
+    assert.ok(body.docket.paidBy?.name);
+  });
+
+  test('a pay-later docket is unpaid and carries no payment date', async () => {
+    const { body } = await createDocket({ paymentStatus: 'UNPAID' });
+    assert.equal(body.docket.paymentStatus, 'UNPAID');
+    assert.equal(body.docket.paidAt, null);
+  });
+
+  // NSW scrap metal law requires payment by electronic transfer. Offering cash
+  // would invite the record to describe an unlawful transaction.
+  test('cash is not an accepted payment method', async () => {
+    const { body } = await createDocket({ paymentStatus: 'UNPAID' });
+    const res = await api('POST', `/dockets/${body.docket.id}/pay`, {
+      token,
+      body: { paymentMethod: 'CASH' },
+    });
+    assert.equal(res.status, 400);
+  });
+
+  test('marking paid records the method, the reference and the actor', async () => {
+    const { body } = await createDocket({ paymentStatus: 'UNPAID' });
+    const id = body.docket.id;
+
+    const paid = await api('POST', `/dockets/${id}/pay`, {
+      token,
+      body: { paymentMethod: 'TRANSFER', paymentReference: 'OSKO-4471' },
+    });
+    assert.equal(paid.status, 200);
+    assert.equal(paid.body.docket.paymentStatus, 'PAID');
+    assert.equal(paid.body.docket.paymentMethod, 'TRANSFER');
+    assert.equal(paid.body.docket.paymentReference, 'OSKO-4471');
+    assert.ok(paid.body.docket.paidBy?.name);
+
+    // Paying the same docket twice is how a supplier gets paid twice.
+    const again = await api('POST', `/dockets/${id}/pay`, { token, body: {} });
+    assert.equal(again.status, 409);
+  });
+
+  test('a voided docket cannot be paid — nothing is owed on it', async () => {
+    const { body } = await createDocket({ paymentStatus: 'UNPAID' });
+    const id = body.docket.id;
+    await api('POST', `/dockets/${id}/void`, { token, body: { reason: 'entered twice' } });
+
+    const res = await api('POST', `/dockets/${id}/pay`, { token, body: {} });
+    assert.equal(res.status, 409);
+  });
+
+  test('reversing a payment is admin-only', async () => {
+    const { body } = await createDocket({ paymentStatus: 'UNPAID' });
+    const id = body.docket.id;
+    await api('POST', `/dockets/${id}/pay`, { token, body: { paymentMethod: 'TRANSFER' } });
+
+    const refused = await api('POST', `/dockets/${id}/unpay`, { token: staffToken });
+    assert.equal(refused.status, 403, 'putting a docket back in the payable list pays twice');
+
+    const allowed = await api('POST', `/dockets/${id}/unpay`, { token });
+    assert.equal(allowed.status, 200);
+    assert.equal(allowed.body.docket.paymentStatus, 'UNPAID');
+    assert.equal(allowed.body.docket.paidAt, null, 'the old payment details are cleared');
+    assert.equal(allowed.body.docket.paymentReference, null);
+  });
+
+  test('the list reports what is still owed, and can be filtered to it', async () => {
+    const before = await api('GET', '/dockets?pageSize=1', { token });
+    const owedBefore = before.body.unpaid.total;
+
+    await createDocket({
+      paymentStatus: 'UNPAID',
+      taxMode: 'NO_TAX',
+      lineItems: [line(fx.materials[0].id, 100, 7)],
+    });
+
+    const after = await api('GET', '/dockets?pageSize=1', { token });
+    assert.equal(after.body.unpaid.total, owedBefore + 700);
+
+    const run = await api('GET', '/dockets?paymentStatus=UNPAID&pageSize=200', { token });
+    assert.ok(run.body.dockets.every((d) => d.paymentStatus === 'UNPAID'));
   });
 });

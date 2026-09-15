@@ -97,6 +97,11 @@ export default function NewDocketPage({ defaultType = 'PURCHASE_DOCKET' }) {
   // Inclusive by default: the rate agreed at the weighbridge already has GST in it.
   const [taxMode, setTaxMode] = useState(defaultTaxMode);
   const [paygStatement, setPaygStatement] = useState('NOT_APPLICABLE');
+  // Paid on the spot unless the operator says otherwise. The pay-later case is
+  // real and common — the manager with bank access is not on site — but it is
+  // still the exception, and defaulting to unpaid would fill the payment run
+  // with dockets that were settled at the weighbridge.
+  const [payLater, setPayLater] = useState(false);
 
   useEffect(() => {
     setType(defaultType);
@@ -292,6 +297,7 @@ export default function NewDocketPage({ defaultType = 'PURCHASE_DOCKET' }) {
         taxMode,
         supplierId,
         paygStatement,
+        paymentStatus: payLater ? 'UNPAID' : 'PAID',
         ...discount,
         lineItems: validLines.map((l) => ({
           materialId: l.materialId || null,
@@ -641,6 +647,32 @@ export default function NewDocketPage({ defaultType = 'PURCHASE_DOCKET' }) {
                 </option>
               ))}
             </select>
+          </div>
+
+          <div className="border-t border-steel-100 px-6 py-5">
+            <div className="mb-1.5 text-sm font-medium text-steel-700">Payment</div>
+            <label
+              className={`flex cursor-pointer items-start gap-3 rounded-md border p-3 ${
+                payLater
+                  ? 'border-working-amber/40 bg-working-amberDim'
+                  : 'border-steel-200 bg-paper'
+              }`}
+            >
+              <input
+                type="checkbox"
+                checked={payLater}
+                onChange={(e) => setPayLater(e.target.checked)}
+                className="mt-0.5 h-4 w-4 accent-copper-500"
+              />
+              <span className="text-sm">
+                <span className="font-semibold text-steel-900">Pay this supplier later</span>
+                <span className="mt-0.5 block text-steel-600">
+                  {payLater
+                    ? 'Recorded as unpaid. It will appear in the payment run with the supplier’s account details until it is settled.'
+                    : 'Leave unticked if the supplier has been paid. Tick it when the transfer still has to be made.'}
+                </span>
+              </span>
+            </label>
           </div>
 
           <div className="border-t border-steel-100 px-6 py-5">

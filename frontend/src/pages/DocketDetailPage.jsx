@@ -6,6 +6,7 @@ import { getSettings } from '../lib/settings';
 import { useAuth } from '../context/AuthContext';
 import { formatAud, formatNumber, formatRate, amountInWords } from '../lib/format';
 import ConfirmDialog from '../components/ConfirmDialog';
+import PaymentDialog from '../components/PaymentDialog';
 import ExportButton from '../components/ExportButton';
 import DocketDocument, { PAYG_LABELS } from '../components/documents/DocketDocument';
 import DocketReceipt from '../components/documents/DocketReceipt';
@@ -36,6 +37,8 @@ const AUDIT_LABELS = {
   VOID: 'Voided',
   RESTORE: 'Restored',
   ISSUE: 'Issued',
+  PAY: 'Paid',
+  UNPAY: 'Payment reversed',
 };
 
 function Chip({ tone = 'neutral', children }) {
@@ -109,6 +112,7 @@ export default function DocketDetailPage() {
   const [actionError, setActionError] = useState('');
   const [busy, setBusy] = useState(false);
   const [dialog, setDialog] = useState(null);
+  const [payOpen, setPayOpen] = useState(false);
   const [view, setView] = useState('record');
   const [searchParams, setSearchParams] = useSearchParams();
   // "Save & print" on the entry form lands here with ?print=receipt.
@@ -217,6 +221,17 @@ export default function DocketDetailPage() {
               ) : (
                 <Chip tone="amber">Draft — not issued</Chip>
               )}
+              {/* Whether the supplier has their money is the first thing
+                  anyone opening this record wants to know, so it sits with the
+                  status rather than further down the page. */}
+              {!isVoid &&
+                (docket.paymentStatus === 'UNPAID' ? (
+                  <Chip tone="amber">Unpaid</Chip>
+                ) : (
+                  <Chip tone="green">
+                    Paid{docket.paidAt ? ` ${format(new Date(docket.paidAt), 'd MMM yyyy')}` : ''}
+                  </Chip>
+                ))}
               {docket.xeroInvoiceId && <Chip tone="green">✓ Xero</Chip>}
             </div>
             <div className="mt-1 text-sm text-steel-500">
@@ -240,6 +255,32 @@ export default function DocketDetailPage() {
             >
               Edit
             </button>
+            {/* Settling an unpaid docket is the most frequent thing done from
+                this page, so it leads rather than sitting in a menu. */}
+            {!isVoid && docket.paymentStatus === 'UNPAID' && (
+              <button
+                className="rounded-md bg-working-green px-3 py-2 text-xs font-semibold text-white hover:brightness-110 disabled:opacity-40"
+                disabled={busy}
+                onClick={() => setPayOpen(true)}
+              >
+                Mark as paid
+              </button>
+            )}
+            {!isVoid && docket.paymentStatus === 'PAID' && isAdmin && (
+              <button
+                className={btn}
+                disabled={busy}
+                title="Undo a payment recorded against the wrong docket."
+                onClick={() =>
+                  runAction(
+                    () => api.post(`/dockets/${docket.id}/unpay`),
+                    'Could not reverse this payment.'
+                  )
+                }
+              >
+                Mark unpaid
+              </button>
+            )}
             {!isIssued && !isVoid && (
               <button
                 className={btn}
@@ -638,6 +679,19 @@ export default function DocketDetailPage() {
           <DocketDocument docket={docket} settings={settings} />
         </div>
       )}
+
+      <PaymentDialog
+        open={payOpen}
+        docket={docket}
+        busy={busy}
+        onCancel={() => setPayOpen(false)}
+        onConfirm={(body) =>
+          runAction(
+            () => api.post(`/dockets/${docket.id}/pay`, body).then(() => setPayOpen(false)),
+            'Could not record this payment.'
+          )
+        }
+      />
 
       <ConfirmDialog
         open={Boolean(dialog)}

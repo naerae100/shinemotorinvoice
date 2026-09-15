@@ -62,8 +62,24 @@ const docketSchema = z.object({
     .optional()
     .nullable(),
   notes: z.string().optional().nullable(),
+  // Recorded at the weighbridge: PAID when the supplier walked away settled,
+  // UNPAID when the transfer still has to be made. Defaults to PAID because
+  // that is the ordinary case and the safer thing to get wrong — an unpaid
+  // docket wrongly marked paid is visible to the supplier chasing it, while
+  // the reverse quietly pays someone twice.
+  paymentStatus: z.enum(['PAID', 'UNPAID']).default('PAID'),
+  paymentMethod: z.enum(['TRANSFER', 'PAYID', 'CHEQUE']).optional().nullable(),
+  paymentReference: z.string().optional().nullable(),
   lineItems: z.array(lineItemSchema).min(1, 'At least one material line is required'),
   ...discountSchema,
+});
+
+const paymentSchema = z.object({
+  paymentMethod: z.enum(['TRANSFER', 'PAYID', 'CHEQUE']).optional().nullable(),
+  paymentReference: z.string().optional().nullable(),
+  // Back-dated when the transfer went out yesterday but nobody recorded it
+  // until this morning, which is the normal way a payment run works.
+  paidAt: z.string().datetime().optional(),
 });
 
 const DETAIL_INCLUDE = {
@@ -72,6 +88,7 @@ const DETAIL_INCLUDE = {
   createdBy: { select: { id: true, name: true } },
   editedBy: { select: { id: true, name: true } },
   voidedBy: { select: { id: true, name: true } },
+  paidBy: { select: { id: true, name: true } },
 };
 
 const buildLines = (lineItems) =>
@@ -97,10 +114,16 @@ const totalsFor = (lines, data) =>
  * you were looking at would be worse than no export.
  */
 function buildDocketWhere(query) {
-  const { search, type, supplierId, materialId, from, to, status, minTotal, maxTotal } = query;
+  const { search, type, supplierId, materialId, from, to, status, minTotal, maxTotal, paymentStatus } =
+    query;
   return {
     ...(type ? { type: String(type) } : {}),
     ...(supplierId ? { supplierId: String(supplierId) } : {}),
+    // Absent means both, so the ordinary list is unchanged; the payment run
+    // asks for UNPAID.
+    ...(paymentStatus && paymentStatus !== 'ALL'
+      ? { paymentStatus: String(paymentStatus) }
+      : {}),
     // Default view hides voided records; pass status=ALL or status=VOID to see them.
     ...(status === 'ALL' ? {} : { status: status ? String(status) : 'ACTIVE' }),
     ...(materialId ? { lineItems: { some: { materialId: String(materialId) } } } : {}),
@@ -142,7 +165,7 @@ router.get(
 
     const { take, skip, page: currentPage } = pagination(page, pageSize);
 
-    const [dockets, totalCount, sum] = await Promise.all([
+    const [dockets, totalCount, sum, owing] = await Promise.all([
       prisma.docket.findMany({
         where,
         include: DETAIL_INCLUDE,
@@ -156,6 +179,15 @@ router.get(
         where: { ...where, status: 'ACTIVE' },
         _sum: { total: true, subtotal: true, gst: true },
       }),
+      // What is still owed, always across the whole filtered set. Returned on
+      // every list rather than only the payment view, so the ordinary purchases
+      // screen can say plainly that money is outstanding instead of it being
+      // something you have to go looking for.
+      prisma.docket.aggregate({
+        where: { ...where, status: 'ACTIVE', paymentStatus: 'UNPAID' },
+        _sum: { total: true },
+        _count: true,
+      }),
     ]);
 
     res.json({
@@ -167,6 +199,10 @@ router.get(
         total: Number(sum._sum.total ?? 0),
         subtotal: Number(sum._sum.subtotal ?? 0),
         gst: Number(sum._sum.gst ?? 0),
+      },
+      unpaid: {
+        count: owing._count ?? 0,
+        total: Number(owing._sum.total ?? 0),
       },
     });
   })
@@ -368,6 +404,14 @@ router.post(
       vehicleVin: data.vehicleVin,
       paygStatement: data.paygStatement,
       notes: data.notes,
+      paymentStatus: data.paymentStatus,
+      paymentMethod: data.paymentMethod ?? null,
+      paymentReference: data.paymentReference ?? null,
+      // Settled on the spot, so the payment is stamped as the docket is written
+      // rather than waiting for someone to go back and confirm it.
+      ...(data.paymentStatus === 'PAID'
+        ? { paidAt: new Date(), paidById: req.user.id }
+        : {}),
       ...totals,
       createdById: req.user.id,
       lineItems: { create: linesWithValue },
@@ -639,6 +683,112 @@ router.post(
       entityId: docket.id,
       label: `Docket #${docket.docketNumber}`,
       after: { issuedAt: docket.issuedAt },
+    });
+    res.json({ docket });
+  })
+);
+
+/**
+ * POST /api/dockets/:id/pay — record that an unpaid docket has been settled.
+ *
+ * Unlike issuing, this is reversible: a payment marked against the wrong docket
+ * during a run of twenty is an easy mistake, and refusing to undo it would only
+ * push people into editing the database directly.
+ */
+router.post(
+  '/:id/pay',
+  requireAuth,
+  asyncHandler(async (req, res) => {
+    const parsed = paymentSchema.safeParse(req.body ?? {});
+    if (!parsed.success) {
+      return res.status(400).json({ error: parsed.error.flatten() });
+    }
+
+    const existing = await prisma.docket.findUnique({
+      where: { id: req.params.id },
+      select: { id: true, docketNumber: true, status: true, paymentStatus: true, total: true },
+    });
+    if (!existing) return res.status(404).json({ error: 'Docket not found' });
+    if (existing.status === 'VOID') {
+      return res
+        .status(409)
+        .json({ error: 'This docket is voided. Nothing is owed on it, so it cannot be paid.' });
+    }
+    if (existing.paymentStatus === 'PAID') {
+      return res.status(409).json({ error: 'This docket is already marked as paid.' });
+    }
+
+    const docket = await prisma.docket.update({
+      where: { id: req.params.id },
+      data: {
+        paymentStatus: 'PAID',
+        paidAt: parsed.data.paidAt ? new Date(parsed.data.paidAt) : new Date(),
+        paymentMethod: parsed.data.paymentMethod ?? null,
+        paymentReference: parsed.data.paymentReference ?? null,
+        paidById: req.user.id,
+      },
+      include: DETAIL_INCLUDE,
+    });
+
+    await audit({
+      req,
+      action: 'PAY',
+      entity: 'Docket',
+      entityId: docket.id,
+      label: `Docket #${docket.docketNumber}`,
+      before: { paymentStatus: 'UNPAID' },
+      after: {
+        paymentStatus: 'PAID',
+        paidAt: docket.paidAt,
+        paymentMethod: docket.paymentMethod,
+        paymentReference: docket.paymentReference,
+        amount: String(docket.total),
+      },
+    });
+    res.json({ docket });
+  })
+);
+
+/**
+ * POST /api/dockets/:id/unpay — undo a payment recorded in error.
+ *
+ * Admin-only. Moving a docket back into the payable list is how a supplier ends
+ * up paid twice, so it sits with whoever reconciles the bank account.
+ */
+router.post(
+  '/:id/unpay',
+  requireAuth,
+  requireRole('ADMIN'),
+  asyncHandler(async (req, res) => {
+    const existing = await prisma.docket.findUnique({
+      where: { id: req.params.id },
+      select: { id: true, docketNumber: true, paymentStatus: true, paymentReference: true },
+    });
+    if (!existing) return res.status(404).json({ error: 'Docket not found' });
+    if (existing.paymentStatus === 'UNPAID') {
+      return res.status(409).json({ error: 'This docket is already marked as unpaid.' });
+    }
+
+    const docket = await prisma.docket.update({
+      where: { id: req.params.id },
+      data: {
+        paymentStatus: 'UNPAID',
+        paidAt: null,
+        paymentMethod: null,
+        paymentReference: null,
+        paidById: null,
+      },
+      include: DETAIL_INCLUDE,
+    });
+
+    await audit({
+      req,
+      action: 'UNPAY',
+      entity: 'Docket',
+      entityId: docket.id,
+      label: `Docket #${docket.docketNumber}`,
+      before: { paymentStatus: 'PAID', paymentReference: existing.paymentReference },
+      after: { paymentStatus: 'UNPAID' },
     });
     res.json({ docket });
   })

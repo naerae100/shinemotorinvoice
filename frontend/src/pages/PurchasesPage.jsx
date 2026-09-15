@@ -29,6 +29,8 @@ const DEFAULTS = {
   materialId: '',
   supplierId: '',
   status: 'ACTIVE',
+  // '' is every docket; 'UNPAID' is the payment run.
+  paymentStatus: '',
   page: '1',
 };
 
@@ -43,6 +45,7 @@ export default function PurchasesPage() {
   const [dockets, setDockets] = useState([]);
   const [totalCount, setTotalCount] = useState(0);
   const [filteredTotals, setFilteredTotals] = useState({ total: 0, gst: 0, subtotal: 0 });
+  const [unpaid, setUnpaid] = useState({ count: 0, total: 0 });
   const [materials, setMaterials] = useState([]);
   const [supplier, setSupplier] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -76,6 +79,7 @@ export default function PurchasesPage() {
         setDockets(res.data.dockets);
         setTotalCount(res.data.totalCount);
         setFilteredTotals(res.data.filteredTotals);
+        setUnpaid(res.data.unpaid ?? { count: 0, total: 0 });
         setError('');
       })
       .catch(() => setError('Could not load records.'))
@@ -184,6 +188,34 @@ export default function PurchasesPage() {
             ))}
           </div>
 
+          {/* The payment run. Kept next to the type tabs rather than buried in
+              the filters, because "who have we not paid" is a question asked
+              daily, not an occasional narrowing of the list. */}
+          <button
+            onClick={() =>
+              setFilters({ paymentStatus: filters.paymentStatus === 'UNPAID' ? '' : 'UNPAID' })
+            }
+            aria-pressed={filters.paymentStatus === 'UNPAID'}
+            className={`flex items-center gap-2 whitespace-nowrap rounded-lg border px-3 py-2 text-xs font-semibold transition-colors ${
+              filters.paymentStatus === 'UNPAID'
+                ? 'border-working-amber bg-working-amber text-white'
+                : 'border-steel-200 bg-white text-steel-700 hover:bg-paper'
+            }`}
+          >
+            To pay
+            {unpaid.count > 0 && (
+              <span
+                className={`num rounded-full px-1.5 py-0.5 text-[10px] font-bold ${
+                  filters.paymentStatus === 'UNPAID'
+                    ? 'bg-white/25 text-white'
+                    : 'bg-working-amberDim text-working-amber'
+                }`}
+              >
+                {unpaid.count}
+              </span>
+            )}
+          </button>
+
           <input
             type="text"
             placeholder="Search supplier, docket no., phone, notes…"
@@ -240,6 +272,16 @@ export default function PurchasesPage() {
             {formatAud(filteredTotals.gst)}
           </div>
         </div>
+        {unpaid.count > 0 && (
+          <div>
+            <div className="text-[11px] uppercase tracking-wider text-working-amber">
+              Still to pay
+            </div>
+            <div className="num text-lg font-semibold text-working-amber">
+              {formatAud(unpaid.total)}
+            </div>
+          </div>
+        )}
       </div>
 
       {error && (
@@ -306,6 +348,11 @@ export default function PurchasesPage() {
                     {isVoid && (
                       <span className="ml-2 rounded bg-working-redDim px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-working-red">
                         Void
+                      </span>
+                    )}
+                    {!isVoid && d.paymentStatus === 'UNPAID' && (
+                      <span className="ml-2 rounded bg-working-amberDim px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-working-amber">
+                        Unpaid
                       </span>
                     )}
                   </td>
