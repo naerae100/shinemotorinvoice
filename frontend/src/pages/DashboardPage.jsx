@@ -280,7 +280,7 @@ export default function DashboardPage() {
               title="Top suppliers"
               subtitle="Who we bought the most from"
               action={
-                <Link to="/clients" className="text-xs font-medium text-copper-600 hover:text-copper-700">
+                <Link to="/suppliers" className="text-xs font-medium text-copper-600 hover:text-copper-700">
                   All clients →
                 </Link>
               }
@@ -288,22 +288,22 @@ export default function DashboardPage() {
               {data.topSuppliers.length === 0 ? (
                 <EmptyState>No suppliers in this period.</EmptyState>
               ) : (
-                <BarList items={data.topSuppliers.map((c) => ({ ...clientItem(c), to: `/clients/${c.client.id}` }))} color={SERIES.purchases} />
+                <BarList items={data.topSuppliers.map((c) => ({ ...clientItem(c), to: `/suppliers/${c.client.id}` }))} color={SERIES.purchases} />
               )}
             </Card>
             <Card
-              title="Top buyers"
+              title="Top consignees"
               subtitle="Who we sold the most to"
               action={
-                <Link to="/buyers" className="text-xs font-medium text-copper-600 hover:text-copper-700">
+                <Link to="/consignees" className="text-xs font-medium text-copper-600 hover:text-copper-700">
                   All buyers →
                 </Link>
               }
             >
               {data.topConsignees.length === 0 ? (
-                <EmptyState>No buyers in this period.</EmptyState>
+                <EmptyState>No consignees in this period.</EmptyState>
               ) : (
-                <BarList items={data.topConsignees.map((c) => ({ ...clientItem(c), to: `/buyers/${c.client.id}` }))} color={SERIES.sales} />
+                <BarList items={data.topConsignees.map((c) => ({ ...clientItem(c), to: `/consignees/${c.client.id}` }))} color={SERIES.sales} />
               )}
             </Card>
           </div>

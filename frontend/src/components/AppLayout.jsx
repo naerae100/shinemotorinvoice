@@ -65,8 +65,8 @@ const NAV_GROUPS = [
   {
     title: 'Records',
     items: [
-      { to: '/clients', label: 'Clients', icon: 'clients' },
-      { to: '/buyers', label: 'Buyers', icon: 'buyers' },
+      { to: '/suppliers', label: 'Suppliers', icon: 'clients' },
+      { to: '/consignees', label: 'Consignees', icon: 'buyers' },
       { to: '/materials', label: 'Materials & pricing', icon: 'materials' },
     ],
   },

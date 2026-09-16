@@ -127,7 +127,7 @@ export default function PurchasesPage() {
             {supplier ? (
               <>
                 Everything bought from{' '}
-                <Link to={`/clients/${supplier.id}`} className="font-medium text-copper-600">
+                <Link to={`/suppliers/${supplier.id}`} className="font-medium text-copper-600">
                   {supplier.name}
                 </Link>
               </>
@@ -366,7 +366,7 @@ export default function PurchasesPage() {
                     </span>
                   </td>
                   <td className="px-5 py-3 text-steel-700">
-                    <Link to={`/clients/${d.supplier?.id}`} className="hover:text-copper-600">
+                    <Link to={`/suppliers/${d.supplier?.id}`} className="hover:text-copper-600">
                       {d.supplier?.name}
                     </Link>
                   </td>

@@ -28,7 +28,7 @@ function Field({ label, className = '', children }) {
   );
 }
 
-export default function ClientsPage() {
+export default function SuppliersPage() {
   const [clients, setClients] = useState([]);
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
@@ -41,7 +41,7 @@ export default function ClientsPage() {
       api
         .get('/suppliers', { params: { search } })
         .then((res) => setClients(res.data.suppliers))
-        .catch(() => setError('Could not load clients.'))
+        .catch(() => setError('Could not load suppliers.'))
         .finally(() => setLoading(false)),
     [search]
   );
@@ -63,7 +63,7 @@ export default function ClientsPage() {
       setForm(null);
       await load();
     } catch {
-      setError('Could not save client.');
+      setError('Could not save supplier.');
     } finally {
       setSaving(false);
     }
@@ -75,7 +75,7 @@ export default function ClientsPage() {
     <div className="mx-auto max-w-6xl px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
       <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="font-display text-2xl font-semibold text-steel-900">Clients</h1>
+          <h1 className="font-display text-2xl font-semibold text-steel-900">Suppliers</h1>
           <p className="mt-0.5 text-sm text-steel-500">People and businesses who sell scrap to us</p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -96,7 +96,7 @@ export default function ClientsPage() {
       {form && (
         <form onSubmit={save} className="mb-5 rounded-xl border border-copper-300 bg-white p-5 shadow-ticket">
           <h2 className="mb-3 font-display text-base font-semibold text-steel-900">
-            {form.id ? `Edit ${form.name}` : 'New client'}
+            {form.id ? `Edit ${form.name}` : 'New supplier'}
           </h2>
           <div className="grid grid-cols-1 gap-x-3 gap-y-3 sm:grid-cols-6">
             <Field label="Name or company" className="sm:col-span-4">
@@ -220,7 +220,7 @@ export default function ClientsPage() {
               clients.map((c) => (
                 <tr key={c.id} className="border-b border-steel-100 last:border-0 hover:bg-paper">
                   <td className="px-5 py-3">
-                    <Link to={`/clients/${c.id}`} className="font-medium text-steel-900 hover:text-copper-600">
+                    <Link to={`/suppliers/${c.id}`} className="font-medium text-steel-900 hover:text-copper-600">
                       {c.name}
                     </Link>
                   </td>
@@ -239,7 +239,7 @@ export default function ClientsPage() {
                     {[c.address, c.suburb].filter(Boolean).join(', ') || '—'}
                   </td>
                   <td className="whitespace-nowrap px-5 py-3"><div className="flex items-center justify-end gap-1.5">
-                    <Link to={`/clients/${c.id}`}
+                    <Link to={`/suppliers/${c.id}`}
                       className="inline-flex h-7 items-center rounded-md border border-steel-200 px-3 text-xs font-semibold text-steel-700 transition-colors hover:border-steel-300 hover:bg-paper">
                       View
                     </Link>

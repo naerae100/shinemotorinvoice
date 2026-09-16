@@ -130,7 +130,7 @@ export default function InvoicesPage({ stage = 'INVOICED' }) {
               )
             )}
             options={[
-              { label: `One row per ${cfg.noun}`, hint: 'Totals, buyer, container', params: {} },
+              { label: `One row per ${cfg.noun}`, hint: 'Totals, consignee, container', params: {} },
               { label: 'One row per material line', hint: 'Tonnage and price by material', params: { detail: 'lines' } },
             ]}
           />
@@ -167,7 +167,7 @@ export default function InvoicesPage({ stage = 'INVOICED' }) {
       <div className="mb-4 flex flex-wrap items-center gap-2">
         <input
           type="text"
-          placeholder="Search invoice no., container, PO, buyer…"
+          placeholder="Search invoice no., container, PO, consignee…"
           value={search}
           onChange={(e) => {
             setSearch(e.target.value);
@@ -310,7 +310,7 @@ export default function InvoicesPage({ stage = 'INVOICED' }) {
                   )}
                 </td>
                 <td className="px-5 py-3 text-steel-700">
-                  <Link to={`/buyers/${inv.consignee?.id}`} className="hover:text-copper-600">
+                  <Link to={`/consignees/${inv.consignee?.id}`} className="hover:text-copper-600">
                     {inv.consignee?.name}
                   </Link>
                 </td>

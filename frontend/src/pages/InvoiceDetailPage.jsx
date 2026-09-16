@@ -88,7 +88,7 @@ export default function InvoiceDetailPage() {
               disabled={invoice.status === 'VOID' || Boolean(invoice.issuedAt)}
               title={
                 invoice.issuedAt
-                  ? 'This invoice has been issued to the buyer and can no longer be edited. Void it and raise a replacement.'
+                  ? 'This invoice has been issued to the consignee and can no longer be edited. Void it and raise a replacement.'
                   : invoice.status === 'VOID'
                     ? 'A voided invoice cannot be edited. Restore it first.'
                     : 'Edit the shipment — the invoice and its packing list update together.'

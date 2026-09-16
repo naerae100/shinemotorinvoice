@@ -1,5 +1,5 @@
 import { lazy, Suspense } from 'react';
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, useParams } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext';
 import ProtectedRoute from './components/ProtectedRoute';
 import ErrorBoundary from './components/ErrorBoundary';
@@ -19,13 +19,19 @@ const NewInvoicePage = lazy(() => import('./pages/NewInvoicePage'));
 const InvoiceDetailPage = lazy(() => import('./pages/InvoiceDetailPage'));
 const MaterialsPage = lazy(() => import('./pages/MaterialsPage'));
 const SettingsPage = lazy(() => import('./pages/SettingsPage'));
-const ClientsPage = lazy(() => import('./pages/ClientsPage'));
-const BuyersPage = lazy(() => import('./pages/BuyersPage'));
+const SuppliersPage = lazy(() => import('./pages/SuppliersPage'));
+const ConsigneesPage = lazy(() => import('./pages/ConsigneesPage'));
 const PartyDetailPage = lazy(() => import('./pages/PartyDetailPage'));
 const UsersPage = lazy(() => import('./pages/UsersPage'));
 
 function PageFallback() {
   return <div className="px-8 py-8 text-sm text-steel-500">Loading…</div>;
+}
+
+/** Carries the :id across when an old party URL is followed. */
+function RedirectParty({ to }) {
+  const { id } = useParams();
+  return <Navigate to={`/${to}/${id}`} replace />;
 }
 
 export default function App() {
@@ -92,10 +98,17 @@ export default function App() {
               />
               <Route path="export-invoices/:id" element={<InvoiceDetailPage />} />
               <Route path="export-invoices/:id/edit" element={<NewInvoicePage key="inv-edit" />} />
-              <Route path="clients" element={<ClientsPage />} />
-              <Route path="clients/:id" element={<PartyDetailPage kind="supplier" />} />
-              <Route path="buyers" element={<BuyersPage />} />
-              <Route path="buyers/:id" element={<PartyDetailPage kind="consignee" />} />
+              <Route path="suppliers" element={<SuppliersPage />} />
+              <Route path="suppliers/:id" element={<PartyDetailPage kind="supplier" />} />
+              <Route path="consignees" element={<ConsigneesPage />} />
+              <Route path="consignees/:id" element={<PartyDetailPage kind="consignee" />} />
+              {/* The pages used to live at /clients and /buyers. Anything
+                  already bookmarked, or a link pasted into an email, still
+                  lands in the right place. */}
+              <Route path="clients" element={<Navigate to="/suppliers" replace />} />
+              <Route path="clients/:id" element={<RedirectParty to="suppliers" />} />
+              <Route path="buyers" element={<Navigate to="/consignees" replace />} />
+              <Route path="buyers/:id" element={<RedirectParty to="consignees" />} />
               <Route path="materials" element={<MaterialsPage />} />
               <Route
                 path="users"

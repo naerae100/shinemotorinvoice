@@ -35,7 +35,7 @@ function Field({ label, className = '', children }) {
   );
 }
 
-export default function BuyersPage() {
+export default function ConsigneesPage() {
   const [buyers, setBuyers] = useState([]);
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
@@ -48,7 +48,7 @@ export default function BuyersPage() {
     return api
       .get('/consignees', { params: { search } })
       .then((r) => setBuyers(r.data.consignees))
-      .catch(() => setError('Could not load buyers.'))
+      .catch(() => setError('Could not load consignees.'))
       .finally(() => setLoading(false));
   }, [search]);
 
@@ -68,7 +68,7 @@ export default function BuyersPage() {
       setForm(null);
       await load();
     } catch (err) {
-      setError(err.response?.data?.error?.fieldErrors?.email?.[0] || 'Could not save buyer.');
+      setError(err.response?.data?.error?.fieldErrors?.email?.[0] || 'Could not save consignee.');
     } finally {
       setSaving(false);
     }
@@ -80,7 +80,7 @@ export default function BuyersPage() {
     <div className="mx-auto max-w-6xl px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
       <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="font-display text-2xl font-semibold text-steel-900">Buyers</h1>
+          <h1 className="font-display text-2xl font-semibold text-steel-900">Consignees</h1>
           <p className="mt-0.5 text-sm text-steel-500">Who we sell containers and scrap to</p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -96,7 +96,7 @@ export default function BuyersPage() {
 
       <input
         type="text"
-        placeholder="Search buyers…"
+        placeholder="Search consignees…"
         value={search}
         onChange={(e) => setSearch(e.target.value)}
         className="mb-4 w-full max-w-sm rounded-md border border-steel-200 bg-white px-3 py-2.5 text-sm focus:border-copper-500"
@@ -111,7 +111,7 @@ export default function BuyersPage() {
       {form && (
         <form onSubmit={save} className="mb-5 rounded-xl border border-copper-300 bg-white p-5 shadow-ticket">
           <h2 className="mb-3 font-display text-base font-semibold text-steel-900">
-            {form.id ? 'Edit buyer' : 'New buyer'}
+            {form.id ? 'Edit consignee' : 'New consignee'}
           </h2>
           <div className="grid grid-cols-1 gap-x-3 gap-y-3 sm:grid-cols-6">
             <Field label="Registered company name" className="sm:col-span-4">
@@ -131,7 +131,7 @@ export default function BuyersPage() {
             </div>
 
             <Field label="Email" className="sm:col-span-3">
-              <input type="email" placeholder="docs@buyer.com" value={form.email || ''}
+              <input type="email" placeholder="docs@consignee.com" value={form.email || ''}
                 onChange={(e) => setForm({ ...form, email: e.target.value })} className={field} />
             </Field>
             <Field label="Phone" className="sm:col-span-3">
@@ -144,7 +144,7 @@ export default function BuyersPage() {
                 onChange={(e) => setForm({ ...form, abn: e.target.value })} className={`num ${field}`} />
             </Field>
             <Field label="Website" className="sm:col-span-4">
-              <input placeholder="www.buyer.com" value={form.website || ''}
+              <input placeholder="www.consignee.com" value={form.website || ''}
                 onChange={(e) => setForm({ ...form, website: e.target.value })} className={field} />
             </Field>
 
@@ -179,14 +179,14 @@ export default function BuyersPage() {
             )}
 
             <Field label="Notes" className="sm:col-span-6">
-              <input placeholder="Anything worth knowing about this buyer" value={form.notes || ''}
+              <input placeholder="Anything worth knowing about this consignee" value={form.notes || ''}
                 onChange={(e) => setForm({ ...form, notes: e.target.value })} className={field} />
             </Field>
           </div>
           <div className="mt-4 flex gap-2">
             <button type="submit" disabled={saving}
               className="rounded-md bg-copper-500 px-4 py-2 text-sm font-semibold text-white hover:bg-copper-400 disabled:opacity-60">
-              {saving ? 'Saving…' : 'Save buyer'}
+              {saving ? 'Saving…' : 'Save consignee'}
             </button>
             <button type="button" onClick={() => setForm(null)}
               className="rounded-md border border-steel-300 px-4 py-2 text-sm font-semibold text-steel-700 hover:bg-paper">
@@ -211,12 +211,12 @@ export default function BuyersPage() {
               <tr><td colSpan={4} className="px-5 py-10 text-center text-steel-500">Loading…</td></tr>
             )}
             {!loading && buyers.length === 0 && (
-              <tr><td colSpan={4} className="px-5 py-10 text-center text-steel-500">No buyers yet.</td></tr>
+              <tr><td colSpan={4} className="px-5 py-10 text-center text-steel-500">No consignees yet.</td></tr>
             )}
             {buyers.map((b) => (
               <tr key={b.id} className="border-b border-steel-100 last:border-0 hover:bg-paper">
                 <td className="px-5 py-3">
-                  <Link to={`/buyers/${b.id}`} className="font-medium text-steel-900 hover:text-copper-600">
+                  <Link to={`/consignees/${b.id}`} className="font-medium text-steel-900 hover:text-copper-600">
                     {b.name}
                   </Link>
                 </td>
@@ -231,7 +231,7 @@ export default function BuyersPage() {
                 <td className="whitespace-nowrap px-5 py-3">
                   <div className="flex items-center justify-end gap-1.5">
                     <Link
-                      to={`/buyers/${b.id}`}
+                      to={`/consignees/${b.id}`}
                       className="inline-flex h-7 items-center rounded-md border border-steel-200 px-3 text-xs font-semibold text-steel-700 transition-colors hover:border-steel-300 hover:bg-paper"
                     >
                       View

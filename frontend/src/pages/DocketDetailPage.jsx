@@ -413,7 +413,7 @@ export default function DocketDetailPage() {
             <Card title="Supplier">
               <div className="text-[15px] font-semibold text-steel-900">
                 {s?.id ? (
-                  <Link to={`/clients/${s.id}`} className="hover:text-copper-600">
+                  <Link to={`/suppliers/${s.id}`} className="hover:text-copper-600">
                     {s.name}
                   </Link>
                 ) : (

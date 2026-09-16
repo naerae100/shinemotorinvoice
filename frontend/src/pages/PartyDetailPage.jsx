@@ -161,7 +161,7 @@ export default function PartyDetailPage({ kind }) {
 
   const party = isSupplier ? data.supplier : data.consignee;
   const color = isSupplier ? SERIES.purchases : SERIES.sales;
-  const listPath = isSupplier ? '/clients' : '/buyers';
+  const listPath = isSupplier ? '/suppliers' : '/consignees';
   const unit = isSupplier ? 'kg' : 'MT';
 
   // The party series carries one key; the shared chart expects both.

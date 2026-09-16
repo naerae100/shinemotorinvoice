@@ -603,7 +603,7 @@ export default function NewInvoicePage({ mode = 'invoice' }) {
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                   {[
                     ['name', 'Consignee name (as it should print)', true],
-                    ['groupName', 'Buyer group (if they bill through several)'],
+                    ['groupName', 'Group (where one buyer bills through several entities)'],
                     ['email', 'Email'],
                     ['phone', 'Phone'],
                     ['abn', 'ABN'],
@@ -710,7 +710,7 @@ export default function NewInvoicePage({ mode = 'invoice' }) {
                           )}
                         </div>
                         <a
-                          href="/buyers"
+                          href="/consignees"
                           target="_blank"
                           rel="noreferrer"
                           className="shrink-0 text-xs font-medium text-copper-600 hover:text-copper-700"
