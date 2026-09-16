@@ -409,8 +409,13 @@ router.post(
       paymentReference: data.paymentReference ?? null,
       // Settled on the spot, so the payment is stamped as the docket is written
       // rather than waiting for someone to go back and confirm it.
+      //
+      // Being paid is also what finishes the docket. The supplier has their
+      // money and their copy, so there is nothing left to decide and calling it
+      // a draft would be wrong. A pay-later docket stays a draft until the
+      // transfer is made, which is the thing still outstanding on it.
       ...(data.paymentStatus === 'PAID'
-        ? { paidAt: new Date(), paidById: req.user.id }
+        ? { paidAt: new Date(), paidById: req.user.id, issuedAt: new Date() }
         : {}),
       ...totals,
       createdById: req.user.id,
@@ -706,7 +711,14 @@ router.post(
 
     const existing = await prisma.docket.findUnique({
       where: { id: req.params.id },
-      select: { id: true, docketNumber: true, status: true, paymentStatus: true, total: true },
+      select: {
+        id: true,
+        docketNumber: true,
+        status: true,
+        paymentStatus: true,
+        issuedAt: true,
+        total: true,
+      },
     });
     if (!existing) return res.status(404).json({ error: 'Docket not found' });
     if (existing.status === 'VOID') {
@@ -726,6 +738,10 @@ router.post(
         paymentMethod: parsed.data.paymentMethod ?? null,
         paymentReference: parsed.data.paymentReference ?? null,
         paidById: req.user.id,
+        // Settling is what finishes a pay-later docket, so it issues here for
+        // the same reason a paid-on-the-spot one issues at the weighbridge.
+        // Already-issued dockets keep their original date — issuing is one-way.
+        ...(existing.issuedAt ? {} : { issuedAt: new Date() }),
       },
       include: DETAIL_INCLUDE,
     });

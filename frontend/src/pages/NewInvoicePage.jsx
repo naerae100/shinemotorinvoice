@@ -84,6 +84,15 @@ export default function NewInvoicePage({ mode = 'invoice' }) {
   // Free text on purpose: the operator sometimes uses the contract number as the
   // invoice number, because two buyers must never share one.
   const [invoiceNumber, setInvoiceNumber] = useState('');
+  // The shipment's own date. Until now every slip was stamped with the moment
+  // it happened to be saved and could never be corrected — but the date has to
+  // match the bill of lading, and a slip is often written up the day after the
+  // container was actually packed.
+  const [date, setDate] = useState(() => {
+    const n = new Date();
+    const pad = (v) => String(v).padStart(2, '0');
+    return `${n.getFullYear()}-${pad(n.getMonth() + 1)}-${pad(n.getDate())}`;
+  });
   const [currency, setCurrency] = useState('AUD');
   const [shipping, setShipping] = useState({
     shippingTerm: 'FAS',
@@ -140,6 +149,7 @@ export default function NewInvoicePage({ mode = 'invoice' }) {
       .then(({ data }) => {
         const inv = data.invoice;
         setInvoiceNumber(inv.invoiceNumber);
+        if (inv.date) setDate(new Date(inv.date).toLocaleDateString('en-CA'));
         setConsigneeId(inv.consigneeId);
         setApplyGst(Boolean(inv.applyGst));
         setDiscount({
@@ -322,6 +332,12 @@ export default function NewInvoicePage({ mode = 'invoice' }) {
       const num = (v) => (v === '' || v == null ? null : parseFloat(v));
       const payload = {
         invoiceNumber: invoiceNumber.trim(),
+        ...(date
+          ? (() => {
+              const [y, m, d] = date.split('-').map(Number);
+              return { date: new Date(y, m - 1, d, 12).toISOString() };
+            })()
+          : {}),
         consigneeId,
         currency,
         // Saving the invoice form is what promotes a packing slip; there is no
@@ -459,6 +475,15 @@ export default function NewInvoicePage({ mode = 'invoice' }) {
                 value={invoiceNumber}
                 onChange={(e) => setInvoiceNumber(e.target.value)}
                 placeholder="e.g. SMC-2026-018"
+                className={`num ${field}`}
+              />
+            </div>
+            <div>
+              <label className={labelCls}>{isPacking ? 'Shipment date' : 'Invoice date'}</label>
+              <input
+                type="date"
+                value={date}
+                onChange={(e) => setDate(e.target.value)}
                 className={`num ${field}`}
               />
             </div>

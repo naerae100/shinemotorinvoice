@@ -672,8 +672,8 @@ export default function NewDocketPage({ defaultType = 'PURCHASE_DOCKET' }) {
                 <span className="font-semibold text-steel-900">Pay this supplier later</span>
                 <span className="mt-0.5 block text-steel-600">
                   {payLater
-                    ? 'Recorded as unpaid. It will appear in the payment run with the supplier’s account details until it is settled.'
-                    : 'Leave unticked if the supplier has been paid. Tick it when the transfer still has to be made.'}
+                    ? 'Saved as an unpaid draft. It appears in the payment run with the supplier’s account details, and is issued when you mark it paid.'
+                    : 'The supplier has been paid, so the docket is issued as soon as it is saved — the figures are frozen and it cannot be edited afterwards. Tick the box if the transfer still has to be made.'}
                 </span>
               </span>
             </label>

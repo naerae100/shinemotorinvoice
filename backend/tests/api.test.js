@@ -18,7 +18,7 @@ if (!hasTestDatabase) {
   console.warn(
     '\n  ! SKIPPING %d API integration tests — TEST_DATABASE_URL is not set.\n' +
       '    These need a scratch PostgreSQL database. See tests/helpers.js.\n',
-    83
+    84
   );
 }
 
@@ -31,7 +31,7 @@ const suite = hasTestDatabase ? describe : describe.skip;
 if (!hasTestDatabase) {
   test(
     'API integration tests are configured',
-    { skip: 'TEST_DATABASE_URL is not set — 83 API tests did NOT run' },
+    { skip: 'TEST_DATABASE_URL is not set — 84 API tests did NOT run' },
     () => {}
   );
 }
@@ -217,7 +217,8 @@ suite('dockets — totals', () => {
   // untaxed docket must not quietly reinterpret it as taxable and inflate a
   // historical total by 10%.
   test('editing the lines does not change a stored NO_TAX docket to taxable', async () => {
-    const created = await createDocket({ taxMode: 'NO_TAX' });
+    // UNPAID: a paid docket is issued on save, and an issued docket is frozen.
+    const created = await createDocket({ taxMode: 'NO_TAX', paymentStatus: 'UNPAID' });
     assert.equal(Number(created.body.docket.gst), 0);
 
     const res = await api('PATCH', `/dockets/${created.body.docket.id}`, {
@@ -231,7 +232,7 @@ suite('dockets — totals', () => {
   });
 
   test('changing taxMode recomputes the totals', async () => {
-    const created = await createDocket({ taxMode: 'NO_TAX' });
+    const created = await createDocket({ taxMode: 'NO_TAX', paymentStatus: 'UNPAID' });
     const res = await api('PATCH', `/dockets/${created.body.docket.id}`, {
       token,
       body: { taxMode: 'EXCLUSIVE' },
@@ -695,7 +696,7 @@ suite('authenticity — records cannot be erased or silently changed', () => {
   });
 
   test('creating, editing and voiding a docket each leave an audit event', async () => {
-    const { body } = await createDocket({ taxMode: 'NO_TAX' });
+    const { body } = await createDocket({ taxMode: 'NO_TAX', paymentStatus: 'UNPAID' });
     const id = body.docket.id;
 
     await api('PATCH', `/dockets/${id}`, { token, body: { taxMode: 'EXCLUSIVE' } });
@@ -729,7 +730,8 @@ suite('authenticity — records cannot be erased or silently changed', () => {
   });
 
   test('an issued docket can no longer be edited', async () => {
-    const { body } = await createDocket();
+    // Starts unpaid so there is an unissued docket to issue.
+    const { body } = await createDocket({ paymentStatus: 'UNPAID' });
     const id = body.docket.id;
 
     const issued = await api('POST', `/dockets/${id}/issue`, { token });
@@ -1035,7 +1037,11 @@ suite('permissions — reversing a financial record is admin-only', () => {
   test('STAFF can still create and issue a docket', async () => {
     const created = await api('POST', '/dockets', {
       token: staffToken,
-      body: { supplierId: fx.supplier.id, lineItems: [line(fx.materials[0].id)] },
+      body: {
+        supplierId: fx.supplier.id,
+        paymentStatus: 'UNPAID',
+        lineItems: [line(fx.materials[0].id)],
+      },
     });
     assert.equal(created.status, 201, 'staff can buy');
 
@@ -1123,6 +1129,21 @@ suite('dockets — paying the supplier', () => {
     assert.equal(body.docket.paymentStatus, 'PAID');
     assert.ok(body.docket.paidAt, 'settled on the spot, so the time is recorded');
     assert.ok(body.docket.paidBy?.name);
+    // Paid means finished: the supplier has their money and their copy, so
+    // there is nothing left to decide and calling it a draft would be wrong.
+    assert.ok(body.docket.issuedAt, 'a paid docket is issued as it is written');
+  });
+
+  test('a pay-later docket stays a draft until it is settled', async () => {
+    const { body } = await createDocket({ paymentStatus: 'UNPAID' });
+    const id = body.docket.id;
+    assert.equal(body.docket.issuedAt, null, 'the transfer is still outstanding');
+
+    const paid = await api('POST', `/dockets/${id}/pay`, {
+      token,
+      body: { paymentMethod: 'TRANSFER' },
+    });
+    assert.ok(paid.body.docket.issuedAt, 'settling it is what finishes it');
   });
 
   test('a pay-later docket is unpaid and carries no payment date', async () => {
