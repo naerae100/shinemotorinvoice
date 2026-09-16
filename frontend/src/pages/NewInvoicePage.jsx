@@ -4,6 +4,7 @@ import { api } from '../lib/api';
 import { addressLines, formatMoney, formatNumber, round2 } from '../lib/format';
 import DiscountField, { applyDiscount } from '../components/DiscountField';
 import ComboField from '../components/ComboField';
+import PartyAddressFields from '../components/PartyAddressFields';
 
 // Suggestions, not restrictions — every one of these fields accepts free text.
 // The four the yard actually trades on lead; the rest of the Incoterms follow
@@ -40,6 +41,9 @@ const emptyConsignee = {
   name: '',
   country: '',
   address: '',
+  suburb: '',
+  state: '',
+  postcode: '',
   email: '',
   phone: '',
   abn: '',
@@ -278,7 +282,8 @@ export default function NewInvoicePage({ mode = 'invoice' }) {
     try {
       const body = { name: newConsignee.name.trim() };
       for (const key of [
-        'country', 'address', 'email', 'phone', 'abn', 'website',
+        'country', 'address', 'suburb', 'state', 'postcode',
+        'email', 'phone', 'abn', 'website',
         'groupName', 'defaultCurrency', 'defaultShippingTerm',
       ]) {
         const v = newConsignee[key]?.trim?.() ?? newConsignee[key];
@@ -585,12 +590,20 @@ export default function NewInvoicePage({ mode = 'invoice' }) {
             <label className={labelCls}>Consignee</label>
             {addingConsignee ? (
               <div className="rounded-lg border border-steel-200 bg-paper p-4">
+                {/* The same address block the consignee record uses. This
+                    panel used to offer a single "Address" box, so a consignee
+                    added here was a lesser record than the same consignee added
+                    from its own page. */}
+                <PartyAddressFields
+                  value={newConsignee}
+                  onChange={setNewConsignee}
+                  idPrefix="inline-consignee"
+                  className="mb-3"
+                />
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                   {[
                     ['name', 'Consignee name (as it should print)', true],
                     ['groupName', 'Buyer group (if they bill through several)'],
-                    ['address', 'Address'],
-                    ['country', 'Country'],
                     ['email', 'Email'],
                     ['phone', 'Phone'],
                     ['abn', 'ABN'],

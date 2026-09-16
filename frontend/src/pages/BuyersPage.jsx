@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../lib/api';
 import ExportButton from '../components/ExportButton';
+import PartyAddressFields from '../components/PartyAddressFields';
 
 const BLANK = {
   name: '',
@@ -122,26 +123,12 @@ export default function BuyersPage() {
                 onChange={(e) => setForm({ ...form, groupName: e.target.value })} className={field} />
             </Field>
 
-            <Field label="Street address" className="sm:col-span-6">
-              <input placeholder="Unit G, 1/F., 16–18 Mau Lam Street" value={form.street || ''}
-                onChange={(e) => setForm({ ...form, street: e.target.value })} className={field} />
-            </Field>
-            <Field label="Suburb / city" className="sm:col-span-2">
-              <input placeholder="Jordan, Kowloon" value={form.suburb || ''}
-                onChange={(e) => setForm({ ...form, suburb: e.target.value })} className={field} />
-            </Field>
-            <Field label="State / province" className="sm:col-span-2">
-              <input placeholder="NSW" value={form.state || ''}
-                onChange={(e) => setForm({ ...form, state: e.target.value })} className={field} />
-            </Field>
-            <Field label="Postcode" className="sm:col-span-1">
-              <input placeholder="2565" value={form.postcode || ''}
-                onChange={(e) => setForm({ ...form, postcode: e.target.value })} className={`num ${field}`} />
-            </Field>
-            <Field label="Country" className="sm:col-span-1">
-              <input placeholder="Hong Kong" value={form.country || ''}
-                onChange={(e) => setForm({ ...form, country: e.target.value })} className={field} />
-            </Field>
+            {/* One address block, shared with the panel that adds a consignee
+                from a packing slip. The labels follow the country: a Hong Kong
+                consignee is not asked for a state, a US one gets a ZIP code. */}
+            <div className="sm:col-span-6">
+              <PartyAddressFields value={form} onChange={setForm} idPrefix="buyer" streetKey="street" />
+            </div>
 
             <Field label="Email" className="sm:col-span-3">
               <input type="email" placeholder="docs@buyer.com" value={form.email || ''}
