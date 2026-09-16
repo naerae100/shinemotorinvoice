@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { api } from '../lib/api';
 import ExportButton from '../components/ExportButton';
 import PartyAddressFields from '../components/PartyAddressFields';
+import { apiErrorMessage } from '../lib/apiError';
 
 const BLANK = {
   name: '',
@@ -68,7 +69,7 @@ export default function ConsigneesPage() {
       setForm(null);
       await load();
     } catch (err) {
-      setError(err.response?.data?.error?.fieldErrors?.email?.[0] || 'Could not save consignee.');
+      setError(apiErrorMessage(err, 'Could not save consignee.'));
     } finally {
       setSaving(false);
     }

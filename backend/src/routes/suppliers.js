@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { z } from 'zod';
+import * as v from '../lib/validators.js';
 import { prisma } from '../config/prisma.js';
 import { requireAuth } from '../middleware/auth.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
@@ -15,20 +16,20 @@ const supplierSchema = z.object({
   state: z.string().optional().nullable(),
   postcode: z.string().optional().nullable(),
   country: z.string().optional().nullable(),
-  phone: z.string().optional().nullable(),
+  phone: v.phone,
   // Blank is allowed — plenty of walk-in sellers have no email at all — but a
   // value that is present must actually look like one.
-  email: z.union([z.string().email(), z.literal('')]).optional().nullable(),
+  email: v.optionalEmail,
   saleType: z.enum(['PRIVATE', 'BUSINESS']).default('PRIVATE'),
-  abn: z.string().optional().nullable(),
+  abn: v.abn,
   licenceNo: z.string().optional().nullable(),
 
-  // Where they get paid. Free text rather than validated formats: a BSB is
-  // written with or without the dash, and a PayID is an email or a mobile.
+  // Where they get paid, and therefore the fields worth checking hardest: a
+  // BSB one digit out does not bounce, it pays somebody else.
   bankAccountName: z.string().optional().nullable(),
-  bankBsb: z.string().optional().nullable(),
-  bankAccountNo: z.string().optional().nullable(),
-  payId: z.string().optional().nullable(),
+  bankBsb: v.bsb,
+  bankAccountNo: v.accountNumber,
+  payId: v.payId,
 });
 
 // GET /api/suppliers?search=... — for the autocomplete when starting a new docket

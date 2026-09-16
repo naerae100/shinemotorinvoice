@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../lib/api';
 import ExportButton from '../components/ExportButton';
+import { apiErrorMessage } from '../lib/apiError';
 
 // Suppliers are local — a Sydney yard buying from people who drive in — so a
 // new one starts on the Australian country code. Buyers are overseas and
@@ -62,8 +63,8 @@ export default function SuppliersPage() {
       else await api.post('/suppliers', payload);
       setForm(null);
       await load();
-    } catch {
-      setError('Could not save supplier.');
+    } catch (err) {
+      setError(apiErrorMessage(err, 'Could not save supplier.'));
     } finally {
       setSaving(false);
     }
@@ -84,7 +85,7 @@ export default function SuppliersPage() {
             onClick={() => setForm({ ...BLANK })}
             className="rounded-lg bg-copper-500 px-4 py-2.5 text-sm font-semibold text-white hover:bg-copper-400"
           >
-            + Add client
+            + Add supplier
           </button>
         </div>
       </div>

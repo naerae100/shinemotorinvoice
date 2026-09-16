@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { z } from 'zod';
+import * as v from '../lib/validators.js';
 import { prisma } from '../config/prisma.js';
 import { requireAuth } from '../middleware/auth.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
@@ -20,13 +21,13 @@ const consigneeSchema = z.object({
   state: z.string().optional().nullable(),
   postcode: z.string().optional().nullable(),
   email: optionalEmail,
-  phone: z.string().optional().nullable(),
+  phone: v.phone,
   country: z.string().optional().nullable(),
 
   // The buyer this billing entity belongs to, where one buyer bills through
   // several — PT Daiki through Indonesia, Thailand and Malaysia.
   groupName: z.string().optional().nullable(),
-  abn: z.string().optional().nullable(),
+  abn: v.abn,
   website: z.string().optional().nullable(),
   extraEmails: z.array(z.string().email()).optional(),
   extraPhones: z.array(z.string()).optional(),
