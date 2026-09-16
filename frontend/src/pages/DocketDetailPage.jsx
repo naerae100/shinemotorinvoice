@@ -351,7 +351,12 @@ export default function DocketDetailPage() {
               endpoint={`/dockets/${docket.id}/export`}
               label="Export CSV"
             />
-            <DownloadDocument filename={downloadName} className="h-8 w-8" />
+            <DownloadDocument
+              filename={downloadName}
+              className="h-8 w-8"
+              selector={view === 'receipt' ? '.receipt-sheet' : '.print-sheet'}
+              format={view === 'receipt' ? 'receipt' : 'a4'}
+            />
             <button
               onClick={() => printAs(downloadName)}
               className="rounded-md bg-copper-500 px-4 py-2 text-xs font-semibold text-white hover:bg-copper-400"
