@@ -8,6 +8,8 @@ import { formatAud, formatNumber, formatRate, amountInWords } from '../lib/forma
 import ConfirmDialog from '../components/ConfirmDialog';
 import PaymentDialog from '../components/PaymentDialog';
 import ExportButton from '../components/ExportButton';
+import DownloadDocument from '../components/DownloadDocument';
+import { printAs } from '../lib/printDocument';
 import DocketDocument, { PAYG_LABELS } from '../components/documents/DocketDocument';
 import DocketReceipt from '../components/documents/DocketReceipt';
 
@@ -158,7 +160,7 @@ export default function DocketDetailPage() {
     if (!docket || !settings || view !== 'receipt') return;
     printed.current = true;
     const t = setTimeout(() => {
-      window.print();
+      printAs(`${docket.docketNumber}_receipt`);
       setSearchParams({}, { replace: true });
     }, 450);
     return () => clearTimeout(t);
@@ -196,6 +198,12 @@ export default function DocketDetailPage() {
   const basePath = isTaxInvoice ? '/tax-invoices' : '/purchases';
   const totalWeight = docket.lineItems.reduce((sum, li) => sum + Number(li.netWeight), 0);
   const s = docket.supplier;
+
+  const docNoun = isTaxInvoice ? 'tax invoice' : 'docket';
+  const downloadName =
+    view === 'receipt'
+      ? `${docket.docketNumber}_receipt`
+      : `${docket.docketNumber}_${docNoun}`;
 
   const btn =
     'rounded-md border border-steel-200 bg-white px-3 py-2 text-xs font-semibold text-steel-700 hover:bg-paper disabled:cursor-not-allowed disabled:opacity-40';
@@ -343,11 +351,12 @@ export default function DocketDetailPage() {
               endpoint={`/dockets/${docket.id}/export`}
               label="Export CSV"
             />
+            <DownloadDocument filename={downloadName} className="h-8 w-8" />
             <button
-              onClick={() => window.print()}
+              onClick={() => printAs(downloadName)}
               className="rounded-md bg-copper-500 px-4 py-2 text-xs font-semibold text-white hover:bg-copper-400"
             >
-              Print {view === 'receipt' ? 'receipt' : 'docket'}
+              Print {view === 'receipt' ? 'receipt' : docNoun}
             </button>
           </div>
         </div>

@@ -5,6 +5,8 @@ import { getSettings } from '../lib/settings';
 import InvoiceDocument from '../components/documents/InvoiceDocument';
 import PackingListDocument from '../components/documents/PackingListDocument';
 import ExportButton from '../components/ExportButton';
+import DownloadDocument from '../components/DownloadDocument';
+import { printAs } from '../lib/printDocument';
 
 /**
  * A shipment is described by two documents drawn from the same record. They are
@@ -46,6 +48,15 @@ export default function InvoiceDetailPage() {
   useEffect(() => {
     if (invoice?.stage === 'PACKING_SLIP') setView('packing');
   }, [invoice?.stage]);
+
+  // A slip and its invoice share one number, so the suffix is what tells the two
+  // apart in a folder — and in the buyer's inbox, where they arrive together.
+  const downloadName =
+    isSlip || view === 'packing'
+      ? `${invoice?.invoiceNumber}_packing slip`
+      : view === 'both'
+        ? `${invoice?.invoiceNumber}_invoice and packing slip`
+        : `${invoice?.invoiceNumber}_invoice`;
 
   if (error) return <div className="px-4 py-6 sm:px-6 lg:px-8 lg:py-8 text-sm text-working-red">{error}</div>;
   if (!invoice) return <div className="px-4 py-6 sm:px-6 lg:px-8 lg:py-8 text-sm text-steel-500">Loading…</div>;
@@ -120,11 +131,12 @@ export default function InvoiceDetailPage() {
             ))}
           </div>
           <ExportButton endpoint={`/invoices/${invoice.id}/export`} label="Export CSV" />
+          <DownloadDocument filename={downloadName} />
           <button
-            onClick={() => window.print()}
+            onClick={() => printAs(downloadName)}
             className="rounded-md bg-copper-500 px-4 py-2.5 text-sm font-semibold text-white hover:bg-copper-400"
           >
-            Print / Save PDF
+            Print
           </button>
         </div>
       </div>
