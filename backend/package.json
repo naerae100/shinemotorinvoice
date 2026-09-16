@@ -17,6 +17,7 @@
     "prisma:studio": "prisma studio",
     "seed": "node prisma/seed.js",
     "seed:export-grades": "node prisma/seed-export-grades.js",
+    "rotate:db-password": "bash scripts/rotate-db-password.sh",
     "migrate:prod": "bash scripts/migrate-prod.sh",
     "clear:transactions:local": "DATABASE_URL=postgresql://postgres@localhost:5433/shine_dev node prisma/clear-transactions.js",
     "clear:transactions:prod": "set -a; . ./.env.sydney; set +a; DATABASE_URL=\"$SYDNEY_DIRECT_URL\" node prisma/clear-transactions.js",
