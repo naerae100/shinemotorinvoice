@@ -45,7 +45,7 @@ const STAGE_ID = 'pdf-stage';
 // to change with it, or the file and the paper stop agreeing.
 const PAGES = {
   a4: { width: 210, height: 297, margin: { top: 12, right: 12, bottom: 14, left: 12 } },
-  receipt: { width: 80, height: null, margin: { top: 0, right: 0, bottom: 0, left: 0 } },
+  receipt: { width: 112, height: null, margin: { top: 0, right: 0, bottom: 0, left: 0 } },
 };
 
 async function libs() {
