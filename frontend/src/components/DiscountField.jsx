@@ -1,4 +1,4 @@
-import { round2 } from '../lib/format';
+import { round3 } from '../lib/format';
 
 /**
  * Mirrors the server's order of operations exactly (see backend src/lib/money.js):
@@ -11,25 +11,25 @@ export function applyDiscount(subtotal, discount, taxMode = 'EXCLUSIVE') {
   // Bridge legacy boolean callers
   const mode = typeof taxMode === 'boolean' ? (taxMode ? 'EXCLUSIVE' : 'NO_TAX') : taxMode;
 
-  const base = round2(subtotal);
+  const base = round3(subtotal);
   const value = Number(discount.discountValue) || 0;
   let discountAmount = 0;
   if (discount.discountType === 'PERCENT' && value > 0) discountAmount = (base * value) / 100;
   else if (discount.discountType === 'FIXED' && value > 0) discountAmount = value;
-  discountAmount = round2(Math.min(Math.max(discountAmount, 0), base));
+  discountAmount = round3(Math.min(Math.max(discountAmount, 0), base));
 
-  const taxable = round2(base - discountAmount);
+  const taxable = round3(base - discountAmount);
 
   let gst, total;
   if (mode === 'INCLUSIVE') {
-    gst = round2(taxable / 11);
-    total = round2(taxable);          // price already includes GST
+    gst = round3(taxable / 11);
+    total = round3(taxable);          // price already includes GST
   } else if (mode === 'EXCLUSIVE') {
-    gst = round2(taxable * 0.1);
-    total = round2(taxable + gst);    // GST added on top
+    gst = round3(taxable * 0.1);
+    total = round3(taxable + gst);    // GST added on top
   } else {
     gst = 0;
-    total = round2(taxable);          // no tax at all
+    total = round3(taxable);          // no tax at all
   }
 
   return { discountAmount, taxable, gst, total };
@@ -39,7 +39,7 @@ export default function DiscountField({ value, onChange, subtotal }) {
   const { discountType, discountValue } = value;
   const { discountAmount } = applyDiscount(subtotal, value, false);
   const capped =
-    discountType !== 'NONE' && Number(discountValue) > 0 && discountAmount >= round2(subtotal);
+    discountType !== 'NONE' && Number(discountValue) > 0 && discountAmount >= round3(subtotal);
 
   return (
     <div>

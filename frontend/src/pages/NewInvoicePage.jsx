@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { api } from '../lib/api';
-import { addressLines, formatMoney, formatNumber, round2 } from '../lib/format';
+import { addressLines, formatMoney, formatNumber, round3 } from '../lib/format';
 import DiscountField, { applyDiscount } from '../components/DiscountField';
 import ComboField from '../components/ComboField';
 import PartyAddressFields from '../components/PartyAddressFields';
@@ -245,7 +245,7 @@ export default function NewInvoicePage({ mode = 'invoice' }) {
         const g = parseFloat(field === 'grossWeightMt' ? value : line.grossWeightMt);
         const t = parseFloat(field === 'tareWeightMt' ? value : line.tareWeightMt);
         if (Number.isFinite(g) && Number.isFinite(t)) {
-          line.netWeightMt = String(round2(g - t));
+          line.netWeightMt = String(round3(g - t));
         }
       }
 

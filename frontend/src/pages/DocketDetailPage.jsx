@@ -577,7 +577,7 @@ export default function DocketDetailPage() {
                         {formatRate(li.price)}
                       </td>
                       <td className="num px-4 py-2.5 text-right align-top font-semibold text-steel-900">
-                        {formatNumber(li.value, 2)}
+                        {formatNumber(li.value, 3)}
                       </td>
                     </tr>
                   ))}
@@ -593,7 +593,7 @@ export default function DocketDetailPage() {
                     </td>
                     <td colSpan={2} />
                     <td className="num px-4 py-2.5 text-right text-steel-900">
-                      {formatNumber(docket.subtotal, 2)}
+                      {formatNumber(docket.subtotal, 3)}
                     </td>
                   </tr>
                 </tfoot>

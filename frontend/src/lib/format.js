@@ -1,3 +1,9 @@
+// Three places, matching the backend. The yard reads weights off a weighbridge
+// in kilograms and agrees rates to three decimals, so cents are not the unit
+// this business works in — see backend/src/lib/money.js.
+export const round3 = (n) => Math.round((Number(n) + Number.EPSILON) * 1000) / 1000;
+
+/** Cents. Still wanted where an amount has to be said aloud in dollars. */
 export const round2 = (n) => Math.round((Number(n) + Number.EPSILON) * 100) / 100;
 
 export function formatAud(n) {
@@ -12,8 +18,10 @@ export function formatAud(n) {
  */
 export function formatMoney(n, currency = 'AUD') {
   return `${currency} ${new Intl.NumberFormat('en-AU', {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
+    // Three, like every other figure on the document. Two threw the third digit
+    // away at the display layer even once the arithmetic kept it.
+    minimumFractionDigits: 3,
+    maximumFractionDigits: 3,
   }).format(Number(n) || 0)}`;
 }
 

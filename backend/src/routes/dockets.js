@@ -4,7 +4,7 @@ import { prisma } from '../config/prisma.js';
 import { requireAuth, requireRole } from '../middleware/auth.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { contains } from '../lib/search.js';
-import { computeTotals, round2, discountSchema } from '../lib/money.js';
+import { computeTotals, round3, discountSchema } from '../lib/money.js';
 import { dateFilter, numberFilter, pagination } from '../lib/query.js';
 import { sendCsv, money, isoDate, isoDateTime } from '../lib/csv.js';
 import { pushPurchaseDocketToXero } from './xero.js';
@@ -97,7 +97,7 @@ const buildLines = (lineItems) =>
     description: li.description ?? null,
     netWeight: li.netWeight,
     price: li.price,
-    value: round2(li.netWeight * li.price),
+    value: round3(li.netWeight * li.price),
   }));
 
 const totalsFor = (lines, data) =>

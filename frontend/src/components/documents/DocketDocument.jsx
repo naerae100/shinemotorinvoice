@@ -133,7 +133,7 @@ export default function DocketDocument({ docket, settings }) {
                 {formatRate(li.price)}
               </td>
               <td className="num border-b border-ink-200 px-3 py-3 text-right align-top font-semibold text-ink-900">
-                {formatNumber(li.value, 2)}
+                {formatNumber(li.value, 3)}
               </td>
             </tr>
           ))}
@@ -149,7 +149,7 @@ export default function DocketDocument({ docket, settings }) {
             </td>
             <td colSpan={2} />
             <td className="num rounded-br-xl px-3 py-3 text-right text-ink-900">
-              {formatNumber(docket.subtotal, 2)}
+              {formatNumber(docket.subtotal, 3)}
             </td>
           </tr>
         </tfoot>
@@ -168,7 +168,7 @@ export default function DocketDocument({ docket, settings }) {
           // exclusive docket has an amount being added, and only that is shown.
           ...(taxMode === 'EXCLUSIVE' ? [['GST (10%)', formatAud(docket.gst)]] : []),
         ]}
-        total={formatNumber(docket.total, 2)}
+        total={formatNumber(docket.total, 3)}
       >
         {docket.notes && (
           <div className="mt-3">

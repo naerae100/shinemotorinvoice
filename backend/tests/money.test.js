@@ -1,6 +1,6 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
-import { computeTotals, resolveDiscount, round2 } from '../src/lib/money.js';
+import { computeTotals, resolveDiscount, round2, round3 } from '../src/lib/money.js';
 
 const totals = (lineValues, opts = {}) =>
   computeTotals({ lineValues, discountType: 'NONE', discountValue: 0, applyGst: false, ...opts });
@@ -77,10 +77,37 @@ describe('money — GST order of operations', () => {
       });
       assert.equal(
         t.total,
-        round2(round2(t.subtotal - t.discountAmount) + t.gst),
+        round3(round3(t.subtotal - t.discountAmount) + t.gst),
         `mismatch for ${JSON.stringify(values)} ${type} ${value}`
       );
       assert.ok(t.total >= 0, 'total must never be negative');
     }
+  });
+});
+
+describe('three decimals — the unit this yard actually works in', () => {
+  test('gross minus tare keeps the kilogram', () => {
+    // The case that surfaced it: 21.243 gross, 0.036 tare. Rounded to cents the
+    // system stored 21.21 and billed for three kilograms that were never in the
+    // container — at AUD 4,350/MT, AUD 13.05 a line.
+    assert.equal(round3(21.243 - 0.036), 21.207);
+    assert.equal(round2(21.243 - 0.036), 21.21, 'what it used to do');
+  });
+
+  test('rounding to three removes float noise rather than adding it', () => {
+    // The raw subtraction is 21.206999999999997; three places is the exact
+    // answer, not an approximation of it.
+    assert.ok(21.243 - 0.036 !== 21.207, 'the raw float is not exact');
+    assert.equal(round3(21.243 - 0.036), 21.207);
+    assert.equal(round3(0.1 + 0.2), 0.3);
+  });
+
+  test('a line worth 0.125 is not paid as 0.13', () => {
+    assert.equal(totals([0.125, 0.125]).subtotal, 0.25);
+  });
+
+  test('the document still adds up to itself', () => {
+    const t = totals([21.207, 14.66, 9.65], { taxMode: 'EXCLUSIVE' });
+    assert.equal(round3(t.subtotal - t.discountAmount + t.gst), t.total);
   });
 });

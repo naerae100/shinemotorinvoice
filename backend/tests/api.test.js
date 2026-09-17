@@ -109,7 +109,7 @@ suite('dockets — totals', () => {
   test('INCLUSIVE treats the line prices as already containing GST', async () => {
     const res = await createDocket({ taxMode: 'INCLUSIVE' });
     assert.equal(res.status, 201);
-    assert.equal(Number(res.body.docket.gst), 90.91, 'one eleventh of 1000');
+    assert.equal(Number(res.body.docket.gst), 90.909, 'one eleventh of 1000');
     assert.equal(Number(res.body.docket.total), 1000, 'the total must not grow');
   });
 
@@ -125,7 +125,7 @@ suite('dockets — totals', () => {
     const res = await createDocket({});
     assert.equal(res.body.docket.taxMode, 'INCLUSIVE');
     assert.equal(Number(res.body.docket.total), 1000, 'the quoted price is the total');
-    assert.equal(Number(res.body.docket.gst), 90.91, 'GST is inside it');
+    assert.equal(Number(res.body.docket.gst), 90.909, 'GST is inside it');
   });
 
   test('a one-off grade can be typed onto a docket without a material record', async () => {
@@ -150,7 +150,7 @@ suite('dockets — totals', () => {
     });
     assert.equal(res.status, 201);
     assert.equal(Number(res.body.docket.lineItems[0].price), 2.990988, 'the rate is kept as typed');
-    assert.equal(Number(res.body.docket.lineItems[0].value), 56.83, 'only the value is rounded');
+    assert.equal(Number(res.body.docket.lineItems[0].value), 56.829, '19 x 2.990988, to three places');
   });
 
   test('an unrecognised taxMode is rejected rather than silently defaulted', async () => {
@@ -199,8 +199,10 @@ suite('dockets — totals', () => {
     });
     const d = res.body.docket;
     const lineSum = d.lineItems.reduce((s, li) => s + Number(li.value), 0);
-    assert.equal(Number(d.subtotal), lineSum);
-    assert.equal(Number(d.subtotal), 0.26);
+    assert.equal(Number(d.subtotal), lineSum, 'the document adds up to itself');
+    // Two lines at 0.125. Rounded to cents each became 0.13 and the docket paid
+    // 0.26 for metal worth 0.25 — the loss this business actually cares about.
+    assert.equal(Number(d.subtotal), 0.25);
   });
 
   test('a docket with no line items is rejected', async () => {
@@ -623,7 +625,7 @@ suite('invoices', () => {
     const li = res.body.invoice.lineItems[0];
     assert.equal(li.materialId, null);
     assert.equal(li.description, 'Millberry- Grade B');
-    assert.equal(Number(li.total), 292242.15, 'rounded to the cent');
+    assert.equal(Number(li.total), 292242.146, '20.787 x 14058.89, to three places');
   });
 
   test('a line with neither a material nor a description is rejected', async () => {

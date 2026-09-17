@@ -108,7 +108,7 @@ export default function InvoiceDocument({ invoice, settings }) {
                     {formatRate(li.pricePerMt)}
                   </td>
                   <td className="num border-b border-ink-100 py-2.5 print:py-2 text-right align-top font-bold text-[13px] text-ink-900">
-                    {formatNumber(li.total, 2)}
+                    {formatNumber(li.total, 3)}
                   </td>
                 </tr>
               );
@@ -125,7 +125,7 @@ export default function InvoiceDocument({ invoice, settings }) {
               </td>
               <td />
               <td className="num py-3 print:py-2 text-right font-bold text-[13.5px] text-ink-900">
-                {formatNumber(invoice.subtotal, 2)}
+                {formatNumber(invoice.subtotal, 3)}
               </td>
             </tr>
           </tfoot>
@@ -142,7 +142,7 @@ export default function InvoiceDocument({ invoice, settings }) {
             : []),
           ...(invoice.applyGst ? [['GST (10%)', money(invoice.gst)]] : []),
         ]}
-        total={formatNumber(invoice.total, 2)}
+        total={formatNumber(invoice.total, 3)}
       />
 
       <section className="avoid-break mt-6 flex flex-col gap-6">

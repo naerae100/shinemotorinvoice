@@ -4,7 +4,7 @@ import { prisma } from '../config/prisma.js';
 import { requireAuth, requireRole } from '../middleware/auth.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { contains } from '../lib/search.js';
-import { computeTotals, round2, discountSchema } from '../lib/money.js';
+import { computeTotals, round3, discountSchema } from '../lib/money.js';
 import { CURRENCIES } from '../lib/currency.js';
 import { dateFilter, numberFilter, pagination } from '../lib/query.js';
 import { sendCsv, money, isoDate, isoDateTime } from '../lib/csv.js';
@@ -49,7 +49,7 @@ const invoiceLineSchema = z
     (li) =>
       li.grossWeightMt == null ||
       li.tareWeightMt == null ||
-      round2(li.grossWeightMt - li.tareWeightMt) === round2(li.netWeightMt),
+      round3(li.grossWeightMt - li.tareWeightMt) === round3(li.netWeightMt),
     {
       message: 'Net weight must equal gross minus tare',
       path: ['netWeightMt'],
@@ -125,7 +125,7 @@ const buildLines = (lineItems, containerIds = []) =>
     tareWeightMt: li.tareWeightMt ?? null,
     netWeightMt: li.netWeightMt,
     pricePerMt: li.pricePerMt,
-    total: round2(li.netWeightMt * li.pricePerMt),
+    total: round3(li.netWeightMt * li.pricePerMt),
     position,
   }));
 
