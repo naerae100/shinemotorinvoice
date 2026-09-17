@@ -4,20 +4,29 @@
  * The libraries are imported dynamically, so the ~180 kB gzipped they cost is
  * paid only by someone who actually downloads something, never on first paint.
  *
- * The aim is that this file and the one that comes out of Print → Save as PDF
- * are the same document. That takes more than screenshotting the page:
+ * The aim is that this file and the one out of Print → Save as PDF are the same
+ * document. Screenshotting the page does not achieve that, for three reasons:
  *
- *   - This document is designed for paper. 178 lines of print.css and a Tailwind
- *     `print:` variant on most rows live inside `@media print`, which never
- *     applies on screen, so a plain capture produced a picture of the web page
- *     instead — four-column detail grids collapsed to two, screen padding and
- *     shadows intact. Those rules are flattened into the clone.
- *   - Media queries have to be evaluated against the page, not the monitor, or
- *     the layout is whatever the window happened to be.
- *   - `@page` margins are what hold the document off the edge of the paper —
- *     print.css sets the sheet's own padding to 0 precisely because the page
- *     margin does that job. A PDF page has no such margin unless one is drawn,
- *     so without this the text ran off both edges.
+ *   1. This document is designed for paper. 178 lines of print.css and a
+ *      Tailwind `print:` variant on most rows live inside `@media print`, which
+ *      never applies on screen — so a plain capture showed screen padding,
+ *      card shadows, and a generous layout meant for reading at a desk.
+ *   2. The element's width and the viewport's width are different things. The
+ *      sheet has to be the page's content width, while the viewport stays wide:
+ *      Tailwind breakpoints are viewport queries, and a narrow one silently
+ *      drops the document to its stacked mobile layout — the masthead below the
+ *      logo, the four-column detail grid collapsed to two.
+ *   3. `@page` margins are what hold the document off the edge of the paper.
+ *      print.css sets the sheet's own padding to 0 precisely because the page
+ *      margin does that job; a PDF page has no margin unless one is drawn.
+ *
+ * Restyling html2canvas's own clone could not fix all three, because it sizes
+ * the canvas from the element it was given before that clone is touched: the
+ * canvas came out the shape of the on-screen sheet while the print-styled
+ * content rendered shorter inside it, leaving the document in the top half of
+ * the page. So the document is instead rebuilt offscreen at exactly the page
+ * size, with the paper styles applied, and that is what gets photographed. The
+ * thing measured is the thing captured.
  *
  * What it still does not give you: the text is a picture of text, so it is not
  * selectable or searchable. Vector output means rendering in a headless browser
@@ -29,6 +38,8 @@
 const SCALE = 3;
 const PX_PER_MM = 96 / 25.4;
 const mmToPx = (mm) => Math.round(mm * PX_PER_MM);
+
+const STAGE_ID = 'pdf-stage';
 
 // Mirrors @page in print.css and in DocketReceipt. If either changes, this has
 // to change with it, or the file and the paper stop agreeing.
@@ -61,8 +72,16 @@ async function ready(root) {
   );
 }
 
-/** Everything inside `@media print`, flattened so it applies to the clone. */
-function flattenedPrintCss() {
+/**
+ * Every `@media print` rule, rewritten to apply only inside the offscreen stage.
+ *
+ * Scoping matters. These rules are written for a whole page — they strip the
+ * sheet's padding, shrink the masthead, compress every table row — and letting
+ * them loose on the live document would visibly rearrange the screen behind the
+ * download. `html` and `body` rules are dropped rather than scoped: they set up
+ * the page itself, which the stage is not.
+ */
+function scopedPrintCss(scope) {
   const out = [];
   for (const sheet of document.styleSheets) {
     let rules;
@@ -72,51 +91,62 @@ function flattenedPrintCss() {
       continue; // cross-origin stylesheet; ours are all local
     }
     for (const rule of rules) {
-      if (rule.type === CSSRule.MEDIA_RULE && /print/i.test(rule.conditionText || '')) {
-        for (const inner of rule.cssRules) out.push(inner.cssText);
+      if (rule.type !== CSSRule.MEDIA_RULE || !/print/i.test(rule.conditionText || '')) continue;
+      for (const inner of rule.cssRules) {
+        if (!inner.selectorText || !inner.style) continue;
+        const selector = inner.selectorText
+          .split(',')
+          .map((s) => s.trim())
+          .filter((s) => s && !/^(html|body|:root)\b/i.test(s))
+          .map((s) => `${scope} ${s}`)
+          .join(', ');
+        if (selector) out.push(`${selector} { ${inner.style.cssText} }`);
       }
     }
   }
   return out.join('\n');
 }
 
-async function capture(html2canvas, node, contentWidthPx) {
-  return html2canvas(node, {
-    scale: SCALE,
-    useCORS: true,
-    backgroundColor: '#ffffff',
-    logging: false,
-    scrollX: 0,
-    scrollY: -window.scrollY,
-    // Evaluated by media queries in the clone, so the layout follows the page
-    // rather than the monitor.
-    //
-    // Deliberately no `width`: that crops the output, and anything inside with
-    // a min-width — the goods table has one — then lost its right-hand edge, so
-    // the total and half the letterhead were sliced off. Letting html2canvas
-    // measure what it actually laid out means an overhang is scaled to fit
-    // instead of cut away.
-    windowWidth: contentWidthPx,
-    onclone: (doc, cloned) => {
-      const style = doc.createElement('style');
-      style.textContent = `
-        ${flattenedPrintCss()}
-        /* Screen-only chrome that has no business on a document: on paper the
-           sheet is the page, not a card floating above one. */
-        .print-sheet, .receipt-sheet {
-          box-shadow: none !important;
-          border-radius: 0 !important;
-          border: none !important;
-          --tw-ring-shadow: 0 0 #0000 !important;
-        }
-      `;
-      doc.head.appendChild(style);
+/**
+ * Put a copy of the document offscreen, at exactly the size it will print at,
+ * with the paper styles applied.
+ */
+function buildStage(sheet, contentWidthPx) {
+  const stage = document.createElement('div');
+  stage.id = STAGE_ID;
+  // Offscreen rather than hidden: `display: none` and `visibility: hidden` both
+  // stop the browser laying the content out, and there would be nothing to
+  // measure or to photograph.
+  stage.style.cssText = `
+    position: fixed;
+    left: -20000px;
+    top: 0;
+    width: ${contentWidthPx}px;
+    background: #ffffff;
+    z-index: -1;
+  `;
 
-      cloned.style.width = `${contentWidthPx}px`;
-      cloned.style.maxWidth = 'none';
-      cloned.style.margin = '0';
-    },
-  });
+  const style = document.createElement('style');
+  style.textContent = `
+    ${scopedPrintCss(`#${STAGE_ID}`)}
+    /* Screen-only chrome: on paper the sheet is the page, not a card floating
+       above one. Width is pinned here so the sheet cannot inherit the
+       max-width it wears on screen. */
+    #${STAGE_ID} .print-sheet,
+    #${STAGE_ID} .receipt-sheet {
+      box-shadow: none !important;
+      border-radius: 0 !important;
+      border: none !important;
+      margin: 0 !important;
+      max-width: none !important;
+      width: ${contentWidthPx}px !important;
+      --tw-ring-shadow: 0 0 #0000 !important;
+    }
+  `;
+  stage.appendChild(style);
+  stage.appendChild(sheet.cloneNode(true));
+  document.body.appendChild(stage);
+  return stage;
 }
 
 /**
@@ -138,7 +168,27 @@ export async function downloadSheetsAsPdf(sheets, filename, format = 'a4') {
   let pdf = null;
 
   for (const [i, sheet] of sheets.entries()) {
-    const canvas = await capture(html2canvas, sheet, contentWidthPx);
+    const stage = buildStage(sheet, contentWidthPx);
+    let canvas;
+    try {
+      await ready(stage);
+      const target = stage.querySelector('.print-sheet, .receipt-sheet') ?? stage;
+      canvas = await html2canvas(target, {
+        scale: SCALE,
+        useCORS: true,
+        backgroundColor: '#ffffff',
+        logging: false,
+        // The stage is laid out in the live document at the right size, so
+        // html2canvas measures exactly what it renders and the viewport keeps
+        // its real width — which is what satisfies the `sm:` breakpoints the
+        // printed layout depends on.
+        scrollX: 0,
+        scrollY: 0,
+      });
+    } finally {
+      stage.remove();
+    }
+
     const image = canvas.toDataURL('image/jpeg', 0.94);
 
     // A receipt roll is as long as the slip; a fixed height would either cut the
@@ -149,7 +199,12 @@ export async function downloadSheetsAsPdf(sheets, filename, format = 'a4') {
     const contentHeightMm = pageHeight - margin.top - margin.bottom;
 
     if (!pdf) {
-      pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: [page.width, pageHeight], compress: true });
+      pdf = new jsPDF({
+        orientation: 'portrait',
+        unit: 'mm',
+        format: [page.width, pageHeight],
+        compress: true,
+      });
     } else {
       pdf.addPage([page.width, pageHeight], 'portrait');
     }

@@ -151,11 +151,16 @@ export function TotalsBlock({ words, rows, total, currency = 'AUD', children }) 
             <span className="num font-bold text-ink-900">{value}</span>
           </div>
         ))}
-        <div className="mt-3 flex items-baseline justify-between border-b-[3px] border-t-2 border-ink-900 py-2.5">
+        {/* pb-3 and a contained line-height, because the 3px rule underneath was
+            drawn through the descenders of the figure above it — the comma and
+            the tails of the digits — on the largest number on the page. */}
+        <div className="mt-3 flex items-baseline justify-between border-b-[3px] border-t-2 border-ink-900 pt-2.5 pb-3">
           <span className="text-[12px] font-bold uppercase tracking-[0.15em] text-ink-900">
             Total {currency}
           </span>
-          <span className="num text-[24px] font-bold tracking-tight text-ink-900">{total}</span>
+          <span className="num text-[24px] font-bold leading-[1.2] tracking-tight text-ink-900">
+            {total}
+          </span>
         </div>
       </div>
     </section>

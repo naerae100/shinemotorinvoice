@@ -71,9 +71,9 @@ export default function InvoiceDocument({ invoice, settings }) {
             <tr className="border-b-2 border-ink-900 text-left uppercase tracking-[0.15em] text-ink-900">
               <th className="w-10 py-2.5 print:py-2 text-[10px] font-bold">#</th>
               <th className="py-2.5 print:py-2 text-[10px] font-bold">Description of goods</th>
-              <th className="w-24 py-2.5 print:py-2 text-right text-[10px] font-bold">Weight (MT)</th>
-              <th className="w-28 py-2.5 print:py-2 text-right text-[10px] font-bold">Unit price ({currency})</th>
-              <th className="w-32 py-2.5 print:py-2 text-right text-[10px] font-bold">Amount ({currency})</th>
+              <th className="w-24 whitespace-nowrap py-2.5 print:py-2 text-right text-[10px] font-bold">Weight (MT)</th>
+              <th className="w-28 whitespace-nowrap py-2.5 print:py-2 text-right text-[10px] font-bold">Unit price ({currency})</th>
+              <th className="w-32 whitespace-nowrap py-2.5 print:py-2 text-right text-[10px] font-bold">Amount ({currency})</th>
             </tr>
           </thead>
           <tbody className="bg-white">
