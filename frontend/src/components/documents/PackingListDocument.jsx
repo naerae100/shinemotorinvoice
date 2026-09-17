@@ -63,8 +63,11 @@ export default function PackingListDocument({ invoice, settings }) {
             lines={[...addressLines(c), c?.phone, c?.email]}
           />
         </div>
+        {/* "Packing list" is the term the shipping paperwork uses — what a
+            freight forwarder and a customs broker expect to read, and what the
+            buyer's own documents quote back. */}
         <ReferenceBlock
-          title="Packing slip"
+          title="Packing list"
           references={[
             ['Invoice no.', invoice.invoiceNumber, true],
             ['Invoice date', format(new Date(invoice.date), 'dd MMM yyyy')],
@@ -203,7 +206,7 @@ export default function PackingListDocument({ invoice, settings }) {
       <div className="mt-auto pt-6">
         <DocumentFooter
           settings={settings}
-          reference={`Packing slip ${invoice.invoiceNumber}`}
+          reference={`Packing list ${invoice.invoiceNumber}`}
           date={invoice.date}
         />
       </div>

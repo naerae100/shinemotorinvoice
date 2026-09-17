@@ -84,6 +84,8 @@ export default function DashboardPage() {
         party: d.supplier?.name,
         date: d.date,
         total: d.total,
+        // Scrap is always bought in AUD; only the sell side has a choice.
+        currency: 'AUD',
         to: `${d.type === 'TAX_INVOICE' ? '/tax-invoices' : '/purchases'}/${d.id}`,
       })),
       ...data.recentInvoices.map((i) => ({
@@ -93,6 +95,9 @@ export default function DashboardPage() {
         party: i.consignee?.name,
         date: i.date,
         total: i.total,
+        // The invoice's own currency. Printing every row as AUD showed a USD
+        // sale as an Australian figure of the same magnitude.
+        currency: i.currency || 'AUD',
         to: `/export-invoices/${i.id}`,
       })),
     ]
@@ -357,7 +362,7 @@ export default function DashboardPage() {
                       <td className="py-2.5 text-steel-700">{r.party}</td>
                       <td className="py-2.5 text-steel-500">{format(new Date(r.date), 'd MMM')}</td>
                       <td className="num py-2.5 text-right font-medium text-steel-900">
-                        {formatAud(r.total)}
+                        {formatMoney(r.total, r.currency)}
                       </td>
                     </tr>
                   ))}

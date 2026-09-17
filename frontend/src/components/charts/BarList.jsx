@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { CHART_INK } from './palette';
-import { formatAud, formatNumber } from '../../lib/format';
+import { formatMoney, formatNumber } from '../../lib/format';
 
 /**
  * Ranked horizontal bars for a single nominal series (top materials, top clients).
@@ -50,7 +50,7 @@ export default function BarList({ items, color, emptyLabel = 'No data in this pe
               {/* Value labelled at the tip of every bar: a short ranked list is
                   exactly the case where labelling each one stays readable. */}
               <span className="num shrink-0 text-[13px] font-semibold text-steel-900">
-                {formatAud(item.value)}
+                {formatMoney(item.value, item.currency || 'AUD')}
               </span>
             </div>
             <div
@@ -84,9 +84,15 @@ export const materialItem = (m, unit = 'kg') => ({
   sub: `${formatNumber(m.weight, 3)} ${unit}`,
 });
 
+// A consignee trading in both AUD and USD appears once per currency, so the
+// key carries the currency too — keyed on the id alone the second row was
+// dropped as a duplicate, and its figure disappeared from the ranking.
 export const clientItem = (c) => ({
-  key: c.client.id,
+  key: `${c.client.id}-${c.currency || 'AUD'}`,
   label: c.client.name,
   value: c.value,
-  sub: `${c.count} ${c.count === 1 ? 'document' : 'documents'}`,
+  currency: c.currency || 'AUD',
+  sub: `${c.count} ${c.count === 1 ? 'document' : 'documents'}${
+    c.currency && c.currency !== 'AUD' ? ` · ${c.currency}` : ''
+  }`,
 });

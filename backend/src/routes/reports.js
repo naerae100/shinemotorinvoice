@@ -288,13 +288,17 @@ router.get(
         orderBy: { _sum: { total: 'desc' } },
         take: 8,
       }),
+      // Grouped by currency as well as consignee. Grouped by consignee alone
+      // it summed a USD invoice and an AUD one into a figure that is neither —
+      // the two are never converted anywhere else in this system, and a
+      // ranking is not the place to start.
       prisma.exportInvoice.groupBy({
-        by: ['consigneeId'],
+        by: ['consigneeId', 'currency'],
         _sum: { total: true },
         _count: { _all: true },
         where: invoiceWhere,
         orderBy: { _sum: { total: 'desc' } },
-        take: 8,
+        take: 12,
       }),
       prisma.docket.findMany({
         where: ACTIVE,
@@ -434,6 +438,7 @@ router.get(
           client: consigneeMap[r.consigneeId],
           count: r._count._all,
           value: Number(r._sum.total ?? 0),
+          currency: r.currency || 'AUD',
         })),
       recentDockets,
       recentInvoices,
