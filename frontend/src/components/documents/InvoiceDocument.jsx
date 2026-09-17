@@ -37,7 +37,11 @@ export default function InvoiceDocument({ invoice, settings }) {
             lines={[...addressLines(c), c?.phone, c?.email]}
           />
         </div>
+        {/* Under Australian GST law a document only functions as a tax invoice
+            if it says so on its face, so a local sale with GST is titled
+            accordingly; an export carries no GST and is simply an invoice. */}
         <ReferenceBlock
+          title={invoice.applyGst ? 'Tax invoice' : 'Invoice'}
           references={[
             ['Invoice no.', invoice.invoiceNumber, true],
             ['Invoice date', format(new Date(invoice.date), 'dd MMM yyyy')],

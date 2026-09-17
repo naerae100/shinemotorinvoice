@@ -64,6 +64,7 @@ export default function PackingListDocument({ invoice, settings }) {
           />
         </div>
         <ReferenceBlock
+          title="Packing slip"
           references={[
             ['Invoice no.', invoice.invoiceNumber, true],
             ['Invoice date', format(new Date(invoice.date), 'dd MMM yyyy')],
@@ -202,7 +203,7 @@ export default function PackingListDocument({ invoice, settings }) {
       <div className="mt-auto pt-6">
         <DocumentFooter
           settings={settings}
-          reference={`Packing list ${invoice.invoiceNumber}`}
+          reference={`Packing slip ${invoice.invoiceNumber}`}
           date={invoice.date}
         />
       </div>
