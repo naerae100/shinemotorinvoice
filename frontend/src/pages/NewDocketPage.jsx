@@ -4,6 +4,7 @@ import { api } from '../lib/api';
 import { formatAud as formatCurrency } from '../lib/format';
 import DiscountField, { applyDiscount } from '../components/DiscountField';
 import MaterialField from '../components/MaterialField';
+import { apiErrorMessage } from '../lib/apiError';
 
 const PAYG_OPTIONS = [
   { value: 'NOT_APPLICABLE', label: 'Business sale with valid ABN' },
@@ -287,10 +288,32 @@ export default function NewDocketPage({ defaultType = 'PURCHASE_DOCKET' }) {
       const isSameSupplier =
         selectedSupplier && supplierName.toLowerCase() === selectedSupplier.name.trim().toLowerCase();
 
-      const supplierRes = isSameSupplier
-        ? await api.patch(`/suppliers/${selectedSupplier.id}`, supplierDetails)
-        : await api.post('/suppliers', supplierDetails);
-      const supplierId = supplierRes.data.supplier.id;
+      let supplierId;
+      if (isSameSupplier) {
+        // Only what actually changed.
+        //
+        // Sending the whole record back on every docket meant a supplier's own
+        // stored values were re-submitted untouched — and anything entered
+        // before the field checks existed, an ABN that fails the ATO check
+        // digit among them, was then rejected. Saving a docket failed on data
+        // nobody had touched and the form could not even name. Re-submitting
+        // values nobody edited was the mistake; a docket should write a
+        // supplier only where the operator actually typed something.
+        const same = (a, b) => (a ?? '') === (b ?? '');
+        const changed = Object.fromEntries(
+          Object.entries(supplierDetails).filter(
+            ([key, value]) => !same(value, selectedSupplier[key])
+          )
+        );
+        supplierId = selectedSupplier.id;
+        if (Object.keys(changed).length) {
+          const res = await api.patch(`/suppliers/${selectedSupplier.id}`, changed);
+          supplierId = res.data.supplier.id;
+        }
+      } else {
+        const res = await api.post('/suppliers', supplierDetails);
+        supplierId = res.data.supplier.id;
+      }
 
       const payload = {
         type,
@@ -329,11 +352,7 @@ export default function NewDocketPage({ defaultType = 'PURCHASE_DOCKET' }) {
       const newDocket = res.data.docket;
       navigate(`/${pathPrefix}/${newDocket.id}${suffix}`);
     } catch (err) {
-      const apiError = err.response?.data?.error;
-      setError(
-        (typeof apiError === 'string' ? apiError : apiError?.formErrors?.join(', ')) ||
-          'Could not save docket.'
-      );
+      setError(apiErrorMessage(err, 'Could not save docket.'));
     } finally {
       setSubmitting(false);
       printAfterSave.current = false;

@@ -5,6 +5,7 @@ import { addressLines, formatMoney, formatNumber, round3 } from '../lib/format';
 import DiscountField, { applyDiscount } from '../components/DiscountField';
 import ComboField from '../components/ComboField';
 import PartyAddressFields from '../components/PartyAddressFields';
+import { apiErrorMessage } from '../lib/apiError';
 
 // Suggestions, not restrictions — every one of these fields accepts free text.
 // The four the yard actually trades on lead; the rest of the Incoterms follow
@@ -296,11 +297,7 @@ export default function NewInvoicePage({ mode = 'invoice' }) {
       setAddingConsignee(false);
       setNewConsignee({ ...emptyConsignee });
     } catch (err) {
-      const apiError = err.response?.data?.error;
-      setError(
-        (typeof apiError === 'string' ? apiError : apiError?.formErrors?.join(', ')) ||
-          'Could not create consignee.'
-      );
+      setError(apiErrorMessage(err, 'Could not create consignee.'));
     }
   }
 
