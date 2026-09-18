@@ -1,3 +1,4 @@
+import StreetAddressField from './StreetAddressField';
 /**
  * The address block for a supplier or a consignee, in one place.
  *
@@ -75,11 +76,26 @@ export default function PartyAddressFields({
         <label className={label} htmlFor={`${idPrefix}-street`}>
           Street address
         </label>
-        <input
+        {/* Choosing a suggestion fills the street, suburb, state and postcode
+            together, so those four agree by construction rather than by the
+            operator typing all four correctly. */}
+        <StreetAddressField
           id={`${idPrefix}-street`}
-          value={value[streetKey] || ''}
-          onChange={set(streetKey)}
-          placeholder="Unit G, 1/F., 16–18 Mau Lam Street"
+          value={value[streetKey]}
+          country={value.country}
+          onChange={(v) => onChange({ ...value, [streetKey]: v })}
+          onResolved={(a) =>
+            onChange({
+              ...value,
+              [streetKey]: a.street,
+              suburb: a.suburb,
+              state: a.state,
+              postcode: a.postcode,
+              // A suggestion only ever comes from the Australian dataset, so
+              // the country is known even when the field was left blank.
+              country: value.country || 'Australia',
+            })
+          }
           className={field}
         />
       </div>

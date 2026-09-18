@@ -3,6 +3,8 @@ import { Link } from 'react-router-dom';
 import { api } from '../lib/api';
 import ExportButton from '../components/ExportButton';
 import { apiErrorMessage } from '../lib/apiError';
+import AbnField from '../components/AbnField';
+import PartyAddressFields from '../components/PartyAddressFields';
 
 // Suppliers are local — a Sydney yard buying from people who drive in — so a
 // new one starts on the Australian country code. Buyers are overseas and
@@ -111,26 +113,14 @@ export default function SuppliersPage() {
               </select>
             </Field>
 
-            <Field label="Street address" className="sm:col-span-6">
-              <input placeholder="12 Smithfield Road" value={form.address || ''}
-                onChange={(e) => setForm({ ...form, address: e.target.value })} className={field} />
-            </Field>
-            <Field label="Suburb" className="sm:col-span-2">
-              <input placeholder="Liverpool" value={form.suburb || ''}
-                onChange={(e) => setForm({ ...form, suburb: e.target.value })} className={field} />
-            </Field>
-            <Field label="State" className="sm:col-span-2">
-              <input placeholder="NSW" value={form.state || ''}
-                onChange={(e) => setForm({ ...form, state: e.target.value })} className={field} />
-            </Field>
-            <Field label="Postcode" className="sm:col-span-1">
-              <input placeholder="2170" value={form.postcode || ''}
-                onChange={(e) => setForm({ ...form, postcode: e.target.value })} className={`num ${field}`} />
-            </Field>
-            <Field label="Country" className="sm:col-span-1">
-              <input placeholder="Australia" value={form.country || ''}
-                onChange={(e) => setForm({ ...form, country: e.target.value })} className={field} />
-            </Field>
+            {/* The same block the consignee form uses. This page kept its own
+                copy when that was shared, which is how a supplier could be
+                given an address the consignee form would have structured
+                differently — and why suppliers, the Australian parties, were
+                the one party type without address autocomplete. */}
+            <div className="sm:col-span-6">
+              <PartyAddressFields value={form} onChange={setForm} idPrefix="supplier" />
+            </div>
 
             <Field label="Phone" className="sm:col-span-3">
               <input placeholder="0412 887 331" value={form.phone || ''}
@@ -142,8 +132,12 @@ export default function SuppliersPage() {
             </Field>
 
             <Field label="ABN (if business)" className="sm:col-span-3">
-              <input placeholder="44 213 887 002" value={form.abn || ''}
-                onChange={(e) => setForm({ ...form, abn: e.target.value })} className={`num ${field}`} />
+              <AbnField
+                id="supplier-abn"
+                value={form.abn}
+                onChange={(abn) => setForm({ ...form, abn })}
+                className={`num ${field}`}
+              />
             </Field>
             <Field label="Driver licence no." className="sm:col-span-3">
               <input placeholder="Required for a private scrap sale" value={form.licenceNo || ''}

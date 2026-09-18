@@ -17,6 +17,7 @@ import reportRoutes from './routes/reports.js';
 import userRoutes from './routes/users.js';
 import xeroRoutes from './routes/xero.js';
 import auditRoutes from './routes/audit.js';
+import abnRoutes from './routes/abn.js';
 import { errorHandler, notFoundHandler } from './middleware/errorHandler.js';
 
 const app = express();
@@ -64,6 +65,7 @@ app.use('/api/reports', reportRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/xero', xeroRoutes);
 app.use('/api/audit', auditRoutes);
+app.use('/api/abn', abnRoutes);
 
 app.get('/api/health', (req, res) => res.json({ status: 'ok' }));
 

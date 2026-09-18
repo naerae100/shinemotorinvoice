@@ -5,6 +5,7 @@ import { formatAud as formatCurrency } from '../lib/format';
 import DiscountField, { applyDiscount } from '../components/DiscountField';
 import MaterialField from '../components/MaterialField';
 import { apiErrorMessage } from '../lib/apiError';
+import AbnField from '../components/AbnField';
 
 const PAYG_OPTIONS = [
   { value: 'NOT_APPLICABLE', label: 'Business sale with valid ABN' },
@@ -499,11 +500,15 @@ export default function NewDocketPage({ defaultType = 'PURCHASE_DOCKET' }) {
                   <option value="PRIVATE">Private sale</option>
                   <option value="BUSINESS">Business sale</option>
                 </select>
-                <input
+                {/* The weighbridge is exactly where a wrong ABN gets written
+                    down, so this is the form that most needs to say whose it
+                    is — before the PAYG declaration is made on it. */}
+                <AbnField
+                  id="docket-supplier-abn"
                   placeholder="ABN (if business)"
-                  value={newSupplier.abn || ''}
-                  onChange={(e) => setNewSupplier({ ...newSupplier, abn: e.target.value })}
-                  className="rounded-md border border-steel-200 px-3 py-2 text-sm"
+                  value={newSupplier.abn}
+                  onChange={(abn) => setNewSupplier({ ...newSupplier, abn })}
+                  className="w-full rounded-md border border-steel-200 px-3 py-2 text-sm"
                 />
 
                 {/* Saved against the supplier, not the docket, so the next load
