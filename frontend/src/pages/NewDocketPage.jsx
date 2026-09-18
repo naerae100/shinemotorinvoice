@@ -6,6 +6,7 @@ import DiscountField, { applyDiscount } from '../components/DiscountField';
 import MaterialField from '../components/MaterialField';
 import { apiErrorMessage } from '../lib/apiError';
 import AbnField from '../components/AbnField';
+import PartyAddressFields from '../components/PartyAddressFields';
 
 const PAYG_OPTIONS = [
   { value: 'NOT_APPLICABLE', label: 'Business sale with valid ABN' },
@@ -461,18 +462,18 @@ export default function NewDocketPage({ defaultType = 'PURCHASE_DOCKET' }) {
                 being typed was hidden behind a list of other names, in a second
                 field that already said it. One field, typed once. */}
             <div className="mt-4 grid grid-cols-1 gap-3 rounded-md border border-steel-100 bg-paper p-4 sm:grid-cols-2">
-                <input
-                  placeholder="Address"
-                  value={newSupplier.address || ''}
-                  onChange={(e) => setNewSupplier({ ...newSupplier, address: e.target.value })}
-                  className="rounded-md border border-steel-200 px-3 py-2 text-sm"
-                />
-                <input
-                  placeholder="Suburb"
-                  value={newSupplier.suburb || ''}
-                  onChange={(e) => setNewSupplier({ ...newSupplier, suburb: e.target.value })}
-                  className="rounded-md border border-steel-200 px-3 py-2 text-sm"
-                />
+                {/* The same address block the supplier record uses. This panel
+                    had only Address and Suburb, so a supplier created at the
+                    weighbridge — which is most of them — got a lesser record
+                    than the same supplier added from its own page: no state, no
+                    postcode, no country, and none of the autocomplete. */}
+                <div className="sm:col-span-2">
+                  <PartyAddressFields
+                    value={newSupplier}
+                    onChange={setNewSupplier}
+                    idPrefix="docket-supplier"
+                  />
+                </div>
                 <input
                   placeholder="Phone"
                   value={newSupplier.phone || ''}

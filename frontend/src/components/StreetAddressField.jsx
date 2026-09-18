@@ -192,7 +192,7 @@ export default function StreetAddressField({
           })
         }
         className={className}
-        placeholder="Start typing an address…"
+        placeholder={placeholder}
       />
     );
   }
@@ -202,7 +202,7 @@ export default function StreetAddressField({
       id={id}
       apiKey={API_KEY}
       className={className}
-      placeholder="Start typing an address…"
+      placeholder={placeholder}
       onSelect={(address) => {
         const c = address?.components ?? {};
         onResolved?.({

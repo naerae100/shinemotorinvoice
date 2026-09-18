@@ -32,28 +32,73 @@ export const COUNTRIES = [
   'South Africa', 'Egypt', 'Nigeria', 'Kenya', 'Papua New Guinea', 'Fiji',
 ];
 
-/** What each country calls the parts of an address. */
+/**
+ * What each country calls the parts of an address, and an example of each.
+ *
+ * The examples are not decoration. "State" means a two-letter code here and a
+ * spelt-out province elsewhere, and an operator shown "NSW" types NSW —
+ * an empty box gets "New South Wales" from one person and "nsw" from the next,
+ * and the supplier list then has both.
+ */
 export function addressLabels(country) {
   const c = (country || '').trim().toLowerCase();
 
-  if (c === 'australia' || c === 'new zealand') {
-    return { suburb: 'Suburb', state: 'State', postcode: 'Postcode' };
+  if (c === 'australia' || c === '' || c === 'au') {
+    return {
+      street: 'Street', streetEg: '12 Smithfield Road',
+      suburb: 'Suburb', suburbEg: 'Liverpool',
+      state: 'State', stateEg: 'NSW',
+      postcode: 'Postcode', postcodeEg: '2170',
+    };
+  }
+  if (c === 'new zealand') {
+    return {
+      street: 'Street', streetEg: '12 Queen Street',
+      suburb: 'Suburb', suburbEg: 'Ponsonby',
+      state: 'Region', stateEg: 'Auckland',
+      postcode: 'Postcode', postcodeEg: '1011',
+    };
   }
   if (c === 'united states' || c === 'usa' || c === 'united states of america') {
-    return { suburb: 'City', state: 'State', postcode: 'ZIP code' };
-  }
-  if (c === 'canada') {
-    return { suburb: 'City', state: 'Province', postcode: 'Postal code' };
+    return {
+      street: 'Street', streetEg: '1600 Pennsylvania Ave NW',
+      suburb: 'City', suburbEg: 'Washington',
+      state: 'State', stateEg: 'DC',
+      postcode: 'ZIP code', postcodeEg: '20500',
+    };
   }
   if (c === 'united kingdom' || c === 'uk') {
-    return { suburb: 'Town / city', state: 'County', postcode: 'Postcode' };
+    return {
+      street: 'Street', streetEg: '10 Downing Street',
+      suburb: 'Town / city', suburbEg: 'London',
+      state: 'County', stateEg: 'Greater London',
+      postcode: 'Postcode', postcodeEg: 'SW1A 2AA',
+    };
   }
   // Hong Kong and Singapore are city-states: a "state" field only invites a
   // wrong answer, so it is dropped rather than left blank and puzzling.
-  if (c === 'hong kong' || c === 'singapore' || c === 'macau') {
-    return { suburb: 'District', state: null, postcode: 'Postal code' };
+  if (c === 'hong kong' || c === 'macau') {
+    return {
+      street: 'Street', streetEg: 'Unit G, 1/F., 16–18 Mau Lam Street',
+      suburb: 'District', suburbEg: 'Jordan, Kowloon',
+      state: null,
+      postcode: 'Postal code', postcodeEg: '—',
+    };
   }
-  return { suburb: 'City', state: 'State / province / region', postcode: 'Postal code' };
+  if (c === 'singapore') {
+    return {
+      street: 'Street', streetEg: '1 Raffles Place',
+      suburb: 'District', suburbEg: 'Downtown Core',
+      state: null,
+      postcode: 'Postal code', postcodeEg: '048616',
+    };
+  }
+  return {
+    street: 'Street', streetEg: 'Street and number',
+    suburb: 'City', suburbEg: 'City or town',
+    state: 'State / province / region', stateEg: 'Province',
+    postcode: 'Postal code', postcodeEg: 'Postal code',
+  };
 }
 
 export default function PartyAddressFields({
@@ -96,6 +141,7 @@ export default function PartyAddressFields({
               country: value.country || 'Australia',
             })
           }
+          placeholder={labels.streetEg}
           className={field}
         />
       </div>
@@ -110,7 +156,7 @@ export default function PartyAddressFields({
           list={`${idPrefix}-country-list`}
           value={value.country || ''}
           onChange={set('country')}
-          placeholder="Start typing…"
+          placeholder="Australia"
           className={field}
         />
         <datalist id={`${idPrefix}-country-list`}>
@@ -128,6 +174,7 @@ export default function PartyAddressFields({
           id={`${idPrefix}-suburb`}
           value={value.suburb || ''}
           onChange={set('suburb')}
+          placeholder={labels.suburbEg}
           className={field}
         />
       </div>
@@ -141,6 +188,7 @@ export default function PartyAddressFields({
             id={`${idPrefix}-state`}
             value={value.state || ''}
             onChange={set('state')}
+            placeholder={labels.stateEg}
             className={field}
           />
         </div>
@@ -154,6 +202,7 @@ export default function PartyAddressFields({
           id={`${idPrefix}-postcode`}
           value={value.postcode || ''}
           onChange={set('postcode')}
+          placeholder={labels.postcodeEg}
           className={`num ${field}`}
         />
       </div>
