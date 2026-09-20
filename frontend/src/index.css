@@ -89,3 +89,85 @@
     @apply border-b border-steel-100 transition-colors last:border-0 hover:bg-paper/60;
   }
 }
+
+/* ---------------------------------------------------------------------------
+   Touch
+   ---------------------------------------------------------------------------
+   The yard runs this on a tablet, outdoors, by someone who may be wearing
+   gloves and is standing next to a truck. A 28px button is a mouse target, not
+   a finger one — Android asks for 48dp and iOS for 44pt, and missing a Void
+   button by 4px is a different kind of mistake from missing a link on a
+   website.
+
+   Scoped to `pointer: coarse`, so it applies on the tablet and changes nothing
+   on the office desktop. Doing it here rather than in each component is the
+   point: there are around 110 interactive controls on the purchases screen
+   alone, and a rule per component would be wrong within a week.
+
+   min-height rather than height, so a control that is already taller keeps its
+   size, and inputs grow rather than their text being re-centred. */
+@media (pointer: coarse) {
+  button,
+  a[href],
+  [role='button'],
+  [role='option'],
+  [role='tab'],
+  input:not([type='checkbox']):not([type='radio']),
+  select,
+  textarea {
+    min-height: 44px;
+  }
+
+  /* A checkbox cannot simply grow — the box itself is drawn at its font size —
+     so it is scaled and given room instead. */
+  input[type='checkbox'],
+  input[type='radio'] {
+    min-width: 24px;
+    min-height: 24px;
+  }
+
+  /* Table rows carry the row actions. Without this the buttons grow and the
+     row does not, so they crowd the cell padding. */
+  td,
+  th {
+    padding-top: 0.6rem;
+    padding-bottom: 0.6rem;
+  }
+
+  /* A link inside running text must not become a 44px block and break the
+     paragraph — only standalone controls are targets. */
+  p a[href],
+  li a[href],
+  label a[href] {
+    min-height: 0;
+  }
+
+  /* Links in a table cell — the docket number and the supplier name, which are
+     how a row is opened — are inline, and min-height does nothing to an inline
+     box. They need a box before they can have a height. inline-flex rather
+     than block so a cell holding a link and a chip keeps them on one line. */
+  td a[href],
+  th a[href] {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+  }
+}
+
+/* The document sheets are a fixed-size reproduction of paper. Touch sizing
+   would reflow them, so they keep their printed metrics on every device. */
+@media (pointer: coarse) {
+  .print-sheet button,
+  .print-sheet a[href],
+  .print-sheet input,
+  .receipt-sheet button,
+  .receipt-sheet a[href],
+  .print-sheet td,
+  .print-sheet th,
+  .receipt-sheet td,
+  .receipt-sheet th {
+    min-height: 0;
+    padding-top: revert;
+    padding-bottom: revert;
+  }
+}

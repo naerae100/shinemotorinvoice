@@ -39,10 +39,17 @@
       }
     },
     {
-      "src": "/(favicon\\.svg|favicon-32\\.png|apple-touch-icon\\.png|robots\\.txt)",
+      "src": "/(favicon\\.svg|favicon-32\\.png|apple-touch-icon\\.png|robots\\.txt|manifest\\.webmanifest|pwa-[0-9a-z-]+\\.png)",
       "dest": "/frontend/$1",
       "headers": {
         "cache-control": "public, max-age=86400"
+      }
+    },
+    {
+      "src": "/(sw\\.js|registerSW\\.js|workbox-[0-9a-f]+\\.js)",
+      "dest": "/frontend/$1",
+      "headers": {
+        "cache-control": "public, max-age=0, must-revalidate"
       }
     },
     {

@@ -1,8 +1,84 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
+import { VitePWA } from 'vite-plugin-pwa';
 
 export default defineConfig({
-  plugins: [react()],
+  plugins: [
+    react(),
+
+    /**
+     * Installable on the yard tablet, and the same build for every platform.
+     *
+     * The operator opens this next to a truck. Going through a browser, typing
+     * a URL, and looking at a tab strip is not that — it should be an icon on
+     * the home screen that opens full screen. This makes it one, with no second
+     * codebase: the manifest and service worker are generated from the app that
+     * already exists, and a Capacitor wrapper later ships this same build.
+     *
+     * What is cached, and what is deliberately not:
+     *
+     *   The shell — HTML, JS, CSS, fonts, icons — is precached, so the app
+     *   opens instantly and survives the wifi dropping out between the office
+     *   and the weighbridge.
+     *
+     *   API responses are NEVER cached. This is a financial record: a stale
+     *   price list, a docket total from ten minutes ago, or a supplier's old
+     *   bank account are all worse than an honest error. Everything under /api
+     *   goes to the network or fails.
+     */
+    VitePWA({
+      registerType: 'autoUpdate',
+      includeAssets: ['favicon.svg', 'favicon-32.png', 'apple-touch-icon.png'],
+
+      manifest: {
+        name: 'Shine Motor — Dockets & Invoices',
+        // What fits under an icon on an Android home screen.
+        short_name: 'Shine Motor',
+        description:
+          'Purchase dockets, packing lists and export invoices for Shine Motor Corporation.',
+        theme_color: '#141F24',
+        background_color: '#F8FAFC',
+        display: 'standalone',
+        orientation: 'any',
+        start_url: '/',
+        scope: '/',
+        icons: [
+          { src: 'pwa-192.png', sizes: '192x192', type: 'image/png' },
+          { src: 'pwa-512.png', sizes: '512x512', type: 'image/png' },
+          // Android crops an icon to its own shape; a maskable one has the
+          // mark inside the safe zone so the wave is not clipped.
+          { src: 'pwa-maskable-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
+        ],
+      },
+
+      workbox: {
+        // The PDF libraries are large and lazily imported; without this they
+        // are left out of the precache and a download fails offline.
+        maximumFileSizeToCacheInBytes: 4 * 1024 * 1024,
+        globPatterns: ['**/*.{js,css,html,svg,png,woff,woff2}'],
+
+        // A single-page app: any unknown path is the shell, except the API.
+        navigateFallback: '/index.html',
+        navigateFallbackDenylist: [/^\/api\//],
+
+        runtimeCaching: [
+          {
+            // Stated explicitly rather than relying on the denylist, so nobody
+            // later adds a caching rule that quietly swallows /api too.
+            urlPattern: ({ url }) => url.pathname.startsWith('/api/'),
+            handler: 'NetworkOnly',
+          },
+        ],
+      },
+
+      devOptions: {
+        // Off in development: a service worker caching a dev build is how you
+        // spend an afternoon debugging a change that already shipped.
+        enabled: false,
+      },
+    }),
+  ],
+
   server: {
     port: 5173,
     proxy: {
