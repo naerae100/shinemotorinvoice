@@ -384,7 +384,7 @@ export default function NewDocketPage({ defaultType = 'PURCHASE_DOCKET' }) {
   }
 
   return (
-    <div className="mx-auto max-w-6xl px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
+    <div className="mx-auto max-w-6xl px-4 py-6 pb-28 sm:px-6 lg:px-8 lg:py-8 lg:pb-28">
       <h1 className="mb-6 font-display text-2xl font-semibold text-steel-900">
         {isEdit
           ? `Edit ${type === 'TAX_INVOICE' ? 'tax invoice' : 'docket'}`
@@ -759,7 +759,37 @@ export default function NewDocketPage({ defaultType = 'PURCHASE_DOCKET' }) {
           </div>
         )}
 
-        <div className="mt-6 flex flex-wrap justify-end gap-3">
+        {/* Pinned to the bottom of the screen rather than the bottom of the
+            form.
+
+            On the yard tablet this form is two to four screens tall, so the
+            save buttons were never in view: finishing a docket meant scrolling
+            past everything already filled in, with a truck on the weighbridge.
+            Now the total and both actions are always there, and the running
+            total being visible while the lines are typed is worth as much as
+            the buttons — that figure is what gets read out to the supplier.
+
+            `fixed`, not `sticky`: a sticky element that is the last child of
+            its container has nowhere to float to — it is already at the
+            container's end — so it only appeared once you had scrolled to the
+            bottom, which is exactly where it was not needed. Fixed is placed
+            against the viewport, so it is inset from the left by the sidebar's
+            own width, published by AppLayout as --app-sidebar-w and correct
+            whether the nav is open, collapsed or hidden. */}
+        <div
+          className="fixed bottom-0 right-0 z-20 border-t border-steel-200 bg-white/95 px-4 py-3 backdrop-blur supports-[backdrop-filter]:bg-white/85 sm:px-6 print:hidden"
+          style={{ left: 'var(--app-sidebar-w, 0px)' }}
+        >
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="min-w-0">
+              <div className="text-[10px] font-bold uppercase tracking-[0.12em] text-steel-500">
+                Total {taxMode === 'INCLUSIVE' ? '(GST included)' : taxMode === 'EXCLUSIVE' ? '(plus GST)' : '(no GST)'}
+              </div>
+              <div className="num text-xl font-bold leading-tight text-steel-900">
+                {formatCurrency(total)}
+              </div>
+            </div>
+            <div className="flex flex-wrap justify-end gap-3">
           <button
             type="submit"
             onClick={() => {
@@ -783,6 +813,8 @@ export default function NewDocketPage({ defaultType = 'PURCHASE_DOCKET' }) {
           >
             {submitting ? 'Saving…' : 'Save & print receipt'}
           </button>
+            </div>
+          </div>
         </div>
       </form>
     </div>

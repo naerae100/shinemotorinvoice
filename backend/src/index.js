@@ -35,6 +35,11 @@ app.use(
   cors({
     origin: config.frontendUrl,
     credentials: true,
+    // The renewed session token rides back on a header, and a browser cannot
+    // read a response header unless it is exposed. Without this the tablet
+    // would be signed out while the server believed it had renewed the
+    // session — see issueSlidingToken in middleware/auth.js.
+    exposedHeaders: ['X-Refreshed-Token'],
   })
 );
 app.use(express.json({ limit: '2mb' }));

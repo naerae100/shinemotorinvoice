@@ -47,5 +47,17 @@ export const config = {
   isProduction: process.env.NODE_ENV === 'production',
   frontendUrl: process.env.FRONTEND_URL || 'http://localhost:5173',
   jwtSecret: process.env.JWT_SECRET,
-  jwtExpiresIn: '12h',
+  /**
+   * How long a session lasts without being used.
+   *
+   * Twelve hours meant the yard tablet logged itself out partway through a
+   * shift, and somebody typed a password with a truck on the weighbridge. The
+   * session now slides — see issueSlidingToken in middleware/auth.js — so this
+   * is the idle window, not a hard limit: used daily it never expires, left in
+   * a drawer for a fortnight it does.
+   *
+   * It is not longer than a fortnight on purpose. This is a shared device in a
+   * yard; a session that never ends is a key left in the door.
+   */
+  jwtExpiresIn: process.env.JWT_EXPIRES_IN || '14d',
 };

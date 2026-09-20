@@ -1,5 +1,6 @@
 import { test, describe, before, after } from 'node:test';
 import assert from 'node:assert/strict';
+import jwt from 'jsonwebtoken';
 import {
   api,
   fixtures,
@@ -9,6 +10,7 @@ import {
   startTestServer,
   stopTestServer,
   ADMIN_CREDENTIALS,
+  JWT_SECRET,
 } from './helpers.js';
 
 // Without a scratch database these cannot run. Skipping loudly is the point:
@@ -1523,5 +1525,80 @@ suite('two people editing one record', () => {
     const stored = (await api('GET', `/invoices/${invoice.id}`, { token })).body.invoice;
     assert.equal(stored.lineItems.length, 2, 'both original lines are still there');
     assert.equal(stored.poNumber, 'PO-REAL');
+  });
+});
+
+suite('sessions slide, so the yard tablet is not signed out mid-shift', () => {
+  test('a fresh token is not renewed', async () => {
+    const res = await api('GET', '/dockets?pageSize=1', { token });
+    assert.equal(res.status, 200);
+    assert.equal(
+      res.headers['x-refreshed-token'],
+      undefined,
+      'nothing to do while the session is still young'
+    );
+  });
+
+  test('a token past halfway through its life comes back renewed', async () => {
+    // Minted as if ten days into a fourteen-day window. The tablet is used
+    // every day, so this is the ordinary case, not an edge one.
+    const me = await api('GET', '/auth/me', { token });
+    const iat = Math.floor(Date.now() / 1000) - 10 * 86400;
+    const aged = jwt.sign(
+      {
+        id: me.body.user.id,
+        email: me.body.user.email,
+        name: me.body.user.name,
+        role: me.body.user.role,
+        tokenVersion: 0,
+        iat,
+        exp: iat + 14 * 86400,
+      },
+      JWT_SECRET
+    );
+
+    const res = await api('GET', '/dockets?pageSize=1', { token: aged });
+    assert.equal(res.status, 200, 'the aged token still works');
+
+    const renewed = res.headers['x-refreshed-token'];
+    assert.ok(renewed, 'a renewed token is returned');
+    assert.notEqual(renewed, aged, 'and it is a different token');
+
+    // The renewal must be usable, or the tablet swaps in something dead.
+    const withNew = await api('GET', '/dockets?pageSize=1', { token: renewed });
+    assert.equal(withNew.status, 200);
+  });
+
+  test('an expired token is refused rather than renewed', async () => {
+    const me = await api('GET', '/auth/me', { token });
+    const iat = Math.floor(Date.now() / 1000) - 20 * 86400;
+    const dead = jwt.sign(
+      { id: me.body.user.id, email: me.body.user.email, tokenVersion: 0, iat, exp: iat + 14 * 86400 },
+      JWT_SECRET
+    );
+
+    const res = await api('GET', '/dockets?pageSize=1', { token: dead });
+    assert.equal(res.status, 401, 'sliding is for a live session, not a lapsed one');
+    assert.equal(res.headers['x-refreshed-token'], undefined);
+  });
+
+  test('signing out everywhere still ends a renewed session', async () => {
+    // Renewal carries the CURRENT tokenVersion, so it must not become a way to
+    // outlive a revocation — a tablet lost on the yard has to stay lockable.
+    const email = `slide-${Date.now()}@example.com`;
+    const password = 'SlidePassword12345';
+    const created = await api('POST', '/users', {
+      token,
+      body: { name: 'Slider', email, password, role: 'STAFF' },
+    });
+    const theirs = (await api('POST', '/auth/login', { body: { email, password } })).body.token;
+
+    assert.equal((await api('GET', '/dockets?pageSize=1', { token: theirs })).status, 200);
+
+    // Admin bumps their tokenVersion by deactivating then reactivating.
+    await api('PATCH', `/users/${created.body.user.id}`, { token, body: { active: false } });
+
+    const after = await api('GET', '/dockets?pageSize=1', { token: theirs });
+    assert.equal(after.status, 401, 'revocation beats a sliding session');
   });
 });

@@ -9,6 +9,10 @@ export const BASE = `http://localhost:${PORT}/api`;
 
 const ADMIN_PASSWORD = 'TestAdmin12345';
 
+/** The secret the spawned test server runs with, so a test can mint a token
+ *  it will accept — used to age a session without waiting days for it. */
+export const JWT_SECRET = 'test-secret-that-is-definitely-long-enough-for-the-check';
+
 /**
  * The API tests need a real PostgreSQL database, because that is what the schema
  * targets — a SQLite file will not do. Point TEST_DATABASE_URL at a scratch
@@ -34,7 +38,7 @@ const env = {
   ...process.env,
   DATABASE_URL: TEST_DATABASE_URL,
   DIRECT_URL: TEST_DATABASE_URL,
-  JWT_SECRET: 'test-secret-that-is-definitely-long-enough-for-the-check',
+  JWT_SECRET,
   SEED_ADMIN_PASSWORD: ADMIN_PASSWORD,
   NODE_ENV: 'test',
   PORT: String(PORT),
@@ -113,7 +117,14 @@ export async function api(method, endpoint, { body, token } = {}) {
   } catch {
     /* non-JSON response */
   }
-  return { status: res.status, body: json, raw: text };
+  // Headers too: the sliding session returns a renewed token in one, and a
+  // test that cannot see headers cannot tell a renewal from its absence.
+  return {
+    status: res.status,
+    body: json,
+    raw: text,
+    headers: Object.fromEntries([...res.headers].map(([k, v]) => [k.toLowerCase(), v])),
+  };
 }
 
 export async function loginAdmin() {

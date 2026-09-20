@@ -1,5 +1,6 @@
 import jwt from 'jsonwebtoken';
 import { prisma } from '../config/prisma.js';
+import { config } from '../config/env.js';
 
 /**
  * A JWT is valid until it expires and cannot be withdrawn — so a tablet lost on
@@ -66,10 +67,60 @@ export async function requireAuth(req, res, next) {
     // Trust the stored role over the token's copy, so a demotion takes effect
     // without waiting for the token to expire.
     req.user = { ...payload, role: user.role };
+    issueSlidingToken(req, res, payload, user);
     next();
   } catch (err) {
     console.error('Auth check failed:', err.message);
     return res.status(503).json({ error: 'Could not verify session' });
+  }
+}
+
+/**
+ * Keep an in-use session alive, so the yard tablet is not logged out mid-shift.
+ *
+ * The tablet at the weighbridge is a dedicated device that one person picks up
+ * and uses all day. A fixed expiry means it stops working at some point in the
+ * afternoon and somebody types a password with a truck waiting — so the session
+ * slides instead: once a token is past the halfway point of its life, the next
+ * authenticated request mints a fresh one and returns it in a response header,
+ * and the client swaps it in.
+ *
+ * Used regularly, it never expires. Left in a drawer for the full window, it
+ * does — which is the property that matters, because this is a shared device in
+ * a yard and a session that never ends is a key left in the door.
+ *
+ * Renewing is deliberately not free of the revocation check: the new token
+ * carries the CURRENT tokenVersion, so "sign out everywhere" still ends it, and
+ * a token already rejected above never reaches this function.
+ */
+function issueSlidingToken(req, res, payload, user) {
+  if (!payload.exp || !payload.iat) return;
+
+  const now = Math.floor(Date.now() / 1000);
+  const life = payload.exp - payload.iat;
+  const elapsed = now - payload.iat;
+  if (elapsed < life / 2) return; // still fresh; nothing to do
+
+  try {
+    const fresh = jwt.sign(
+      {
+        id: payload.id,
+        email: payload.email,
+        name: payload.name,
+        role: user.role,
+        tokenVersion: user.tokenVersion,
+      },
+      process.env.JWT_SECRET,
+      { expiresIn: config.jwtExpiresIn }
+    );
+    res.setHeader('X-Refreshed-Token', fresh);
+    // Without this a browser cannot read the header at all, and the session
+    // would expire while the server believed it had renewed it.
+    res.setHeader('Access-Control-Expose-Headers', 'X-Refreshed-Token');
+  } catch (err) {
+    // A failed renewal is not a failed request — the existing token is still
+    // valid, and the operator should not be interrupted for this.
+    console.error('Could not renew session token:', err.message);
   }
 }
 

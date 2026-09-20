@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useSyncExternalStore } from 'react';
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 
@@ -245,6 +245,7 @@ function SidebarContent({ isAdmin, user, onNavigate, onLogout, collapsed = false
  */
 export default function AppLayout() {
   const { user, logout, isAdmin } = useAuth();
+
   const navigate = useNavigate();
   const location = useLocation();
   const [menuOpen, setMenuOpen] = useState(false);
@@ -258,6 +259,19 @@ export default function AppLayout() {
       return false;
     }
   });
+  // Matches the <aside> below: hidden under lg, 4.5rem collapsed, 16rem open.
+  // useSyncExternalStore rather than a resize listener so the first paint is
+  // already right and a pinned bar does not jump on load.
+  const isWide = useSyncExternalStore(
+    (cb) => {
+      const mq = window.matchMedia('(min-width: 1024px)');
+      mq.addEventListener('change', cb);
+      return () => mq.removeEventListener('change', cb);
+    },
+    () => window.matchMedia('(min-width: 1024px)').matches,
+    () => true
+  );
+  const sidebarWidth = !isWide ? '0px' : collapsed ? '4.5rem' : '16rem';
 
   useEffect(() => {
     try {
@@ -293,7 +307,16 @@ export default function AppLayout() {
   }
 
   return (
-    <div className="flex min-h-screen flex-col bg-paper lg:flex-row">
+    <div
+      className="flex min-h-screen flex-col bg-paper lg:flex-row"
+      /* The sidebar's current width, published so a screen can pin something to
+         the bottom of the viewport without covering it. The page scrolls the
+         body and the sidebar is a sticky column, so anything `fixed` is placed
+         against the viewport and would otherwise sit on top of the nav. One
+         variable here beats every screen guessing, and it stays correct when
+         the sidebar is collapsed or hidden. */
+      style={{ '--app-sidebar-w': sidebarWidth }}
+    >
       {/* ── Mobile top bar ──────────────────────────────────────── */}
       <header className="sticky top-0 z-30 flex items-center gap-3 border-b border-steel-700/60 bg-steel-900 px-4 py-3 lg:hidden print:hidden">
         <button
