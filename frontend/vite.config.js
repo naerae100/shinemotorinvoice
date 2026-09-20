@@ -2,6 +2,20 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
 
+/**
+ * The Android shell does not want a service worker.
+ *
+ * In a browser the worker is what makes the app installable and survive the
+ * wifi dropping. Inside the shell the assets are already on the device, in the
+ * APK — a worker there caches a copy of a copy, and then serves the old one
+ * after an update, which is a bug that presents as "the app did not update"
+ * with nothing in a log to explain it.
+ *
+ * `npm run build:app` sets this; `npm run build` does not. One build, two
+ * outputs, no forked code.
+ */
+const forAppShell = process.env.VITE_APP_SHELL === '1';
+
 export default defineConfig({
   plugins: [
     react(),
@@ -26,8 +40,9 @@ export default defineConfig({
      *   bank account are all worse than an honest error. Everything under /api
      *   goes to the network or fails.
      */
-    VitePWA({
-      registerType: 'autoUpdate',
+    !forAppShell &&
+      VitePWA({
+        registerType: 'autoUpdate',
       includeAssets: ['favicon.svg', 'favicon-32.png', 'apple-touch-icon.png'],
 
       manifest: {

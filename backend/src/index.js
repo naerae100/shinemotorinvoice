@@ -33,7 +33,30 @@ if (config.isProduction) {
 app.use(helmet());
 app.use(
   cors({
-    origin: config.frontendUrl,
+    /**
+     * The web app and the Android app are the same build, served from
+     * different origins.
+     *
+     * Inside the Capacitor shell the page is served locally, so its Origin is
+     * https://localhost (or capacitor://localhost on older shells) — not the
+     * Vercel domain. A single-origin allowlist blocks every request the tablet
+     * makes, and the failure is a CORS error in a log nobody reads, not
+     * anything the operator can act on.
+     *
+     * A request with no Origin at all is allowed through: that is curl, the
+     * health check, and the app's own non-browser fetches. Origin is a browser
+     * control, and a null one is not something to authenticate against — the
+     * JWT does that job.
+     */
+    origin(origin, callback) {
+      const allowed = [
+        config.frontendUrl,
+        'https://localhost',
+        'capacitor://localhost',
+        'http://localhost',
+      ];
+      callback(null, !origin || allowed.includes(origin));
+    },
     credentials: true,
     // The renewed session token rides back on a header, and a browser cannot
     // read a response header unless it is exposed. Without this the tablet

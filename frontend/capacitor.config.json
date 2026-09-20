@@ -1,0 +1,16 @@
+{
+  "appId": "au.com.shinemotor.dockets",
+  "appName": "Shine Motor",
+  "webDir": "dist",
+  "android": {
+    "allowMixedContent": false
+  },
+  "server": {
+    "androidScheme": "https"
+  },
+  "plugins": {
+    "CapacitorHttp": {
+      "enabled": false
+    }
+  }
+}

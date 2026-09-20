@@ -33,6 +33,8 @@
  * on the server. Print, still on the toolbar, produces that today.
  */
 
+import { deliverFile } from './platform';
+
 // 3x at 96 CSS dpi lands near 288 dpi — past what a laser printer or a customs
 // officer can resolve, and well short of what a 4x A4 capture costs a tablet.
 const SCALE = 3;
@@ -222,5 +224,8 @@ export async function downloadSheetsAsPdf(sheets, filename, format = 'a4') {
     pdf.addImage(image, 'JPEG', x, y, drawWidth, drawHeight, `p${i}`, 'FAST');
   }
 
-  pdf.save(`${filename}.pdf`);
+  // Through the platform layer rather than pdf.save(): in the Android shell
+  // there is no download manager, so the same file goes to the share sheet
+  // instead — which is how it reaches email, Drive or a printer app.
+  await deliverFile(pdf.output('blob'), `${filename}.pdf`, { title: filename });
 }
