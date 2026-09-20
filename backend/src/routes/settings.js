@@ -5,9 +5,7 @@ import { requireAuth, requireRole } from '../middleware/auth.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { CURRENCIES } from '../lib/currency.js';
 import multer from 'multer';
-import path from 'path';
-import fs from 'fs';
-import crypto from 'crypto';
+import { audit, diff } from '../lib/audit.js';
 
 // Local file storage is completely disabled for serverless (Vercel) deployments.
 // Images are instead encoded as Base64 Data URIs and stored directly in the database.
@@ -95,15 +93,46 @@ router.get(
   })
 );
 
+/**
+ * The trading identity a document needs, and nothing else.
+ *
+ * The row this reads from also holds the Xero access and refresh tokens and the
+ * legacy company bank block. Returning it whole — which is what an unqualified
+ * `upsert` does — handed every signed-in STAFF user a durable credential to the
+ * accounting system and a set of account numbers, in a response whose stated
+ * job is rendering a logo. The fields are named explicitly so a column added to
+ * CompanySettings later cannot quietly join the payload.
+ */
+const PUBLIC_SETTINGS_FIELDS = {
+  id: true,
+  companyName: true,
+  abn: true,
+  acn: true,
+  address: true,
+  phone: true,
+  mobile: true,
+  fax: true,
+  email: true,
+  website: true,
+  logoUrl: true,
+  stampUrl: true,
+};
+
 // GET — any logged-in user can read (needed to render logo on docket/invoice screens)
 router.get(
   '/',
   requireAuth,
   asyncHandler(async (req, res) => {
-    const settings = await prisma.companySettings.upsert({
+    // Upsert first so the singleton exists, then read back only the safe fields.
+    await prisma.companySettings.upsert({
       where: { id: 'singleton' },
       update: {},
       create: { id: 'singleton' },
+      select: { id: true },
+    });
+    const settings = await prisma.companySettings.findUnique({
+      where: { id: 'singleton' },
+      select: PUBLIC_SETTINGS_FIELDS,
     });
     res.json({ settings });
   })
@@ -119,11 +148,42 @@ router.patch(
     if (!parsed.success) {
       return res.status(400).json({ error: parsed.error.flatten() });
     }
-    const settings = await prisma.companySettings.upsert({
+    const before = await prisma.companySettings.findUnique({
+      where: { id: 'singleton' },
+      select: PUBLIC_SETTINGS_FIELDS,
+    });
+    await prisma.companySettings.upsert({
       where: { id: 'singleton' },
       update: parsed.data,
       create: { id: 'singleton', ...parsed.data },
+      select: { id: true },
     });
+    // Read back the same narrow shape the GET returns, so the admin's browser
+    // never holds the Xero tokens either.
+    const settings = await prisma.companySettings.findUnique({
+      where: { id: 'singleton' },
+      select: PUBLIC_SETTINGS_FIELDS,
+    });
+
+    // The company identity is printed on every document a supplier and the ATO
+    // read, so a change to it is worth a line in the trail. Logo and stamp are
+    // compared by presence, not value: the values are ~90 KB data URIs and
+    // storing two of them per edit would make the audit table larger than the
+    // data it describes.
+    const changed = diff({ ...before, logoUrl: !!before?.logoUrl, stampUrl: !!before?.stampUrl },
+                         { ...settings, logoUrl: !!settings?.logoUrl, stampUrl: !!settings?.stampUrl },
+                         Object.keys(PUBLIC_SETTINGS_FIELDS).filter((f) => f !== 'id'));
+    if (changed) {
+      await audit({
+        req,
+        action: 'UPDATE',
+        entity: 'CompanySettings',
+        entityId: 'singleton',
+        label: 'Company details',
+        before: changed.before,
+        after: changed.after,
+      });
+    }
     res.json({ settings });
   })
 );
@@ -164,10 +224,26 @@ router.put(
     if (!parsed.success) {
       return res.status(400).json({ error: parsed.error.flatten() });
     }
+    const before = await prisma.bankAccount.findUnique({ where: { currency } });
     const bankAccount = await prisma.bankAccount.upsert({
       where: { currency },
       update: parsed.data,
       create: { currency, ...parsed.data },
+    });
+
+    // This is the account an overseas buyer wires to. A silent change here
+    // reroutes money, so it is recorded whether or not anything else is.
+    const changed = diff(before, bankAccount, [
+      'beneficiary', 'bankName', 'bsb', 'accountNo', 'swift', 'bankAddress',
+    ]);
+    await audit({
+      req,
+      action: before ? 'UPDATE' : 'CREATE',
+      entity: 'BankAccount',
+      entityId: currency,
+      label: `${currency} collection account`,
+      before: changed?.before,
+      after: changed?.after ?? { currency },
     });
     res.json({ bankAccount });
   })
@@ -194,10 +270,26 @@ router.post(
 
     const updateData = type === 'logo' ? { logoUrl: fileUrl } : { stampUrl: fileUrl };
 
-    const settings = await prisma.companySettings.upsert({
+    await prisma.companySettings.upsert({
       where: { id: 'singleton' },
       update: updateData,
       create: { id: 'singleton', ...updateData },
+      select: { id: true },
+    });
+    const settings = await prisma.companySettings.findUnique({
+      where: { id: 'singleton' },
+      select: PUBLIC_SETTINGS_FIELDS,
+    });
+
+    // The stamp is what makes a document look issued by this company, so
+    // replacing one is recorded. The image itself is not: see the PATCH above.
+    await audit({
+      req,
+      action: 'UPDATE',
+      entity: 'CompanySettings',
+      entityId: 'singleton',
+      label: type === 'logo' ? 'Company logo' : 'Company stamp',
+      after: { [type]: 'replaced', bytes: req.file.size, mimeType: req.file.mimetype },
     });
 
     res.json({ settings, fileUrl });

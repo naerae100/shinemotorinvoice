@@ -9,7 +9,7 @@
   margin: 12mm 12mm 14mm;
 }
 
-/* The receipt's page size is NOT set here. It prints on a 112mm roll rather
+/* The receipt's page size is NOT set here. It prints on an 80mm roll rather
    than a sheet, and @page is global with no way to scope it to one element:
    a named page (@page receipt + `page: receipt`) is ignored, because the page
    context is established by the root box long before the receipt is reached.
@@ -153,9 +153,9 @@
   }
 
   .receipt-sheet {
-    /* 104mm of a 112mm roll — see DocketReceipt.jsx, which owns these two
+    /* 72mm of a 80mm roll — see DocketReceipt.jsx, which owns these two
        numbers and writes the matching @page rule. */
-    width: 104mm !important;
+    width: 72mm !important;
     /* Centred on the roll: the head is wider than the print, and hugging the
        left edge puts the right-hand figures nearest the tear line. */
     margin: 0 auto !important;

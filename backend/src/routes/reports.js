@@ -141,7 +141,22 @@ function parseRange(query) {
 
   return { from, to };
 }
-
+// Business quarters start Jul 1, Oct 1, Jan 1, Apr 1
+function currentBasQuarter(nowInstant) {
+  const p = zonedParts(nowInstant);
+  let qStartMonth;
+  let qName;
+  if (p.month >= 7 && p.month <= 9) { qStartMonth = 7; qName = 'Jul–Sep'; }
+  else if (p.month >= 10 && p.month <= 12) { qStartMonth = 10; qName = 'Oct–Dec'; }
+  else if (p.month >= 1 && p.month <= 3) { qStartMonth = 1; qName = 'Jan–Mar'; }
+  else { qStartMonth = 4; qName = 'Apr–Jun'; }
+  
+  return {
+    name: qName,
+    start: zonedInstant(p.year, qStartMonth, 1),
+    end: zonedInstant(p.year, qStartMonth + 3, 0, 23, 59, 59, 999) // Last day of month before next quarter
+  };
+}
 // Bucket keys are business days too. Computing them from the server clock put
 // a 9am Sydney docket in the previous day's column, so the chart disagreed with
 // the docket it was drawn from.
@@ -179,11 +194,12 @@ function buildSeries(from, to, granularity, datasets) {
 
   for (const [name, rows] of Object.entries(datasets)) {
     for (const row of rows) {
-      const key = keyFn(new Date(row.date));
+      // If the row is pre-bucketed by SQL, it has a period string. Otherwise fallback to the date.
+      const key = row.period ? row.period : keyFn(new Date(row.date));
       if (!buckets.has(key)) continue;
       const b = buckets.get(key);
       b[name] += Number(row.value);
-      b[`${name}Count`] += 1;
+      b[`${name}Count`] += Number(row.count ?? 1);
     }
   }
 
@@ -221,6 +237,9 @@ router.get(
     const prevFrom = new Date(prevTo.getTime() - spanMs);
     const prevRange = { gte: prevFrom, lte: prevTo };
 
+    const basQuarter = currentBasQuarter(new Date());
+    const qtdRange = { gte: basQuarter.start, lte: new Date() };
+
     const cacheKey = `${from.toISOString()}_${to.toISOString()}_${granularity}`;
     const cached = cacheGet(cacheKey);
     if (cached) {
@@ -232,21 +251,7 @@ router.get(
     // sequentially cost ~6x the latency for no benefit — none of them depend on
     // each other. Prisma queues internally to its own connection limit, so this
     // does not overwhelm the pgBouncer pool.
-    const [
-      purchaseAgg,
-      salesAgg,
-      voidCount,
-      docketRows,
-      invoiceRows,
-      topBought,
-      topSold,
-      topSuppliers,
-      topConsignees,
-      recentDockets,
-      recentInvoices,
-      prevPurchaseAgg,
-      prevSalesAgg,
-    ] = await Promise.all([
+    const results = await Promise.all([
       prisma.docket.aggregate({
         where: docketWhere,
         _count: { _all: true },
@@ -259,11 +264,24 @@ router.get(
         _sum: { total: true, subtotal: true, gst: true, discountAmount: true },
       }),
       prisma.docket.count({ where: { status: 'VOID', date: dateRange } }),
-      prisma.docket.findMany({ where: docketWhere, select: { date: true, total: true } }),
-      prisma.exportInvoice.findMany({
-        where: { ...invoiceWhere, currency: 'AUD' },
-        select: { date: true, total: true },
-      }),
+      prisma.$queryRaw`
+        SELECT 
+          to_char(date_trunc(${granularity}::text, "date" AT TIME ZONE ${process.env.BUSINESS_TZ || 'Australia/Sydney'}), ${granularity === 'month' ? 'YYYY-MM' : 'YYYY-MM-DD'}) AS period,
+          SUM(total) as value,
+          CAST(COUNT(*) AS INTEGER) as count
+        FROM "Docket"
+        WHERE status = 'ACTIVE' AND date >= ${from} AND date <= ${to}
+        GROUP BY period
+      `,
+      prisma.$queryRaw`
+        SELECT 
+          to_char(date_trunc(${granularity}::text, "date" AT TIME ZONE ${process.env.BUSINESS_TZ || 'Australia/Sydney'}), ${granularity === 'month' ? 'YYYY-MM' : 'YYYY-MM-DD'}) AS period,
+          SUM(total) as value,
+          CAST(COUNT(*) AS INTEGER) as count
+        FROM "ExportInvoice"
+        WHERE status = 'ACTIVE' AND stage = 'INVOICED' AND currency = 'AUD' AND date >= ${from} AND date <= ${to}
+        GROUP BY period
+      `,
       prisma.docketLineItem.groupBy({
         by: ['materialId'],
         _sum: { netWeight: true, value: true },
@@ -322,7 +340,94 @@ router.get(
         _count: { _all: true },
         _sum: { total: true },
       }),
+      // New operational queries
+      prisma.docket.aggregate({
+        where: { status: 'ACTIVE', paymentStatus: 'UNPAID' },
+        _count: { _all: true },
+        _sum: { total: true },
+      }),
+      prisma.$queryRaw`
+        SELECT 
+          CASE
+            WHEN (CURRENT_TIMESTAMP AT TIME ZONE ${process.env.BUSINESS_TZ || 'Australia/Sydney'})::date - ("date" AT TIME ZONE ${process.env.BUSINESS_TZ || 'Australia/Sydney'})::date <= 2 THEN '0-2'
+            WHEN (CURRENT_TIMESTAMP AT TIME ZONE ${process.env.BUSINESS_TZ || 'Australia/Sydney'})::date - ("date" AT TIME ZONE ${process.env.BUSINESS_TZ || 'Australia/Sydney'})::date <= 7 THEN '3-7'
+            WHEN (CURRENT_TIMESTAMP AT TIME ZONE ${process.env.BUSINESS_TZ || 'Australia/Sydney'})::date - ("date" AT TIME ZONE ${process.env.BUSINESS_TZ || 'Australia/Sydney'})::date <= 14 THEN '8-14'
+            ELSE '15+'
+          END as bucket,
+          CAST(COUNT(*) AS INTEGER) as count,
+          SUM(total) as total
+        FROM "Docket"
+        WHERE status = 'ACTIVE' AND "paymentStatus" = 'UNPAID'
+        GROUP BY bucket
+      `,
+      prisma.docket.findFirst({
+        where: { status: 'ACTIVE', paymentStatus: 'UNPAID' },
+        orderBy: { date: 'asc' },
+        select: { id: true, docketNumber: true, date: true, total: true },
+      }),
+      prisma.docket.count({ where: { status: 'ACTIVE', issuedAt: null } }),
+      prisma.exportInvoice.count({ where: { status: 'ACTIVE', stage: 'PACKING_SLIP' } }),
+      prisma.exportInvoice.count({ where: { status: 'ACTIVE', stage: 'INVOICED', issuedAt: null } }),
+      prisma.docketLineItem.aggregate({
+        where: { docket: { status: 'ACTIVE', date: dateRange } },
+        _sum: { netWeight: true }
+      }),
+      prisma.invoiceLineItem.aggregate({
+        where: { invoice: { status: 'ACTIVE', stage: 'INVOICED', date: dateRange } },
+        _sum: { netWeightMt: true }
+      }),
+      prisma.$queryRaw`
+        SELECT 
+          CAST(EXTRACT(ISODOW FROM "createdAt" AT TIME ZONE ${process.env.BUSINESS_TZ || 'Australia/Sydney'}) AS INTEGER) as weekday,
+          CAST(EXTRACT(HOUR FROM "createdAt" AT TIME ZONE ${process.env.BUSINESS_TZ || 'Australia/Sydney'}) AS INTEGER) as hour,
+          CAST(COUNT(*) AS INTEGER) as count
+        FROM "Docket"
+        WHERE status = 'ACTIVE' AND date >= ${from} AND date <= ${to}
+        GROUP BY weekday, hour
+      `,
+      prisma.docket.groupBy({
+        by: ['createdById'],
+        where: { status: 'ACTIVE', date: dateRange },
+        _count: { _all: true },
+        orderBy: { _count: { id: 'desc' } }
+      }),
+      prisma.docket.aggregate({
+        where: { status: 'ACTIVE', date: qtdRange },
+        _sum: { gst: true }
+      }),
+      prisma.exportInvoice.aggregate({
+        where: { status: 'ACTIVE', stage: 'INVOICED', currency: 'AUD', date: qtdRange },
+        _sum: { gst: true }
+      })
     ]);
+
+    const [
+      purchaseAgg,
+      salesAgg,
+      voidCount,
+      docketRows,
+      invoiceRows,
+      topBought,
+      topSold,
+      topSuppliers,
+      topConsignees,
+      recentDockets,
+      recentInvoices,
+      prevPurchaseAgg,
+      prevSalesAgg,
+      unpaidAgg,
+      agingBuckets,
+      oldestUnpaid,
+      unissuedDockets,
+      unpricedSlips,
+      unissuedInvoices,
+      kgBoughtAgg,
+      mtSoldAgg,
+      heatmapData,
+      operatorActivity,
+      qtdPaidAgg,
+      qtdCollectedAgg,
+    ] = results;
 
     // Second wave — these genuinely depend on the groupBy results above, so they
     // cannot join the first. Skipped entirely when there is nothing to resolve.
@@ -331,8 +436,9 @@ router.get(
     ];
     const supplierIds = topSuppliers.map((r) => r.supplierId);
     const consigneeIds = topConsignees.map((r) => r.consigneeId);
+    const operatorIds = operatorActivity.map((r) => r.createdById);
 
-    const [materials, suppliers, consignees] = await Promise.all([
+    const [materials, suppliers, consignees, users] = await Promise.all([
       materialIds.length
         ? prisma.material.findMany({ where: { id: { in: materialIds } } })
         : [],
@@ -342,12 +448,19 @@ router.get(
       consigneeIds.length
         ? prisma.consignee.findMany({ where: { id: { in: consigneeIds } } })
         : [],
+      operatorIds.length
+        ? prisma.user.findMany({
+            where: { id: { in: operatorIds } },
+            select: { id: true, name: true }
+          })
+        : [],
     ]);
 
     const byId = (rows) => Object.fromEntries(rows.map((r) => [r.id, r]));
     const materialMap = byId(materials);
     const supplierMap = byId(suppliers);
     const consigneeMap = byId(consignees);
+    const userMap = byId(users);
 
     const purchasesTotal = sumOf(purchaseAgg, 'total');
     // salesAgg is now one row per currency. `salesIn` reads a single currency's
@@ -391,6 +504,37 @@ router.get(
       // until next, so a negative number is normal in a buying month. USD sales
       // are excluded rather than converted at an invented rate.
       grossMargin: Math.round((salesTotal - purchasesTotal) * 100) / 100,
+      gst: {
+        paid: sumOf(purchaseAgg, 'gst'),
+        collected: Number(salesIn('AUD')?._sum.gst ?? 0)
+      },
+      bas: {
+        quarter: basQuarter.name,
+        paid: Number(qtdPaidAgg._sum.gst ?? 0),
+        collected: Number(qtdCollectedAgg._sum.gst ?? 0)
+      },
+      payables: {
+        count: unpaidAgg._count._all,
+        total: Number(unpaidAgg._sum.total ?? 0),
+        buckets: agingBuckets.map(b => ({ bucket: b.bucket, count: b.count, total: Number(b.total ?? 0) })),
+        oldest: oldestUnpaid
+      },
+      pipeline: {
+        unissuedDockets,
+        unpricedSlips,
+        unissuedInvoices
+      },
+      weightFlow: {
+        kgBought: Number(kgBoughtAgg._sum.netWeight ?? 0),
+        mtSold: Number(mtSoldAgg._sum.netWeightMt ?? 0)
+      },
+      heatmap: heatmapData,
+      operatorActivity: operatorActivity
+        .filter((r) => userMap[r.createdById])
+        .map((r) => ({
+          user: userMap[r.createdById],
+          count: r._count._all
+        })),
       previous: {
         from: prevFrom,
         to: prevTo,
@@ -408,8 +552,8 @@ router.get(
       },
       voidedInRange: voidCount,
       series: buildSeries(from, to, granularity, {
-        purchases: docketRows.map((d) => ({ date: d.date, value: d.total })),
-        sales: invoiceRows.map((i) => ({ date: i.date, value: i.total })),
+        purchases: docketRows,
+        sales: invoiceRows,
       }),
       topMaterialsBought: topBought
         .filter((r) => materialMap[r.materialId])

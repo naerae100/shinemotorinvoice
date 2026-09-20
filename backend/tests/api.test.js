@@ -1225,3 +1225,303 @@ suite('dockets — paying the supplier', () => {
     assert.ok(run.body.dockets.every((d) => d.paymentStatus === 'UNPAID'));
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+
+suite('credentials are not handed out with the company letterhead', () => {
+  let staffToken;
+
+  before(async () => {
+    if (!hasTestDatabase) return;
+    const email = `settings-staff-${Date.now()}@example.com`;
+    const password = 'StaffPassword12345';
+    await api('POST', '/users', {
+      token,
+      body: { name: 'Yard Staff', email, password, role: 'STAFF' },
+    });
+    staffToken = (await api('POST', '/auth/login', { body: { email, password } })).body.token;
+  });
+
+  // GET /api/settings exists so a docket screen can draw the logo. It used to
+  // return the whole CompanySettings row, which also holds the Xero refresh
+  // token — a durable credential to the accounting system — and the legacy
+  // company bank block.
+  test('GET /settings never returns the Xero tokens or the bank block', async () => {
+    for (const who of [token, staffToken]) {
+      const res = await api('GET', '/settings', { token: who });
+      assert.equal(res.status, 200);
+      const keys = Object.keys(res.body.settings);
+      for (const leaked of [
+        'xeroAccessToken',
+        'xeroRefreshToken',
+        'xeroTenantId',
+        'bankAccountNo',
+        'bankBsb',
+        'bankSwift',
+        'beneficiary',
+      ]) {
+        assert.ok(!keys.includes(leaked), `${leaked} must not be in the settings payload`);
+      }
+      // Still returns what a document actually needs.
+      assert.ok(keys.includes('companyName'));
+      assert.ok(keys.includes('logoUrl'));
+    }
+  });
+
+  test('the admin PATCH response is just as narrow', async () => {
+    const res = await api('PATCH', '/settings', {
+      token,
+      body: { companyName: 'Shine Motor Corporation Pty Ltd' },
+    });
+    assert.equal(res.status, 200);
+    assert.ok(!('xeroRefreshToken' in res.body.settings));
+  });
+
+  test('bank accounts stay admin-only', async () => {
+    assert.equal((await api('GET', '/settings/bank-accounts', { token: staffToken })).status, 403);
+    assert.equal((await api('GET', '/settings/bank-accounts', { token })).status, 200);
+  });
+});
+
+suite('changing where a supplier gets paid is recorded', () => {
+  // Staff keep the ability to write these: a pay-later docket is settled from
+  // details taken at the weighbridge, so the operator writing it is the person
+  // who records them. What must not happen is it leaving no trace.
+  test('a new supplier is logged with the account it was given', async () => {
+    const created = await api('POST', '/suppliers', {
+      token,
+      body: { name: `Audit Supplier ${Date.now()}`, bankBsb: '032-372', bankAccountNo: '123456' },
+    });
+    assert.equal(created.status, 201);
+
+    const trail = await api('GET', `/audit?entity=Supplier&entityId=${created.body.supplier.id}`, {
+      token,
+    });
+    assert.equal(trail.body.totalCount, 1);
+    assert.equal(trail.body.events[0].action, 'CREATE');
+    assert.equal(trail.body.events[0].after.bankBsb, '032-372');
+  });
+
+  test('a changed BSB is flagged in the label, with the old value kept', async () => {
+    const supplier = (
+      await api('POST', '/suppliers', {
+        token,
+        body: { name: `Rerouted ${Date.now()}`, bankBsb: '032-372', bankAccountNo: '123456' },
+      })
+    ).body.supplier;
+
+    await api('PATCH', `/suppliers/${supplier.id}`, { token, body: { bankBsb: '062-000' } });
+
+    const trail = await api('GET', `/audit?entity=Supplier&entityId=${supplier.id}`, { token });
+    const update = trail.body.events.find((e) => e.action === 'UPDATE');
+    assert.ok(update, 'the change was recorded');
+    assert.match(update.label, /PAYMENT DETAILS CHANGED/);
+    assert.equal(update.before.bankBsb, '032-372');
+    assert.equal(update.after.bankBsb, '062-000');
+  });
+
+  test('an edit that touches no audited field writes no event', async () => {
+    const supplier = (
+      await api('POST', '/suppliers', { token, body: { name: `Quiet ${Date.now()}` } })
+    ).body.supplier;
+    const before = (
+      await api('GET', `/audit?entity=Supplier&entityId=${supplier.id}`, { token })
+    ).body.totalCount;
+
+    await api('PATCH', `/suppliers/${supplier.id}`, { token, body: { name: supplier.name } });
+
+    const after = (await api('GET', `/audit?entity=Supplier&entityId=${supplier.id}`, { token }))
+      .body.totalCount;
+    assert.equal(after, before, 'a no-op edit does not pad the trail');
+  });
+
+  test('a price change on the list records what the rate was', async () => {
+    const material = (
+      await api('POST', '/materials', {
+        token,
+        body: { description: `Audited grade ${Date.now()}`, currentPrice: 2.5 },
+      })
+    ).body.material;
+
+    await api('PATCH', `/materials/${material.id}`, { token, body: { currentPrice: 3.125 } });
+
+    const trail = await api('GET', `/audit?entity=Material&entityId=${material.id}`, { token });
+    const update = trail.body.events.find((e) => e.action === 'UPDATE');
+    assert.ok(update);
+    assert.match(update.label, /rate 2\.5 → 3\.125/);
+  });
+
+  test('rerouting a collection account is recorded', async () => {
+    await api('PUT', '/settings/bank-accounts/USD', {
+      token,
+      body: { accountNo: '999888', bsb: '222-222', beneficiary: 'TEST BENEFICIARY PTY LTD' },
+    });
+    const trail = await api('GET', '/audit?entity=BankAccount&entityId=USD', { token });
+    assert.ok(trail.body.totalCount >= 1);
+  });
+});
+
+suite('an export invoice freezes when it is issued', () => {
+  async function createInvoice(overrides = {}) {
+    return api('POST', '/invoices', {
+      token,
+      body: {
+        invoiceNumber: `ISS-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+        consigneeId: fx.consignee.id,
+        lineItems: [{ description: 'Mill Berry', netWeightMt: 21.207, pricePerMt: 4350 }],
+        ...overrides,
+      },
+    });
+  }
+
+  // The PATCH guard and the CSV column for this both existed; nothing ever set
+  // the field, so an invoice stayed editable after the buyer had paid it.
+  test('issuing stamps the invoice and then refuses edits', async () => {
+    const invoice = (await createInvoice()).body.invoice;
+    assert.equal(invoice.issuedAt, null, 'a new invoice is a draft');
+
+    const issued = await api('POST', `/invoices/${invoice.id}/issue`, { token });
+    assert.equal(issued.status, 200);
+    assert.ok(issued.body.invoice.issuedAt, 'issuedAt is now set');
+
+    const edit = await api('PATCH', `/invoices/${invoice.id}`, {
+      token,
+      body: { poNumber: 'PO-LATE' },
+    });
+    assert.equal(edit.status, 409);
+    assert.match(edit.body.error, /can no longer be edited/);
+  });
+
+  test('issuing is one-way', async () => {
+    const invoice = (await createInvoice()).body.invoice;
+    await api('POST', `/invoices/${invoice.id}/issue`, { token });
+    const again = await api('POST', `/invoices/${invoice.id}/issue`, { token });
+    assert.equal(again.status, 409);
+  });
+
+  test('an unpriced packing slip cannot be issued', async () => {
+    const slip = (await createInvoice({ stage: 'PACKING_SLIP' })).body.invoice;
+    const res = await api('POST', `/invoices/${slip.id}/issue`, { token });
+    assert.equal(res.status, 409);
+    assert.match(res.body.error, /unpriced packing slip/);
+  });
+
+  test('a voided invoice cannot be issued', async () => {
+    const invoice = (await createInvoice()).body.invoice;
+    await api('POST', `/invoices/${invoice.id}/void`, { token, body: { reason: 'wrong buyer' } });
+    const res = await api('POST', `/invoices/${invoice.id}/issue`, { token });
+    assert.equal(res.status, 409);
+  });
+
+  test('creating, pricing, issuing and voiding each leave an audit event', async () => {
+    const slip = (await createInvoice({ stage: 'PACKING_SLIP' })).body.invoice;
+    await api('PATCH', `/invoices/${slip.id}`, { token, body: { stage: 'INVOICED' } });
+    await api('POST', `/invoices/${slip.id}/issue`, { token });
+    await api('POST', `/invoices/${slip.id}/void`, { token, body: { reason: 'buyer cancelled' } });
+
+    const trail = await api('GET', `/audit?entity=ExportInvoice&entityId=${slip.id}`, { token });
+    const actions = trail.body.events.map((e) => e.action);
+    for (const expected of ['CREATE', 'UPDATE', 'ISSUE', 'VOID']) {
+      assert.ok(actions.includes(expected), `${expected} is in the trail`);
+    }
+    const priced = trail.body.events.find((e) => /priced from packing slip/.test(e.label ?? ''));
+    assert.ok(priced, 'the moment a slip became money owed is findable');
+  });
+});
+
+suite('two people editing one record', () => {
+  test('a stale docket save is refused rather than overwriting', async () => {
+    // Pay-later, so it stays a draft: a PAID docket is issued at once and an
+    // issued docket refuses every edit, which is a different rule.
+    const docket = (await createDocket({ paymentStatus: 'UNPAID' })).body.docket;
+
+    // Both screens load the same version.
+    const asLoadedByBoth = docket.updatedAt;
+
+    // The office saves a corrected weight.
+    const first = await api('PATCH', `/dockets/${docket.id}`, {
+      token,
+      body: { expectedUpdatedAt: asLoadedByBoth, notes: 'weight corrected to 21.207' },
+    });
+    assert.equal(first.status, 200);
+
+    // The tablet, still showing the old figures, saves something else.
+    const second = await api('PATCH', `/dockets/${docket.id}`, {
+      token,
+      body: { expectedUpdatedAt: asLoadedByBoth, vehicleReg: 'ABC123' },
+    });
+    assert.equal(second.status, 409, 'the second save is refused');
+    assert.equal(second.body.conflict, true);
+
+    // And the first save survived, which is the whole point.
+    const stored = (await api('GET', `/dockets/${docket.id}`, { token })).body.docket;
+    assert.equal(stored.notes, 'weight corrected to 21.207');
+    assert.equal(stored.vehicleReg, null, 'the stale write applied nothing at all');
+  });
+
+  test('saving with the current version succeeds', async () => {
+    // Pay-later, so it stays a draft: a PAID docket is issued at once and an
+    // issued docket refuses every edit, which is a different rule.
+    const docket = (await createDocket({ paymentStatus: 'UNPAID' })).body.docket;
+    const first = await api('PATCH', `/dockets/${docket.id}`, {
+      token,
+      body: { expectedUpdatedAt: docket.updatedAt, notes: 'one' },
+    });
+    assert.equal(first.status, 200);
+    const again = await api('PATCH', `/dockets/${docket.id}`, {
+      token,
+      body: { expectedUpdatedAt: first.body.docket.updatedAt, notes: 'two' },
+    });
+    assert.equal(again.status, 200);
+    assert.equal(again.body.docket.notes, 'two');
+  });
+
+  test('a client that sends no version keeps the old behaviour', async () => {
+    // Deliberate: this could be deployed without breaking a tab someone had
+    // open mid-shift.
+    // Pay-later, so it stays a draft: a PAID docket is issued at once and an
+    // issued docket refuses every edit, which is a different rule.
+    const docket = (await createDocket({ paymentStatus: 'UNPAID' })).body.docket;
+    await api('PATCH', `/dockets/${docket.id}`, { token, body: { notes: 'first' } });
+    const res = await api('PATCH', `/dockets/${docket.id}`, { token, body: { notes: 'second' } });
+    assert.equal(res.status, 200);
+  });
+
+  test('a stale invoice save is refused, and its lines are not left deleted', async () => {
+    const invoice = (
+      await api('POST', '/invoices', {
+        token,
+        body: {
+          invoiceNumber: `LOCK-${Date.now()}`,
+          consigneeId: fx.consignee.id,
+          lineItems: [
+            { description: 'Mill Berry', netWeightMt: 21.207, pricePerMt: 4350 },
+            { description: 'Birch Cliff', netWeightMt: 10, pricePerMt: 3000 },
+          ],
+        },
+      })
+    ).body.invoice;
+    const asLoaded = invoice.updatedAt;
+
+    const first = await api('PATCH', `/invoices/${invoice.id}`, {
+      token,
+      body: { expectedUpdatedAt: asLoaded, poNumber: 'PO-REAL' },
+    });
+    assert.equal(first.status, 200);
+
+    // A stale save that also replaces the lines. The transaction deletes them
+    // before the guarded update runs, so the rollback is what keeps them.
+    const second = await api('PATCH', `/invoices/${invoice.id}`, {
+      token,
+      body: {
+        expectedUpdatedAt: asLoaded,
+        lineItems: [{ description: 'Replaced everything', netWeightMt: 1, pricePerMt: 1 }],
+      },
+    });
+    assert.equal(second.status, 409);
+
+    const stored = (await api('GET', `/invoices/${invoice.id}`, { token })).body.invoice;
+    assert.equal(stored.lineItems.length, 2, 'both original lines are still there');
+    assert.equal(stored.poNumber, 'PO-REAL');
+  });
+});

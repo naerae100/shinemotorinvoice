@@ -10,6 +10,12 @@ import { sendCsv, money, isoDate, isoDateTime } from '../lib/csv.js';
 import { pushPurchaseDocketToXero } from './xero.js';
 import { invalidateDashboardCache } from './reports.js';
 import { audit, diff } from '../lib/audit.js';
+import {
+  versionSchema,
+  guardedWhere,
+  isStaleWrite,
+  STALE_WRITE_MESSAGE,
+} from '../lib/concurrency.js';
 
 const router = Router();
 
@@ -72,6 +78,7 @@ const docketSchema = z.object({
   paymentReference: z.string().optional().nullable(),
   lineItems: z.array(lineItemSchema).min(1, 'At least one material line is required'),
   ...discountSchema,
+  ...versionSchema,
 });
 
 const paymentSchema = z.object({
@@ -504,59 +511,69 @@ router.patch(
         data.discountValue !== undefined ? data.discountValue : Number(existing.discountValue),
     };
 
-    const docket = await prisma.$transaction(async (tx) => {
-      const updateData = {
-        ...(data.type ? { type: data.type } : {}),
-        ...(data.taxMode ? { taxMode: data.taxMode } : {}),
-        ...(data.date ? { date: new Date(data.date) } : {}),
-        ...(data.supplierId ? { supplierId: data.supplierId } : {}),
-        ...(data.vehicleReg !== undefined ? { vehicleReg: data.vehicleReg } : {}),
-        ...(data.vehicleModel !== undefined ? { vehicleModel: data.vehicleModel } : {}),
-        ...(data.vehicleVin !== undefined ? { vehicleVin: data.vehicleVin } : {}),
-        ...(data.paygStatement !== undefined ? { paygStatement: data.paygStatement } : {}),
-        ...(data.notes !== undefined ? { notes: data.notes } : {}),
-        editedById: req.user.id,
-      };
+    let docket;
+    try {
+      docket = await prisma.$transaction(async (tx) => {
+        const updateData = {
+          ...(data.type ? { type: data.type } : {}),
+          ...(data.taxMode ? { taxMode: data.taxMode } : {}),
+          ...(data.date ? { date: new Date(data.date) } : {}),
+          ...(data.supplierId ? { supplierId: data.supplierId } : {}),
+          ...(data.vehicleReg !== undefined ? { vehicleReg: data.vehicleReg } : {}),
+          ...(data.vehicleModel !== undefined ? { vehicleModel: data.vehicleModel } : {}),
+          ...(data.vehicleVin !== undefined ? { vehicleVin: data.vehicleVin } : {}),
+          ...(data.paygStatement !== undefined ? { paygStatement: data.paygStatement } : {}),
+          ...(data.notes !== undefined ? { notes: data.notes } : {}),
+          editedById: req.user.id,
+        };
 
-      // Totals must be recomputed whenever the lines, the type (which drives GST)
-      // or the discount change.
-      const totalsAffected =
-        data.lineItems ||
-        (data.type && data.type !== existing.type) ||
-        (data.taxMode && data.taxMode !== existing.taxMode) ||
-        data.discountType !== undefined ||
-        data.discountValue !== undefined;
+        // Totals must be recomputed whenever the lines, the type (which drives GST)
+        // or the discount change.
+        const totalsAffected =
+          data.lineItems ||
+          (data.type && data.type !== existing.type) ||
+          (data.taxMode && data.taxMode !== existing.taxMode) ||
+          data.discountType !== undefined ||
+          data.discountValue !== undefined;
 
-      if (totalsAffected) {
-        let lineValues;
-        if (data.lineItems) {
-          const linesWithValue = buildLines(data.lineItems);
-          await tx.docketLineItem.deleteMany({ where: { docketId: req.params.id } });
-          updateData.lineItems = { create: linesWithValue };
-          lineValues = linesWithValue.map((l) => l.value);
-        } else {
-          const lines = await tx.docketLineItem.findMany({
-            where: { docketId: req.params.id },
-            select: { value: true },
-          });
-          lineValues = lines.map((l) => Number(l.value));
+        if (totalsAffected) {
+          let lineValues;
+          if (data.lineItems) {
+            const linesWithValue = buildLines(data.lineItems);
+            await tx.docketLineItem.deleteMany({ where: { docketId: req.params.id } });
+            updateData.lineItems = { create: linesWithValue };
+            lineValues = linesWithValue.map((l) => l.value);
+          } else {
+            const lines = await tx.docketLineItem.findMany({
+              where: { docketId: req.params.id },
+              select: { value: true },
+            });
+            lineValues = lines.map((l) => Number(l.value));
+          }
+          Object.assign(
+            updateData,
+            computeTotals({
+              lineValues,
+              ...discount,
+              taxMode: effectiveTaxMode,
+            })
+          );
         }
-        Object.assign(
-          updateData,
-          computeTotals({
-            lineValues,
-            ...discount,
-            taxMode: effectiveTaxMode,
-          })
-        );
-      }
 
-      return tx.docket.update({
-        where: { id: req.params.id },
-        data: updateData,
-        include: DETAIL_INCLUDE,
+          // Scoped to the version the operator was looking at, so a concurrent
+          // save cannot be silently overwritten. See lib/concurrency.js.
+          return tx.docket.update({
+            where: guardedWhere(req.params.id, data.expectedUpdatedAt),
+            data: updateData,
+            include: DETAIL_INCLUDE,
+          });
       });
-    });
+    } catch (err) {
+      if (isStaleWrite(err)) {
+        return res.status(409).json({ error: STALE_WRITE_MESSAGE, conflict: true });
+      }
+      throw err;
+    }
 
     // Push to Xero on updates
     await pushPurchaseDocketToXero(docket);

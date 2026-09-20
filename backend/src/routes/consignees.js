@@ -7,7 +7,32 @@ import { asyncHandler } from '../middleware/asyncHandler.js';
 import { contains } from '../lib/search.js';
 import { sendCsv, money, isoDate } from '../lib/csv.js';
 
+import { audit, diff } from '../lib/audit.js';
+
 const router = Router();
+
+/**
+ * A consignee has no bank block — we collect from them, we do not pay them —
+ * so the fields that matter here are the ones a commercial invoice and a
+ * customs form are built from. A buyer's name or address changing after an
+ * invoice was raised is the kind of thing that has to be explainable.
+ */
+const AUDITED_FIELDS = [
+  'name',
+  'groupName',
+  'abn',
+  'email',
+  'phone',
+  'country',
+  'address',
+  'street',
+  'suburb',
+  'state',
+  'postcode',
+  'defaultCurrency',
+  'defaultShippingTerm',
+  'website',
+];
 
 const optionalEmail = z.string().email().optional().nullable().or(z.literal(''));
 
@@ -124,6 +149,16 @@ router.post(
       return res.status(400).json({ error: parsed.error.flatten() });
     }
     const consignee = await prisma.consignee.create({ data: parsed.data });
+    await audit({
+      req,
+      action: 'CREATE',
+      entity: 'Consignee',
+      entityId: consignee.id,
+      label: consignee.name,
+      after: Object.fromEntries(
+        AUDITED_FIELDS.filter((f) => consignee[f] != null && consignee[f] !== '').map((f) => [f, consignee[f]])
+      ),
+    });
     res.status(201).json({ consignee });
   })
 );
@@ -136,16 +171,26 @@ router.patch(
     if (!parsed.success) {
       return res.status(400).json({ error: parsed.error.flatten() });
     }
-    const existing = await prisma.consignee.findUnique({
-      where: { id: req.params.id },
-      select: { id: true },
-    });
+    const existing = await prisma.consignee.findUnique({ where: { id: req.params.id } });
     if (!existing) return res.status(404).json({ error: 'Consignee not found' });
 
     const consignee = await prisma.consignee.update({
       where: { id: req.params.id },
       data: parsed.data,
     });
+
+    const changed = diff(existing, consignee, AUDITED_FIELDS);
+    if (changed) {
+      await audit({
+        req,
+        action: 'UPDATE',
+        entity: 'Consignee',
+        entityId: consignee.id,
+        label: consignee.name,
+        before: changed.before,
+        after: changed.after,
+      });
+    }
     res.json({ consignee });
   })
 );

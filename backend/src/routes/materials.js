@@ -4,8 +4,17 @@ import { prisma } from '../config/prisma.js';
 import { requireAuth, requireRole } from '../middleware/auth.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { sendCsv, money, isoDate } from '../lib/csv.js';
+import { audit, diff } from '../lib/audit.js';
 
 const router = Router();
+
+/**
+ * The price list is where a docket's rates come from, so a change to it is a
+ * change to what the yard pays — even though the docket keeps a snapshot and
+ * old records are untouched. "Why did we pay 2.99 on Tuesday and 2.75 on
+ * Wednesday" is a question with an answer now.
+ */
+const AUDITED_FIELDS = ['description', 'code', 'category', 'unit', 'currentPrice', 'active', 'kind'];
 
 const materialSchema = z.object({
   // "PURCHASE" is the 33-item price list the yard buys on; "EXPORT" is the
@@ -81,6 +90,14 @@ router.post(
       return res.status(400).json({ error: parsed.error.flatten() });
     }
     const material = await prisma.material.create({ data: parsed.data });
+    await audit({
+      req,
+      action: 'CREATE',
+      entity: 'Material',
+      entityId: material.id,
+      label: material.description,
+      after: { currentPrice: String(material.currentPrice), unit: material.unit, kind: material.kind },
+    });
     res.status(201).json({ material });
   })
 );
@@ -95,16 +112,28 @@ router.patch(
     if (!parsed.success) {
       return res.status(400).json({ error: parsed.error.flatten() });
     }
-    const existing = await prisma.material.findUnique({
-      where: { id: req.params.id },
-      select: { id: true },
-    });
+    const existing = await prisma.material.findUnique({ where: { id: req.params.id } });
     if (!existing) return res.status(404).json({ error: 'Material not found' });
 
     const material = await prisma.material.update({
       where: { id: req.params.id },
       data: parsed.data,
     });
+
+    const changed = diff(existing, material, AUDITED_FIELDS);
+    if (changed) {
+      await audit({
+        req,
+        action: 'UPDATE',
+        entity: 'Material',
+        entityId: material.id,
+        label: 'currentPrice' in changed.after
+          ? `${material.description} — rate ${changed.before.currentPrice} → ${changed.after.currentPrice}`
+          : material.description,
+        before: changed.before,
+        after: changed.after,
+      });
+    }
     res.json({ material });
   })
 );
@@ -118,13 +147,22 @@ router.delete(
   asyncHandler(async (req, res) => {
     const existing = await prisma.material.findUnique({
       where: { id: req.params.id },
-      select: { id: true },
+      select: { id: true, description: true, active: true },
     });
     if (!existing) return res.status(404).json({ error: 'Material not found' });
 
     const material = await prisma.material.update({
       where: { id: req.params.id },
       data: { active: false },
+    });
+    await audit({
+      req,
+      action: 'UPDATE',
+      entity: 'Material',
+      entityId: material.id,
+      label: `${material.description} — retired`,
+      before: { active: existing.active },
+      after: { active: false },
     });
     res.json({ material });
   })

@@ -10,6 +10,13 @@ import { dateFilter, numberFilter, pagination } from '../lib/query.js';
 import { sendCsv, money, isoDate, isoDateTime } from '../lib/csv.js';
 import { pushSalesInvoiceToXero } from './xero.js';
 import { invalidateDashboardCache } from './reports.js';
+import { audit, diff } from '../lib/audit.js';
+import {
+  versionSchema,
+  guardedWhere,
+  isStaleWrite,
+  STALE_WRITE_MESSAGE,
+} from '../lib/concurrency.js';
 
 const router = Router();
 
@@ -80,6 +87,7 @@ const invoiceBase = z.object({
   applyGst: z.boolean().default(false),
   lineItems: z.array(invoiceLineSchema).min(1),
   ...discountSchema,
+  ...versionSchema,
 });
 
 /** A line may only point at a container the same request supplied. */
@@ -509,6 +517,20 @@ router.post(
     // when it is priced, which is an update that carries stage INVOICED.
     if (invoice.stage !== 'PACKING_SLIP') await pushSalesInvoiceToXero(invoice);
 
+    await audit({
+      req,
+      action: 'CREATE',
+      entity: 'ExportInvoice',
+      entityId: invoice.id,
+      label: `${invoice.stage === 'PACKING_SLIP' ? 'Packing slip' : 'Invoice'} ${invoice.invoiceNumber}`,
+      after: {
+        stage: invoice.stage,
+        currency: invoice.currency,
+        total: String(invoice.total),
+        consigneeId: invoice.consigneeId,
+      },
+    });
+
     // Saved either way — refusing would lose the operator's typing — but the
     // document would print with no account for the buyer to pay into, so say so.
     const warnings = (await bankAccountIsBlank(data.currency))
@@ -598,81 +620,163 @@ router.patch(
     const currencyChanged = data.currency && data.currency !== existing.currency;
     const rebankedSnapshot = currencyChanged ? await bankSnapshotFor(data.currency) : undefined;
 
-    const invoice = await prisma.$transaction(async (tx) => {
-      const updateData = {
-        ...(data.invoiceNumber ? { invoiceNumber: data.invoiceNumber } : {}),
-        ...(data.date ? { date: new Date(data.date) } : {}),
-        ...(data.consigneeId ? { consigneeId: data.consigneeId } : {}),
-        ...(data.currency ? { currency: data.currency } : {}),
-        // The packing slip becoming an invoice is this one field changing.
-        ...(data.stage ? { stage: data.stage } : {}),
-        ...(currencyChanged ? { bankSnapshot: rebankedSnapshot } : {}),
-        ...(data.shippingTerm !== undefined ? { shippingTerm: data.shippingTerm } : {}),
-        ...(data.fasPort !== undefined ? { fasPort: data.fasPort } : {}),
-        ...(data.poNumber !== undefined ? { poNumber: data.poNumber } : {}),
-        ...(data.contractNo !== undefined ? { contractNo: data.contractNo } : {}),
-        ...(data.modeOfTransport !== undefined ? { modeOfTransport: data.modeOfTransport } : {}),
-        editedById: req.user.id,
-      };
+    let invoice;
+    try {
+      invoice = await prisma.$transaction(async (tx) => {
+        const updateData = {
+          ...(data.invoiceNumber ? { invoiceNumber: data.invoiceNumber } : {}),
+          ...(data.date ? { date: new Date(data.date) } : {}),
+          ...(data.consigneeId ? { consigneeId: data.consigneeId } : {}),
+          ...(data.currency ? { currency: data.currency } : {}),
+          // The packing slip becoming an invoice is this one field changing.
+          ...(data.stage ? { stage: data.stage } : {}),
+          ...(currencyChanged ? { bankSnapshot: rebankedSnapshot } : {}),
+          ...(data.shippingTerm !== undefined ? { shippingTerm: data.shippingTerm } : {}),
+          ...(data.fasPort !== undefined ? { fasPort: data.fasPort } : {}),
+          ...(data.poNumber !== undefined ? { poNumber: data.poNumber } : {}),
+          ...(data.contractNo !== undefined ? { contractNo: data.contractNo } : {}),
+          ...(data.modeOfTransport !== undefined ? { modeOfTransport: data.modeOfTransport } : {}),
+          editedById: req.user.id,
+        };
 
-      // Lines go first: they reference containers, and replacing the container
-      // list would otherwise blank the links of lines about to be replaced anyway.
-      if (data.lineItems) {
-        await tx.invoiceLineItem.deleteMany({ where: { invoiceId: req.params.id } });
-      }
-
-      let containerIds;
-      if (data.containers) {
-        await tx.invoiceContainer.deleteMany({ where: { invoiceId: req.params.id } });
-        for (const [position, c] of data.containers.entries()) {
-          const row = await tx.invoiceContainer.create({
-            data: { ...c, position, invoiceId: req.params.id },
-          });
-          (containerIds ??= []).push(row.id);
-        }
-        containerIds ??= [];
-      } else {
-        const stored = await tx.invoiceContainer.findMany({
-          where: { invoiceId: req.params.id },
-          orderBy: { position: 'asc' },
-          select: { id: true },
-        });
-        containerIds = stored.map((c) => c.id);
-      }
-
-      const totalsAffected =
-        data.lineItems ||
-        data.applyGst !== undefined ||
-        data.discountType !== undefined ||
-        data.discountValue !== undefined;
-
-      if (totalsAffected) {
-        let lines;
+        // Lines go first: they reference containers, and replacing the container
+        // list would otherwise blank the links of lines about to be replaced anyway.
         if (data.lineItems) {
-          lines = buildLines(data.lineItems, containerIds);
-          updateData.lineItems = { create: lines };
-        } else {
-          const stored = await tx.invoiceLineItem.findMany({
-            where: { invoiceId: req.params.id },
-            select: { total: true },
-          });
-          lines = stored.map((l) => ({ total: Number(l.total) }));
+          await tx.invoiceLineItem.deleteMany({ where: { invoiceId: req.params.id } });
         }
-        Object.assign(updateData, invoiceTotals(lines, settled));
-      }
 
-      return tx.exportInvoice.update({
-        where: { id: req.params.id },
-        data: updateData,
-        include: DETAIL_INCLUDE,
+        let containerIds;
+        if (data.containers) {
+          await tx.invoiceContainer.deleteMany({ where: { invoiceId: req.params.id } });
+          for (const [position, c] of data.containers.entries()) {
+            const row = await tx.invoiceContainer.create({
+              data: { ...c, position, invoiceId: req.params.id },
+            });
+            (containerIds ??= []).push(row.id);
+          }
+          containerIds ??= [];
+        } else {
+          const stored = await tx.invoiceContainer.findMany({
+            where: { invoiceId: req.params.id },
+            orderBy: { position: 'asc' },
+            select: { id: true },
+          });
+          containerIds = stored.map((c) => c.id);
+        }
+
+        const totalsAffected =
+          data.lineItems ||
+          data.applyGst !== undefined ||
+          data.discountType !== undefined ||
+          data.discountValue !== undefined;
+
+        if (totalsAffected) {
+          let lines;
+          if (data.lineItems) {
+            lines = buildLines(data.lineItems, containerIds);
+            updateData.lineItems = { create: lines };
+          } else {
+            const stored = await tx.invoiceLineItem.findMany({
+              where: { invoiceId: req.params.id },
+              select: { total: true },
+            });
+            lines = stored.map((l) => ({ total: Number(l.total) }));
+          }
+          Object.assign(updateData, invoiceTotals(lines, settled));
+        }
+
+        // Scoped to the version the operator loaded. A stale save rolls the
+        // whole transaction back, so the replaced lines and containers come
+        // back too. See lib/concurrency.js.
+        return tx.exportInvoice.update({
+          where: guardedWhere(req.params.id, data.expectedUpdatedAt),
+          data: updateData,
+          include: DETAIL_INCLUDE,
+        });
       });
-    });
+    } catch (err) {
+      if (isStaleWrite(err)) {
+        return res.status(409).json({ error: STALE_WRITE_MESSAGE, conflict: true });
+      }
+      throw err;
+    }
 
     // A packing slip is not a sale. Pushing one would raise a zero-value sales
     // invoice in Xero for goods nobody has been billed for yet. It reaches Xero
     // when it is priced, which is an update that carries stage INVOICED.
     if (invoice.stage !== 'PACKING_SLIP') await pushSalesInvoiceToXero(invoice);
 
+    const changed = diff(existing, invoice, [
+      'stage', 'currency', 'total', 'applyGst', 'discountType', 'discountValue', 'invoiceNumber',
+    ]);
+    await audit({
+      req,
+      action: 'UPDATE',
+      entity: 'ExportInvoice',
+      entityId: invoice.id,
+      // Pricing a slip is the event most worth finding again: it is the moment
+      // a weighed shipment becomes money owed.
+      label:
+        existing.stage === 'PACKING_SLIP' && invoice.stage === 'INVOICED'
+          ? `Invoice ${invoice.invoiceNumber} — priced from packing slip`
+          : `Invoice ${invoice.invoiceNumber}`,
+      before: changed?.before,
+      after: changed?.after,
+    });
+
+    res.json({ invoice: withParsedSnapshot(invoice) });
+  })
+);
+
+/**
+ * POST /api/invoices/:id/issue — send the invoice to the buyer.
+ *
+ * The PATCH above has always refused to edit an issued invoice, and the CSV has
+ * always had an "Issued" column — but nothing ever set `issuedAt`, so the lock
+ * described an event that could not happen and an export invoice stayed
+ * editable for ever, including after the buyer had paid against it. A docket
+ * freezes when it is handed over; a commercial invoice is the same promise to a
+ * different party, and it now freezes the same way.
+ *
+ * One-way, like the docket: un-issuing would make the lock meaningless. A
+ * correction after issue is a void and a replacement, which is what leaves the
+ * buyer and the auditor with a coherent pair of documents.
+ */
+router.post(
+  '/:id/issue',
+  requireAuth,
+  asyncHandler(async (req, res) => {
+    const existing = await prisma.exportInvoice.findUnique({
+      where: { id: req.params.id },
+      select: { id: true, invoiceNumber: true, status: true, stage: true, issuedAt: true },
+    });
+    if (!existing) return res.status(404).json({ error: 'Invoice not found' });
+    if (existing.status === 'VOID') {
+      return res.status(409).json({ error: 'A voided invoice cannot be issued.' });
+    }
+    if (existing.stage === 'PACKING_SLIP') {
+      return res.status(409).json({
+        error:
+          'This is still an unpriced packing slip. Price the lines first — issuing would send the buyer an invoice for nothing.',
+      });
+    }
+    if (existing.issuedAt) {
+      return res.status(409).json({ error: 'This invoice has already been issued.' });
+    }
+
+    const invoice = await prisma.exportInvoice.update({
+      where: { id: req.params.id },
+      data: { issuedAt: new Date() },
+      include: DETAIL_INCLUDE,
+    });
+    await audit({
+      req,
+      action: 'ISSUE',
+      entity: 'ExportInvoice',
+      entityId: invoice.id,
+      label: `Invoice ${invoice.invoiceNumber}`,
+      after: { issuedAt: invoice.issuedAt, total: String(invoice.total), currency: invoice.currency },
+    });
     res.json({ invoice: withParsedSnapshot(invoice) });
   })
 );
@@ -706,6 +810,15 @@ router.post(
       },
       include: DETAIL_INCLUDE,
     });
+    await audit({
+      req,
+      action: 'VOID',
+      entity: 'ExportInvoice',
+      entityId: invoice.id,
+      label: `Invoice ${invoice.invoiceNumber}`,
+      before: { status: 'ACTIVE', total: String(invoice.total) },
+      after: { status: 'VOID', voidReason: reason.data },
+    });
     res.json({ invoice: withParsedSnapshot(invoice) });
   })
 );
@@ -728,6 +841,15 @@ router.post(
       where: { id: req.params.id },
       data: { status: 'ACTIVE', voidReason: null, voidedAt: null, voidedById: null },
       include: DETAIL_INCLUDE,
+    });
+    await audit({
+      req,
+      action: 'RESTORE',
+      entity: 'ExportInvoice',
+      entityId: invoice.id,
+      label: `Invoice ${invoice.invoiceNumber}`,
+      before: { status: 'VOID' },
+      after: { status: 'ACTIVE' },
     });
     res.json({ invoice: withParsedSnapshot(invoice) });
   })

@@ -1,0 +1,115 @@
+# The tests only ran when someone remembered, on a repository whose master
+# branch auto-deploys to production. This is the gate that was missing.
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+jobs:
+  backend:
+    name: Backend tests
+    runs-on: ubuntu-latest
+
+    services:
+      # The schema targets PostgreSQL; a SQLite file will not do, and without a
+      # database the API suite skips itself and the run reports a clean "fail 0"
+      # while testing almost nothing.
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: test
+        ports: ['5433:5432']
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    defaults:
+      run:
+        working-directory: backend
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+
+      - run: npm ci
+      - run: npx prisma generate
+
+      - name: Tests
+        # TZ=UTC deliberately: the business-date helpers exist because the
+        # production host runs in UTC, so the tests must too, or they would pass
+        # for the wrong reason on a machine set to Sydney time.
+        env:
+          TZ: UTC
+          TEST_DATABASE_URL: postgresql://postgres:test@localhost:5433/postgres
+        run: npm test
+
+      - name: Dependency audit (production tree)
+        run: npm audit --omit=dev --audit-level=high
+
+  frontend:
+    name: Frontend — tests, lint-by-build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - run: npm ci
+      - run: npm test
+
+      # A build failure is the only static check this project has — Vite will
+      # refuse a bad import or unparseable JSX, which is most of what breaks.
+      - run: npm run build
+
+      - name: Dependency audit (production tree)
+        run: npm audit --omit=dev --audit-level=high
+
+  secrets:
+    name: No credentials in the diff
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # A live database password reached this public repository once already,
+      # inside a throwaway debug script. This is the cheap version of never
+      # again: it looks for a connection string carrying a password, and for the
+      # secret-key prefixes of the services this app uses.
+      - name: Scan tracked files
+        run: |
+          set -uo pipefail
+          # Pathspecs belong to `git ls-files`, not to grep. Templates and the
+          # documented local scratch database are excluded by pattern below
+          # rather than by path, so a real credential in a README is still caught.
+          hits=$(
+            git ls-files -z \
+              -- ':!*.example' ':!.github/workflows/*' \
+            | xargs -0 grep -nEI \
+                -e 'postgres(ql)?://[^:@/ ]+:[^@/ ]+@' \
+                -e 'waddr_sk_[A-Za-z0-9]{8,}' \
+                -e '(JWT_SECRET|SEED_ADMIN_PASSWORD) *[:=] *.?[A-Za-z0-9+/=_-]{24,}' \
+            | grep -vE '@(localhost|127\.0\.0\.1|host)[:/]' \
+            | grep -vE ':[0-9]+: *[*#/]' \
+            | grep -vE '(test-secret|replace-with|ChangeMe|your-|<[a-z-]+>)' \
+            || true
+          )
+          if [ -n "$hits" ]; then
+            echo "$hits"
+            echo "::error::A credential-shaped string is tracked in git. Remove it and rotate the secret."
+            exit 1
+          fi
+          echo "No credential-shaped strings in tracked files."

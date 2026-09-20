@@ -6,8 +6,44 @@ import { requireAuth } from '../middleware/auth.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { contains } from '../lib/search.js';
 import { sendCsv, money, isoDate } from '../lib/csv.js';
+import { audit, diff } from '../lib/audit.js';
 
 const router = Router();
+
+/**
+ * Every field worth naming in the trail — with the bank block first, because
+ * that is the one that moves money.
+ *
+ * Writing suppliers stays open to STAFF on purpose: a pay-later docket is
+ * settled from the account details taken at the weighbridge, so the operator
+ * writing the docket is the person who has to record them. Locking the fields
+ * to an admin would mean either no pay-later dockets after hours, or the
+ * details going onto a sticky note — both worse than what this replaces.
+ *
+ * What was missing was not a lock but a record. "Change a supplier's BSB, then
+ * mark the docket paid" is the cheapest way to misdirect money in this system,
+ * and until now it left no trace at all. It is now the loudest thing in the
+ * trail.
+ */
+const AUDITED_FIELDS = [
+  'bankAccountName',
+  'bankBsb',
+  'bankAccountNo',
+  'payId',
+  'name',
+  'abn',
+  'phone',
+  'email',
+  'saleType',
+  'licenceNo',
+  'address',
+  'suburb',
+  'state',
+  'postcode',
+  'country',
+];
+
+const BANK_FIELDS = ['bankAccountName', 'bankBsb', 'bankAccountNo', 'payId'];
 
 const supplierSchema = z.object({
   name: z.string().min(1),
@@ -137,6 +173,16 @@ router.post(
       return res.status(400).json({ error: parsed.error.flatten() });
     }
     const supplier = await prisma.supplier.create({ data: parsed.data });
+    await audit({
+      req,
+      action: 'CREATE',
+      entity: 'Supplier',
+      entityId: supplier.id,
+      label: supplier.name,
+      after: Object.fromEntries(
+        AUDITED_FIELDS.filter((f) => supplier[f] != null && supplier[f] !== '').map((f) => [f, supplier[f]])
+      ),
+    });
     res.status(201).json({ supplier });
   })
 );
@@ -149,16 +195,31 @@ router.patch(
     if (!parsed.success) {
       return res.status(400).json({ error: parsed.error.flatten() });
     }
-    const existing = await prisma.supplier.findUnique({
-      where: { id: req.params.id },
-      select: { id: true },
-    });
+    // The whole row, not just the id: the trail records what a field was
+    // before it changed, and a `select: { id: true }` cannot tell you that.
+    const existing = await prisma.supplier.findUnique({ where: { id: req.params.id } });
     if (!existing) return res.status(404).json({ error: 'Supplier not found' });
 
     const supplier = await prisma.supplier.update({
       where: { id: req.params.id },
       data: parsed.data,
     });
+
+    const changed = diff(existing, supplier, AUDITED_FIELDS);
+    if (changed) {
+      const bankChanged = BANK_FIELDS.some((f) => f in changed.after);
+      await audit({
+        req,
+        action: 'UPDATE',
+        entity: 'Supplier',
+        entityId: supplier.id,
+        // Flagged in the label so a reviewer scanning the trail sees it without
+        // having to open the row.
+        label: bankChanged ? `${supplier.name} — PAYMENT DETAILS CHANGED` : supplier.name,
+        before: changed.before,
+        after: changed.after,
+      });
+    }
     res.json({ supplier });
   })
 );

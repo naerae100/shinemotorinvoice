@@ -2,7 +2,8 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { api } from '../lib/api';
 import { formatAud as formatCurrency } from '../lib/format';
-import DiscountField, { applyDiscount } from '../components/DiscountField';
+import DiscountField from '../components/DiscountField';
+import { applyDiscount } from '../lib/money';
 import MaterialField from '../components/MaterialField';
 import { apiErrorMessage } from '../lib/apiError';
 import AbnField from '../components/AbnField';
@@ -83,6 +84,9 @@ export default function NewDocketPage({ defaultType = 'PURCHASE_DOCKET' }) {
   const [supplierQuery, setSupplierQuery] = useState('');
   const [supplierResults, setSupplierResults] = useState([]);
   const [selectedSupplier, setSelectedSupplier] = useState(null);
+  // The version this form was loaded from. Sent back on save so a colleague's
+  // concurrent change is refused rather than silently overwritten.
+  const [loadedVersion, setLoadedVersion] = useState(null);
   // Built from the same mapper as the picker and the edit path — a fourth
   // hand-written shape here is exactly how the phone prefix and, before it, the
   // bank details ended up missing from one path and not another.
@@ -133,6 +137,7 @@ export default function NewDocketPage({ defaultType = 'PURCHASE_DOCKET' }) {
       .get(`/dockets/${editId}`)
       .then(({ data }) => {
         const d = data.docket;
+        setLoadedVersion(d.updatedAt);
         setType(d.type);
         setTaxMode(d.taxMode || defaultTaxMode);
         setPaygStatement(d.paygStatement || 'NOT_APPLICABLE');
@@ -345,7 +350,10 @@ export default function NewDocketPage({ defaultType = 'PURCHASE_DOCKET' }) {
       const suffix = printAfterSave.current ? '?print=receipt' : '';
 
       if (isEdit) {
-        await api.patch(`/dockets/${editId}`, payload);
+        await api.patch(`/dockets/${editId}`, {
+          ...payload,
+          ...(loadedVersion ? { expectedUpdatedAt: loadedVersion } : {}),
+        });
         navigate(`/${pathPrefix}/${editId}${suffix}`);
         return;
       }

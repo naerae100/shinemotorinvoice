@@ -394,7 +394,7 @@ export default function DocketDetailPage() {
 
         {view === 'receipt' && (
           <p className="mt-2 text-xs text-steel-500">
-            Sized for a 112mm thermal roll. Print with margins set to none and scale 100%.
+            Sized for an 80mm thermal roll. Print with margins set to none and scale 100%.
           </p>
         )}
       </div>

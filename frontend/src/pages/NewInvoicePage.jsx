@@ -2,7 +2,8 @@ import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { api } from '../lib/api';
 import { addressLines, formatMoney, formatNumber, round3 } from '../lib/format';
-import DiscountField, { applyDiscount } from '../components/DiscountField';
+import DiscountField from '../components/DiscountField';
+import { applyDiscount } from '../lib/money';
 import ComboField from '../components/ComboField';
 import PartyAddressFields from '../components/PartyAddressFields';
 import { apiErrorMessage } from '../lib/apiError';
@@ -78,6 +79,8 @@ export default function NewInvoicePage({ mode = 'invoice' }) {
   // shipment already recorded can be picked up rather than typed again.
   const [openSlips, setOpenSlips] = useState([]);
   const [loadingInvoice, setLoadingInvoice] = useState(Boolean(editId));
+  // The version this form was loaded from — see NewDocketPage.
+  const [loadedVersion, setLoadedVersion] = useState(null);
 
   const [materials, setMaterials] = useState([]);
   const [consignees, setConsignees] = useState([]);
@@ -153,6 +156,7 @@ export default function NewInvoicePage({ mode = 'invoice' }) {
       .get(`/invoices/${editId}`)
       .then(({ data }) => {
         const inv = data.invoice;
+        setLoadedVersion(inv.updatedAt);
         setInvoiceNumber(inv.invoiceNumber);
         if (inv.date) setDate(new Date(inv.date).toLocaleDateString('en-CA'));
         setConsigneeId(inv.consigneeId);
@@ -374,7 +378,10 @@ export default function NewInvoicePage({ mode = 'invoice' }) {
       };
 
       if (isEdit) {
-        await api.patch(`/invoices/${editId}`, payload);
+        await api.patch(`/invoices/${editId}`, {
+          ...payload,
+          ...(loadedVersion ? { expectedUpdatedAt: loadedVersion } : {}),
+        });
         navigate(`${basePath}/${editId}`);
         return;
       }

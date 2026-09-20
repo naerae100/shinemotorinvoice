@@ -7,12 +7,12 @@ const PX_PER_MM = 96 / 25.4;
 
 // The roll the yard prints on, and what the head can actually mark.
 //
-// 112mm is the widest standard thermal roll; the printable strip is 104mm
-// (833 dots at 203 dpi), the rest being the margin the head cannot reach.
+// 80mm is the standard thermal roll; the printable strip is 72mm
+// (576 dots at 203 dpi), the rest being the margin the head cannot reach.
 // A6 was tried and abandoned: a card is a fixed 148mm, and a docket with
 // several material lines runs past it, which a roll never does.
-const ROLL_WIDTH_MM = 112;
-const PRINT_WIDTH_MM = 104;
+const ROLL_WIDTH_MM = 80;
+const PRINT_WIDTH_MM = 72;
 
 /**
  * Swap the sheet size for a roll while a receipt is on screen.
@@ -21,7 +21,7 @@ const PRINT_WIDTH_MM = 104;
  * element — a named page is ignored, because the root box fixes the page context
  * long before the receipt is laid out, so the receipt printed on A4 with 200mm
  * of white space beside it. And a roll has no height: the obvious
- * `size: 112mm auto` is invalid CSS (the grammar takes lengths or `auto`, never
+ * `size: 80mm auto` is invalid CSS (the grammar takes lengths or `auto`, never
  * both), so the whole declaration is dropped and A4 silently stands.
  *
  * So the height is measured off the rendered receipt and written into the rule,
@@ -58,11 +58,11 @@ function useReceiptPageSize(ref) {
 }
 
 /**
- * The purchase docket as a 112mm till receipt, for the thermal printer at the
+ * The purchase docket as a 80mm till receipt, for the thermal printer at the
  * weighbridge. Pure — give it a docket and the company settings and it renders.
  *
  * This is a different document from DocketDocument, not a restyling of it. A
- * thermal head prints a one-bit raster onto a 104mm printable strip of unknown
+ * thermal head prints a one-bit raster onto a 72mm printable strip of unknown
  * length, so everything the A4 sheet relies on is unavailable here: there is no
  * page height to lay out against, no greys that survive (a tint either burns
  * solid or drops out), and no room for a two-column grid. What it gets instead
@@ -195,7 +195,7 @@ export default function DocketReceipt({ docket, settings }) {
 
       {/* Each line gets two rows: the material on its own, then the arithmetic
           indented beneath it. Fitting name, weight, rate and value onto one
-          104mm line would mean truncating the name, and a supplier cannot check
+          72mm line would mean truncating the name, and a supplier cannot check
           a figure against a grade they can only half read. */}
       <div className="space-y-1.5">
         {docket.lineItems.map((li, i) => {

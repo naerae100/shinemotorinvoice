@@ -10,7 +10,7 @@ import { formatMoney, formatNumber } from '../../lib/format';
  * card title already says what is plotted. Bar length carries the magnitude;
  * coloring bars by their own value would re-encode what length already shows.
  */
-export default function BarList({ items, color, emptyLabel = 'No data in this period.' }) {
+export default function BarList({ items, color, emptyLabel = 'No data in this period.', formatValue }) {
   const [hover, setHover] = useState(null);
 
   if (!items || items.length === 0) {
@@ -50,7 +50,7 @@ export default function BarList({ items, color, emptyLabel = 'No data in this pe
               {/* Value labelled at the tip of every bar: a short ranked list is
                   exactly the case where labelling each one stays readable. */}
               <span className="num shrink-0 text-[13px] font-semibold text-steel-900">
-                {formatMoney(item.value, item.currency || 'AUD')}
+                {formatValue ? formatValue(item.value) : formatMoney(item.value, item.currency || 'AUD')}
               </span>
             </div>
             <div

@@ -1,39 +1,11 @@
 import { round3 } from '../lib/format';
+import { applyDiscount } from '../lib/money';
 
 /**
- * Mirrors the server's order of operations exactly (see backend src/lib/money.js):
- * discount comes off the subtotal, then GST applies to what's left. If these two
- * ever disagreed, the figure on screen would not match the figure saved.
- *
- * taxMode: 'EXCLUSIVE' | 'INCLUSIVE' | 'NO_TAX' (or boolean for legacy callers)
+ * The discount control. The arithmetic behind it lives in lib/money.js, beside
+ * the rest of the money rules and under test — it used to be defined in this
+ * file, which meant a dropdown component owned the definition of GST.
  */
-export function applyDiscount(subtotal, discount, taxMode = 'EXCLUSIVE') {
-  // Bridge legacy boolean callers
-  const mode = typeof taxMode === 'boolean' ? (taxMode ? 'EXCLUSIVE' : 'NO_TAX') : taxMode;
-
-  const base = round3(subtotal);
-  const value = Number(discount.discountValue) || 0;
-  let discountAmount = 0;
-  if (discount.discountType === 'PERCENT' && value > 0) discountAmount = (base * value) / 100;
-  else if (discount.discountType === 'FIXED' && value > 0) discountAmount = value;
-  discountAmount = round3(Math.min(Math.max(discountAmount, 0), base));
-
-  const taxable = round3(base - discountAmount);
-
-  let gst, total;
-  if (mode === 'INCLUSIVE') {
-    gst = round3(taxable / 11);
-    total = round3(taxable);          // price already includes GST
-  } else if (mode === 'EXCLUSIVE') {
-    gst = round3(taxable * 0.1);
-    total = round3(taxable + gst);    // GST added on top
-  } else {
-    gst = 0;
-    total = round3(taxable);          // no tax at all
-  }
-
-  return { discountAmount, taxable, gst, total };
-}
 
 export default function DiscountField({ value, onChange, subtotal }) {
   const { discountType, discountValue } = value;

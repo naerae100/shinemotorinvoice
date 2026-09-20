@@ -2,9 +2,10 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { format } from 'date-fns';
 import { api } from '../lib/api';
-import { formatAud, formatMoney } from '../lib/format';
+import { formatAud, formatMoney, formatNumber } from '../lib/format';
 import DateRangePicker, { PRESETS } from '../components/DateRangePicker';
 import TimeSeriesChart from '../components/charts/TimeSeriesChart';
+import ActivityHeatmap from '../components/charts/ActivityHeatmap';
 import BarList, { materialItem, clientItem } from '../components/charts/BarList';
 import StatTile from '../components/charts/StatTile';
 import { SERIES } from '../components/charts/palette';
@@ -12,16 +13,16 @@ import { SERIES } from '../components/charts/palette';
 function Card({ title, subtitle, action, children, className = '' }) {
   return (
     <section
-      className={`flex flex-col overflow-hidden rounded-xl border border-steel-200 bg-white shadow-ticket ${className}`}
+      className={`flex flex-col overflow-hidden rounded-2xl bg-white shadow-[0_2px_12px_rgba(0,0,0,0.04),0_8px_24px_rgba(0,0,0,0.02)] ${className}`}
     >
-      <header className="flex items-start justify-between gap-4 border-b border-steel-100 px-5 py-3.5">
+      <header className="flex items-start justify-between gap-4 border-b border-steel-50 px-6 py-4">
         <div>
-          <h2 className="font-display text-[15px] font-semibold text-steel-900">{title}</h2>
+          <h2 className="font-display text-[15px] font-semibold tracking-tight text-steel-900">{title}</h2>
           {subtitle && <p className="mt-0.5 text-xs text-steel-500">{subtitle}</p>}
         </div>
         {action}
       </header>
-      <div className="flex-1 px-5 py-4">{children}</div>
+      <div className="flex-1 px-6 py-5">{children}</div>
     </section>
   );
 }
@@ -155,7 +156,11 @@ export default function DashboardPage() {
       {loading && !data && (
         <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
           {[0, 1, 2, 3].map((i) => (
-            <div key={i} className="h-[132px] animate-pulse rounded-xl border border-steel-200 bg-white" />
+            <div key={i} className="h-[132px] animate-pulse rounded-2xl border border-steel-100 bg-white shadow-sm p-5 flex flex-col justify-between">
+              <div className="h-3 w-1/3 bg-steel-100 rounded" />
+              <div className="h-8 w-1/2 bg-steel-100 rounded" />
+              <div className="h-2 w-3/4 bg-steel-100 rounded" />
+            </div>
           ))}
         </div>
       )}
@@ -229,6 +234,93 @@ export default function DashboardPage() {
               action={<span className="num text-xs text-steel-400">{rangeLabel}</span>}
             >
               <TimeSeriesChart data={data.series} granularity={range.granularity} />
+            </Card>
+          </div>
+
+          <div className="mb-6 grid grid-cols-1 gap-6 lg:grid-cols-3">
+            <Card title="Pipeline" subtitle="Documents awaiting action">
+              <div className="space-y-4">
+                <div className="flex justify-between items-center border-b border-steel-50 pb-3">
+                  <span className="text-sm font-medium text-steel-700">Dockets (not issued)</span>
+                  <span className="num font-semibold text-steel-900 bg-steel-100 px-2 py-0.5 rounded text-xs">{data.pipeline.unissuedDockets}</span>
+                </div>
+                <div className="flex justify-between items-center border-b border-steel-50 pb-3">
+                  <span className="text-sm font-medium text-steel-700">Slips (awaiting pricing)</span>
+                  <span className="num font-semibold text-steel-900 bg-working-amber/20 text-working-amber px-2 py-0.5 rounded text-xs">{data.pipeline.unpricedSlips}</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-sm font-medium text-steel-700">Invoices (not issued)</span>
+                  <span className="num font-semibold text-steel-900 bg-steel-100 px-2 py-0.5 rounded text-xs">{data.pipeline.unissuedInvoices}</span>
+                </div>
+              </div>
+            </Card>
+            
+            <Card title="Payables" subtitle="Unpaid dockets">
+              <div className="mb-4 flex items-baseline justify-between">
+                <span className="num text-2xl font-semibold tracking-tight text-steel-900">{formatAud(data.payables.total)}</span>
+                <span className="text-sm text-steel-500">{data.payables.count} dockets</span>
+              </div>
+              <div className="space-y-2.5">
+                {data.payables.buckets.map(b => (
+                  <div key={b.bucket} className="flex justify-between items-center text-xs">
+                    <span className="text-steel-600 w-10">{b.bucket}d</span>
+                    <div className="flex-1 mx-3 h-2 bg-steel-50 rounded-full overflow-hidden">
+                      <div className="h-full bg-working-red transition-all" style={{ width: `${Math.max(2, (b.count / Math.max(1, data.payables.count)) * 100)}%` }} />
+                    </div>
+                    <span className="num text-steel-900 font-medium w-16 text-right">{formatAud(b.total)}</span>
+                  </div>
+                ))}
+              </div>
+            </Card>
+
+            <Card title="Weight Flow" subtitle="In the selected period">
+               <div className="flex flex-col justify-around h-full">
+                 <div>
+                   <div className="text-xs font-semibold uppercase tracking-wider text-steel-500 mb-1">Scrap Bought</div>
+                   <div className="num text-2xl font-semibold tracking-tight text-steel-900">{formatNumber(data.weightFlow.kgBought, 0)} <span className="text-sm font-medium text-steel-500">kg</span></div>
+                 </div>
+                 <div className="h-px w-full bg-steel-100 my-4" />
+                 <div>
+                   <div className="text-xs font-semibold uppercase tracking-wider text-steel-500 mb-1">Scrap Sold</div>
+                   <div className="num text-2xl font-semibold tracking-tight text-copper-600">{formatNumber(data.weightFlow.mtSold, 2)} <span className="text-sm font-medium text-copper-400">MT</span></div>
+                 </div>
+               </div>
+            </Card>
+          </div>
+
+          <div className="mb-6 grid grid-cols-1 gap-6 lg:grid-cols-3">
+            <Card title="Activity Heatmap" subtitle="Dockets by time of day">
+              <ActivityHeatmap data={data.heatmap} />
+            </Card>
+
+            <Card title="Operator Activity" subtitle="Dockets created">
+              {data.operatorActivity.length === 0 ? (
+                <EmptyState>No activity.</EmptyState>
+              ) : (
+                <BarList 
+                  items={data.operatorActivity.map(o => ({ key: o.user.id, label: o.user.name, value: o.count }))} 
+                  color={SERIES.purchases} 
+                  formatValue={(v) => `${v} dockets`}
+                />
+              )}
+            </Card>
+
+            <Card title="BAS Quarter-to-date" subtitle={data.bas.quarter}>
+               <div className="flex flex-col justify-around h-full">
+                 <div className="flex items-center justify-between">
+                   <div className="text-sm text-steel-600">GST Collected</div>
+                   <div className="num font-semibold text-steel-900">{formatAud(data.bas.collected)}</div>
+                 </div>
+                 <div className="flex items-center justify-between">
+                   <div className="text-sm text-steel-600">GST Paid</div>
+                   <div className="num font-semibold text-steel-900">{formatAud(data.bas.paid)}</div>
+                 </div>
+                 <div className="h-px w-full bg-steel-100 my-4" />
+                 <div className="flex items-center justify-between">
+                   <div className="text-sm font-medium text-steel-800">Net {data.bas.collected - data.bas.paid >= 0 ? 'Payable' : 'Refundable'}</div>
+                   <div className="num font-bold text-steel-900">{formatAud(Math.abs(data.bas.collected - data.bas.paid))}</div>
+                 </div>
+               </div>
             </Card>
           </div>
 

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { format } from 'date-fns';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { api } from '../lib/api';
 import { getSettings } from '../lib/settings';
@@ -6,6 +7,7 @@ import InvoiceDocument from '../components/documents/InvoiceDocument';
 import PackingListDocument from '../components/documents/PackingListDocument';
 import ExportButton from '../components/ExportButton';
 import DownloadDocument from '../components/DownloadDocument';
+import ConfirmDialog from '../components/ConfirmDialog';
 import { printAs } from '../lib/printDocument';
 
 /**
@@ -27,11 +29,28 @@ export default function InvoiceDetailPage() {
   const [settings, setSettings] = useState(null);
   const [error, setError] = useState('');
   const [view, setView] = useState('invoice');
+  const [dialog, setDialog] = useState(null);
+  const [busy, setBusy] = useState(false);
 
   // A packing slip has no prices yet, so the invoice and "both" views would
   // render a document of zeroes. Until it is priced there is one thing to look
   // at, and the switch is not shown at all.
   const isSlip = invoice?.stage === 'PACKING_SLIP';
+  const isIssued = Boolean(invoice?.issuedAt);
+  const isVoid = invoice?.status === 'VOID';
+
+  const runAction = async (action, errorMessage) => {
+    setBusy(true);
+    try {
+      const { data } = await action();
+      setInvoice(data.invoice);
+      setDialog(null);
+    } catch {
+      alert(errorMessage);
+    } finally {
+      setBusy(false);
+    }
+  };
 
   useEffect(() => {
     Promise.all([
@@ -94,20 +113,38 @@ export default function InvoiceDetailPage() {
             // A priced shipment still has a packing list, and its weights are
             // still the shipment's weights, so it has to stay editable. Editing
             // here changes both documents at once — they are one record.
-            <button
-              onClick={() => navigate(`/export-invoices/${invoice.id}/edit`)}
-              disabled={invoice.status === 'VOID' || Boolean(invoice.issuedAt)}
-              title={
-                invoice.issuedAt
-                  ? 'This invoice has been issued to the consignee and can no longer be edited. Void it and raise a replacement.'
-                  : invoice.status === 'VOID'
-                    ? 'A voided invoice cannot be edited. Restore it first.'
-                    : 'Edit the shipment — the invoice and its packing list update together.'
-              }
-              className="rounded-md border border-steel-300 bg-white px-4 py-2.5 text-sm font-semibold text-steel-800 hover:bg-paper disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              Edit
-            </button>
+            <div className="flex gap-2">
+              <button
+                onClick={() => navigate(`/export-invoices/${invoice.id}/edit`)}
+                disabled={isVoid || isIssued || busy}
+                title={
+                  isIssued
+                    ? 'This invoice has been issued to the consignee and can no longer be edited. Void it and raise a replacement.'
+                    : isVoid
+                      ? 'A voided invoice cannot be edited. Restore it first.'
+                      : 'Edit the shipment — the invoice and its packing list update together.'
+                }
+                className="rounded-md border border-steel-300 bg-white px-4 py-2.5 text-sm font-semibold text-steel-800 hover:bg-paper disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Edit
+              </button>
+              {!isIssued && !isVoid && (
+                <button
+                  onClick={() =>
+                    setDialog({
+                      kind: 'issue',
+                      title: `Issue invoice ${invoice.invoiceNumber}?`,
+                      body: 'This marks it as sent to the buyer. The figures are frozen from that point and the invoice can no longer be edited — a correction has to be a void and a new invoice. This cannot be undone.',
+                      confirmLabel: 'Issue invoice',
+                    })
+                  }
+                  disabled={busy}
+                  className="rounded-md border border-copper-600 bg-white px-4 py-2.5 text-sm font-semibold text-copper-700 hover:bg-copper-50 focus:outline-none focus:ring-2 focus:ring-copper-500 focus:ring-offset-1 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  Issue
+                </button>
+              )}
+            </div>
           )}
           <div
             role="tablist"
@@ -148,12 +185,21 @@ export default function InvoiceDetailPage() {
             Not yet priced — weights only
           </span>
         ) : (
-          <span>
-            GST:{' '}
-            <span className="font-medium text-steel-800">
-              {invoice.applyGst ? 'Applied (local sale)' : 'None (export)'}
+          <>
+            {isIssued ? (
+              <span className="font-semibold text-working-green">
+                Issued {format(new Date(invoice.issuedAt), 'd MMM yyyy')}
+              </span>
+            ) : (
+              <span className="font-semibold text-working-amber">Draft — not issued</span>
+            )}
+            <span>
+              GST:{' '}
+              <span className="font-medium text-steel-800">
+                {invoice.applyGst ? 'Applied (local sale)' : 'None (export)'}
+              </span>
             </span>
-          </span>
+          </>
         )}
         {invoice.createdBy?.name && (
           <span>
@@ -184,6 +230,22 @@ export default function InvoiceDetailPage() {
           <InvoiceDocument invoice={invoice} settings={settings} />
         </div>
       )}
+
+      <ConfirmDialog
+        open={Boolean(dialog)}
+        title={dialog?.title}
+        body={dialog?.body}
+        busy={busy}
+        confirmLabel={dialog?.confirmLabel}
+        tone={dialog?.kind === 'issue' ? 'primary' : 'danger'}
+        onCancel={() => setDialog(null)}
+        onConfirm={() =>
+          runAction(
+            () => api.post(`/invoices/${invoice.id}/issue`),
+            'Could not issue this invoice.'
+          )
+        }
+      />
     </div>
   );
 }
