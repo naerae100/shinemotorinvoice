@@ -50,7 +50,7 @@ app.use(
      */
     origin(origin, callback) {
       const allowed = [
-        config.frontendUrl,
+        ...config.siteOrigins,
         'https://localhost',
         'capacitor://localhost',
         'http://localhost',

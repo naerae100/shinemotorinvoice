@@ -42,10 +42,60 @@ for (const key of ['DATABASE_URL', 'DIRECT_URL']) {
   }
 }
 
+/**
+ * Every origin the browser app is served from.
+ *
+ * FRONTEND_URL is the explicit answer and still wins, but it is a setting
+ * somebody has to remember, and forgetting it fails in the least helpful way
+ * available: the API falls back to localhost, CORS rejects the real site, and
+ * the only symptom is a console error in someone else's browser. It worked in
+ * production purely because the site and the API happen to share an origin
+ * there — so the misconfiguration was invisible right up until it wouldn't be.
+ *
+ * Vercel already knows the answer and puts it in the environment of every
+ * deployment, so ask it rather than requiring a dashboard step:
+ *
+ *   VERCEL_PROJECT_PRODUCTION_URL  the production domain, always the same
+ *   VERCEL_URL                     this one deployment, so previews work too
+ *
+ * Both arrive without a scheme. Neither is a secret, and neither is a domain
+ * hardcoded in source that goes stale the day the site is renamed.
+ */
+function siteOrigins() {
+  const origins = [];
+
+  const add = (value) => {
+    if (!value) return;
+    // The Vercel variables carry a bare host; FRONTEND_URL carries a full URL.
+    const withScheme = /^[a-z]+:\/\//i.test(value) ? value : `https://${value}`;
+    let origin;
+    try {
+      ({ origin } = new URL(withScheme));
+    } catch {
+      // An unparseable value is not an origin. Ignoring it beats refusing to
+      // boot over a stray character in something this peripheral.
+      return;
+    }
+    if (!origins.includes(origin)) origins.push(origin);
+  };
+
+  add(process.env.FRONTEND_URL);
+  add(process.env.VERCEL_PROJECT_PRODUCTION_URL);
+  add(process.env.VERCEL_URL);
+
+  // Nothing set means a developer's machine.
+  if (origins.length === 0) origins.push('http://localhost:5173');
+
+  return origins;
+}
+
 export const config = {
   port: Number(process.env.PORT) || 4000,
   isProduction: process.env.NODE_ENV === 'production',
-  frontendUrl: process.env.FRONTEND_URL || 'http://localhost:5173',
+  /**
+   * Where the browser app lives. Used to answer CORS — see index.js.
+   */
+  siteOrigins: siteOrigins(),
   jwtSecret: process.env.JWT_SECRET,
   /**
    * How long a session lasts without being used.
