@@ -17,6 +17,8 @@ import reportRoutes from './routes/reports.js';
 import userRoutes from './routes/users.js';
 import xeroRoutes from './routes/xero.js';
 import auditRoutes from './routes/audit.js';
+import localSupplierRoutes from './routes/localSuppliers.js';
+import collectionRoutes from './routes/collections.js';
 import abnRoutes from './routes/abn.js';
 import addressRoutes from './routes/address.js';
 import { errorHandler, notFoundHandler } from './middleware/errorHandler.js';
@@ -94,6 +96,11 @@ app.use('/api/reports', reportRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/xero', xeroRoutes);
 app.use('/api/audit', auditRoutes);
+// Field collections. Mounted before the catch-all 404 like everything else;
+// what makes these reachable by a contractor is the allowlist in
+// middleware/auth.js, not the order here.
+app.use('/api/local-suppliers', localSupplierRoutes);
+app.use('/api/collections', collectionRoutes);
 app.use('/api/abn', abnRoutes);
 app.use('/api/address', addressRoutes);
 

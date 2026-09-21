@@ -119,6 +119,9 @@ export default function UsersPage() {
               <select value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })} className={field}>
                 <option value="STAFF">Staff — write dockets and invoices</option>
                 <option value="ADMIN">Admin — also prices, settings, staff, delete</option>
+                <option value="CONTRACTOR">
+                  Contractor — field collections only, nothing else
+                </option>
               </select>
             </div>
           </div>
@@ -158,9 +161,13 @@ export default function UsersPage() {
                 </td>
                 <td className="px-5 py-3">
                   <span className={`rounded px-2 py-0.5 text-xs font-semibold ${
-                    u.role === 'ADMIN' ? 'bg-copper-100 text-copper-700' : 'bg-steel-100 text-steel-600'
+                    u.role === 'ADMIN'
+                      ? 'bg-copper-100 text-copper-700'
+                      : u.role === 'CONTRACTOR'
+                        ? 'bg-working-amberDim text-working-amber'
+                        : 'bg-steel-100 text-steel-600'
                   }`}>
-                    {u.role === 'ADMIN' ? 'Admin' : 'Staff'}
+                    {{ ADMIN: 'Admin', CONTRACTOR: 'Contractor' }[u.role] ?? 'Staff'}
                   </span>
                   {!u.active && <span className="ml-2 text-xs text-working-red">Deactivated</span>}
                 </td>

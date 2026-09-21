@@ -63,6 +63,17 @@ const NAV_GROUPS = [
     ],
   },
   {
+    // What the contractor brings back from the road. Listed above Records
+    // because for one role it is the only thing on the screen, and for
+    // everyone else it belongs with the day's work rather than the reference
+    // data.
+    title: 'Field',
+    items: [
+      { to: '/collections', label: 'Collections', icon: 'purchases' },
+      { to: '/local-suppliers', label: 'Local suppliers', icon: 'clients' },
+    ],
+  },
+  {
     title: 'Records',
     items: [
       { to: '/suppliers', label: 'Suppliers', icon: 'clients' },
@@ -100,7 +111,28 @@ function PlusIcon() {
   );
 }
 
-function SidebarContent({ isAdmin, user, onNavigate, onLogout, collapsed = false, onToggleCollapse }) {
+/**
+ * Which groups this person sees.
+ *
+ * A contractor gets the Field group and nothing else. The server already
+ * refuses them everything else, so this is not the security boundary — it is
+ * so the sidebar does not offer seven doors that answer 403, which reads as a
+ * broken app rather than as a permission.
+ */
+function navGroupsFor(isContractor) {
+  if (!isContractor) return NAV_GROUPS;
+  return NAV_GROUPS.filter((g) => g.title === 'Field');
+}
+
+function SidebarContent({
+  isAdmin,
+  isContractor,
+  user,
+  onNavigate,
+  onLogout,
+  collapsed = false,
+  onToggleCollapse,
+}) {
   return (
     <>
       <div
@@ -150,19 +182,19 @@ function SidebarContent({ isAdmin, user, onNavigate, onLogout, collapsed = false
             full-width bar holding a single "+", which read as a broken label
             rather than a button. */}
         <Link
-          to="/purchases/new"
+          to={isContractor ? '/collections/new' : '/purchases/new'}
           onClick={onNavigate}
-          title={collapsed ? 'New purchase' : undefined}
-          aria-label="New purchase"
+          title={collapsed ? (isContractor ? 'New collection' : 'New purchase') : undefined}
+          aria-label={isContractor ? 'New collection' : 'New purchase'}
           className={collapsed ? 'btn-primary btn-icon mx-auto' : 'btn-primary btn-block'}
         >
           <PlusIcon />
-          {!collapsed && <span>New purchase</span>}
+          {!collapsed && <span>{isContractor ? 'New collection' : 'New purchase'}</span>}
         </Link>
       </div>
 
       <nav className="flex-1 space-y-0.5 overflow-y-auto px-3 py-4">
-        {NAV_GROUPS.map((group, gi) => (
+        {navGroupsFor(isContractor).map((group, gi) => (
           <div key={group.title || gi} className={gi > 0 ? 'pt-3' : ''}>
             {group.title &&
               (collapsed ? (
@@ -236,7 +268,9 @@ function SidebarContent({ isAdmin, user, onNavigate, onLogout, collapsed = false
           <div className="mb-2 px-1">
             <div className="truncate text-sm font-semibold text-paper">{user?.name}</div>
             <div className="text-xs text-steel-300">
-              {user?.role === 'ADMIN' ? 'Administrator' : 'Staff'}
+              {/* A contractor was being labelled "Staff", which is both wrong
+                  and the opposite of reassuring on a shared tablet. */}
+              {{ ADMIN: 'Administrator', CONTRACTOR: 'Field contractor' }[user?.role] ?? 'Staff'}
             </div>
           </div>
         )}
@@ -282,13 +316,15 @@ function SidebarContent({ isAdmin, user, onNavigate, onLogout, collapsed = false
  * column it always was.
  */
 export default function AppLayout() {
-  const { user, logout, isAdmin } = useAuth();
+  const { user, logout, isAdmin, isContractor } = useAuth();
 
   const navigate = useNavigate();
   const location = useLocation();
   // Both the docket form and its edit route land on the same screen.
   const onNewPurchase =
-    location.pathname === '/purchases/new' || location.pathname === '/tax-invoices/new';
+    location.pathname === '/purchases/new' ||
+    location.pathname === '/tax-invoices/new' ||
+    location.pathname === '/collections/new';
   const [menuOpen, setMenuOpen] = useState(false);
   // Remembered per browser: someone who works from a narrow laptop collapses it
   // once and expects it to stay that way, and it is a per-person preference
@@ -388,9 +424,15 @@ export default function AppLayout() {
             the screen, it offers the page you are already on, and on a tablet
             in portrait that bar sits directly above the form. */}
         {!onNewPurchase && (
-          <Link to="/purchases/new" className="btn-primary btn-sm ml-auto" aria-label="New purchase">
+          <Link
+            to={isContractor ? '/collections/new' : '/purchases/new'}
+            className="btn-primary btn-sm ml-auto"
+            aria-label={isContractor ? 'New collection' : 'New purchase'}
+          >
             <PlusIcon />
-            <span className="hidden min-[380px]:inline">New purchase</span>
+            <span className="hidden min-[380px]:inline">
+              {isContractor ? 'New collection' : 'New purchase'}
+            </span>
           </Link>
         )}
       </header>
@@ -406,6 +448,7 @@ export default function AppLayout() {
           <aside className="absolute inset-y-0 left-0 flex w-[17rem] max-w-[85vw] flex-col bg-steel-900 text-paper shadow-2xl">
             <SidebarContent
               isAdmin={isAdmin}
+              isContractor={isContractor}
               user={user}
               onNavigate={() => setMenuOpen(false)}
               onLogout={handleLogout}
@@ -428,6 +471,7 @@ export default function AppLayout() {
       >
         <SidebarContent
           isAdmin={isAdmin}
+          isContractor={isContractor}
           user={user}
           onNavigate={undefined}
           onLogout={handleLogout}

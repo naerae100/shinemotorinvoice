@@ -39,6 +39,44 @@ async function currentUser(id) {
  * { id, role, name, email } to req.user. Rejects if missing, invalid, revoked,
  * or belonging to a deactivated account.
  */
+
+/**
+ * What a contractor is allowed to reach.
+ *
+ * This codebase's default is the opposite of what this role needs. Everything
+ * behind requireAuth is readable by any signed-in user — suppliers.js,
+ * consignees.js and reports.js carry no role check at all — and requireRole is
+ * used only to stop a staff member voiding or configuring things. A contractor
+ * added to that model would get every supplier's bank details, every export
+ * invoice and the whole dashboard on their first request.
+ *
+ * So this is an allowlist, not a denylist, and it lives inside requireAuth
+ * rather than as a mounted middleware for two reasons:
+ *
+ *   The role is the one loaded from the database a few lines above, not the
+ *   one in the token. A gate that trusted the token would let someone demoted
+ *   to contractor keep their old access until it expired.
+ *
+ *   Every protected route already calls requireAuth. A route added next month
+ *   is therefore closed to contractors by default, and someone has to come
+ *   here and think about it to open one. A per-route check would have the
+ *   opposite failure mode, silently.
+ *
+ * The price list is deliberately absent: collections offer their own grade
+ * list, which returns descriptions without what the yard pays for them.
+ */
+const CONTRACTOR_ALLOWED = [
+  /^\/api\/auth(\/|$)/,
+  /^\/api\/collections(\/|\?|$)/,
+  /^\/api\/local-suppliers(\/|\?|$)/,
+];
+
+/** True if a contractor may make this request at all. */
+export function contractorMayAccess(originalUrl) {
+  const path = String(originalUrl || '').split('?')[0];
+  return CONTRACTOR_ALLOWED.some((re) => re.test(path));
+}
+
 export async function requireAuth(req, res, next) {
   const header = req.headers.authorization;
   if (!header?.startsWith('Bearer ')) {
@@ -67,6 +105,12 @@ export async function requireAuth(req, res, next) {
     // Trust the stored role over the token's copy, so a demotion takes effect
     // without waiting for the token to expire.
     req.user = { ...payload, role: user.role };
+
+    // Deny by default for contractors — see CONTRACTOR_ALLOWED above.
+    if (user.role === 'CONTRACTOR' && !contractorMayAccess(req.originalUrl)) {
+      return res.status(403).json({ error: 'Insufficient permissions' });
+    }
+
     issueSlidingToken(req, res, payload, user);
     next();
   } catch (err) {

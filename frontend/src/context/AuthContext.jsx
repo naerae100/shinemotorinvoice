@@ -33,7 +33,20 @@ export function AuthProvider({ children }) {
   }
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, logout, isAdmin: user?.role === 'ADMIN' }}>
+    <AuthContext.Provider
+      value={{
+        user,
+        loading,
+        login,
+        logout,
+        isAdmin: user?.role === 'ADMIN',
+        // The field role. It reaches collections and local suppliers and
+        // nothing else — the server enforces that (CONTRACTOR_ALLOWED in
+        // middleware/auth.js); this only stops the app offering doors that
+        // would answer 403, which reads as the app being broken.
+        isContractor: user?.role === 'CONTRACTOR',
+      }}
+    >
       {children}
     </AuthContext.Provider>
   );

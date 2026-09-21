@@ -1,6 +1,6 @@
 import { lazy, Suspense } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useParams } from 'react-router-dom';
-import { AuthProvider } from './context/AuthContext';
+import { AuthProvider, useAuth } from './context/AuthContext';
 import ProtectedRoute from './components/ProtectedRoute';
 import ErrorBoundary from './components/ErrorBoundary';
 import AppLayout from './components/AppLayout';
@@ -11,6 +11,11 @@ import LoginPage from './pages/LoginPage';
 // Everything behind the login is split out. The charting library alone is most
 // of the bundle, and none of it is needed to render the sign-in screen.
 const DashboardPage = lazy(() => import('./pages/DashboardPage'));
+const CollectionsPage = lazy(() => import('./pages/CollectionsPage'));
+const NewCollectionPage = lazy(() => import('./pages/NewCollectionPage'));
+const CollectionDetailPage = lazy(() => import('./pages/CollectionDetailPage'));
+const LocalSuppliersPage = lazy(() => import('./pages/LocalSuppliersPage'));
+const LocalSupplierDetailPage = lazy(() => import('./pages/LocalSupplierDetailPage'));
 const NewDocketPage = lazy(() => import('./pages/NewDocketPage'));
 const PurchasesPage = lazy(() => import('./pages/PurchasesPage'));
 const DocketDetailPage = lazy(() => import('./pages/DocketDetailPage'));
@@ -34,6 +39,19 @@ function RedirectParty({ to }) {
   return <Navigate to={`/${to}/${id}`} replace />;
 }
 
+/**
+ * Where "/" goes.
+ *
+ * The dashboard reads /api/reports, which a contractor is not allowed to
+ * touch, so sending them there would greet them with "Could not load
+ * dashboard data" every time they open the app. They get their own list
+ * instead, which is the only screen they have.
+ */
+function HomeForRole() {
+  const { isContractor } = useAuth();
+  return isContractor ? <Navigate to="/collections" replace /> : <DashboardPage />;
+}
+
 export default function App() {
   return (
     <ErrorBoundary>
@@ -51,7 +69,21 @@ export default function App() {
                 </ProtectedRoute>
               }
             >
-              <Route index element={<DashboardPage />} />
+              {/* A contractor has no dashboard — the endpoints behind it are
+                  closed to them — so the index route sends them to their own
+                  work rather than to a screen that would load as an error. */}
+              <Route index element={<HomeForRole />} />
+
+              {/* ── Field collections ──────────────────────────────── */}
+              <Route path="collections" element={<CollectionsPage />} />
+              <Route path="collections/new" element={<NewCollectionPage key="new-collection" />} />
+              <Route path="collections/:id" element={<CollectionDetailPage />} />
+              <Route
+                path="collections/:id/edit"
+                element={<NewCollectionPage key="edit-collection" />}
+              />
+              <Route path="local-suppliers" element={<LocalSuppliersPage />} />
+              <Route path="local-suppliers/:id" element={<LocalSupplierDetailPage />} />
               {/* Distinct keys: the purchase and tax-invoice variants are the same
                   component, so without these React reuses one instance and carries
                   stale search/page state across the switch. */}

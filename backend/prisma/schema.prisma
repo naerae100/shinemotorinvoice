@@ -40,6 +40,11 @@ model User {
   invoicesCreated ExportInvoice[] @relation("InvoiceCreatedBy")
   invoicesEdited  ExportInvoice[] @relation("InvoiceEditedBy")
   invoicesVoided  ExportInvoice[] @relation("InvoiceVoidedBy")
+
+  localSuppliersCreated LocalSupplier[] @relation("LocalSupplierCreatedBy")
+  collectionsCreated    Collection[]    @relation("CollectionCreatedBy")
+  collectionsEdited     Collection[]    @relation("CollectionEditedBy")
+  collectionsVoided     Collection[]    @relation("CollectionVoidedBy")
 }
 
 // ─────────────────────────────────────────────
@@ -84,9 +89,9 @@ model AuditEvent {
 // MaterialUnit values: "KG" | "TONNE" | "UNIT"
 
 model Material {
-  id           String   @id @default(cuid())
-  code         Int?     @unique
-  description  String
+  id          String @id @default(cuid())
+  code        Int?   @unique
+  description String
 
   // "PURCHASE" | "EXPORT"
   //
@@ -98,7 +103,7 @@ model Material {
   // having to carry the other's vocabulary.
   //
   // Defaults to PURCHASE so the existing 33-item price list is unaffected.
-  kind         String   @default("PURCHASE")
+  kind String @default("PURCHASE")
 
   category     String?
   unit         String   @default("KG")
@@ -107,8 +112,9 @@ model Material {
   updatedAt    DateTime @updatedAt
   createdAt    DateTime @default(now())
 
-  docketLines  DocketLineItem[]
-  invoiceLines InvoiceLineItem[]
+  docketLines     DocketLineItem[]
+  invoiceLines    InvoiceLineItem[]
+  collectionLines CollectionLine[]
 
   @@index([kind])
 }
@@ -119,8 +125,8 @@ model Material {
 // SaleType values: "PRIVATE" | "BUSINESS"
 
 model Supplier {
-  id        String   @id @default(cuid())
-  name      String
+  id   String @id @default(cuid())
+  name String
 
   // A postal address in the parts a delivery or a statement actually needs.
   // `address` is the street line; state and country were missing entirely, so
@@ -132,7 +138,7 @@ model Supplier {
   country   String?
   phone     String?
   email     String?
-  saleType  String   @default("PRIVATE")
+  saleType  String  @default("PRIVATE")
   abn       String?
   licenceNo String?
 
@@ -155,7 +161,8 @@ model Supplier {
 
   createdAt DateTime @default(now())
 
-  dockets Docket[]
+  dockets        Docket[]
+  localSuppliers LocalSupplier[]
 
   @@index([name])
 }
@@ -263,8 +270,8 @@ model DocketLineItem {
   // Optional, as on an invoice line: a one-off grade can be typed straight onto
   // the docket without first being added to the price list. Either materialId or
   // description must be present — the API enforces that.
-  materialId String?
-  material   Material? @relation(fields: [materialId], references: [id])
+  materialId  String?
+  material    Material? @relation(fields: [materialId], references: [id])
   description String?
 
   netWeight Decimal
@@ -279,8 +286,8 @@ model DocketLineItem {
 // ─────────────────────────────────────────────
 
 model Consignee {
-  id      String  @id @default(cuid())
-  name    String
+  id   String @id @default(cuid())
+  name String
 
   /// The address as one blob. Every one of the 91 buyers imported from the
   /// export archive arrived this way — street, city and country run together in
@@ -515,4 +522,118 @@ model CompanySettings {
   xeroAccessToken    String?
   xeroRefreshToken   String?
   xeroTokenExpiresAt DateTime?
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+//  Field collections
+//
+//  A contractor drives out, weighs scrap at the seller's place and writes
+//  down what was picked up. No price is agreed and no money moves — pricing
+//  happens back at the yard, if it happens at all. Today this is a paper
+//  notebook that somebody re-keys by hand.
+//
+//  Deliberately NOT modelled as a Docket. Every report, total and BAS figure
+//  in reports.js selects ACTIVE dockets, so a priceless collection folded
+//  into that table would land in "Scrap bought", in the docket counts and in
+//  the GST figures as a zero-value row — wrong in a way nobody would notice
+//  until the quarter was reconciled. A Docket also requires a Supplier, which
+//  carries ABN and bank details a contractor must never see, and carries
+//  payment status, GST and discount, none of which exist here.
+// ─────────────────────────────────────────────────────────────────────────
+
+/// A seller the contractor deals with in the field.
+///
+/// Separate from Supplier even though they are often the same people. Two
+/// reasons: the contractor's search should offer the handful of names they
+/// actually visit rather than the yard's whole book, and the Supplier table
+/// holds ABNs and bank accounts that this role has no business reading.
+model LocalSupplier {
+  id       String  @id @default(cuid())
+  name     String
+  phone    String?
+  address  String?
+  suburb   String?
+  state    String?
+  postcode String?
+  notes    String?
+
+  /// Set by an admin when a local seller turns out to be, or becomes, a
+  /// registered supplier. Nothing reads it yet — it exists so that matching
+  /// the two up later is an update rather than a migration against live data.
+  supplierId String?
+  supplier   Supplier? @relation(fields: [supplierId], references: [id])
+
+  createdAt   DateTime @default(now())
+  createdById String?
+  createdBy   User?    @relation("LocalSupplierCreatedBy", fields: [createdById], references: [id])
+
+  collections Collection[]
+
+  @@index([name])
+}
+
+/// One pickup: who it came from, and what was weighed.
+model Collection {
+  id               String   @id @default(cuid())
+  /// Its own sequence, unrelated to docketNumber — these are not dockets and
+  /// sharing a run of numbers would imply they are.
+  collectionNumber Int      @unique
+  date             DateTime @default(now())
+
+  localSupplierId String
+  localSupplier   LocalSupplier @relation(fields: [localSupplierId], references: [id])
+
+  notes String?
+
+  /// "ACTIVE" | "VOID", the same convention as a docket: voided records keep
+  /// their number and stay in history rather than disappearing.
+  status     String    @default("ACTIVE")
+  voidReason String?
+  voidedAt   DateTime?
+  voidedById String?
+  voidedBy   User?     @relation("CollectionVoidedBy", fields: [voidedById], references: [id])
+
+  /// Set when an admin prices this up into a real purchase docket. Unused for
+  /// now; here so that step does not need a migration later.
+  docketId String? @unique
+
+  createdAt   DateTime @default(now())
+  createdById String?
+  createdBy   User?    @relation("CollectionCreatedBy", fields: [createdById], references: [id])
+
+  /// The contractor may correct their own entry, so the record has to say who
+  /// touched it last. The full before/after is in AuditEvent; this is what the
+  /// admin sees on the record itself without opening the trail.
+  updatedAt  DateTime  @updatedAt
+  editedAt   DateTime?
+  editedById String?
+  editedBy   User?     @relation("CollectionEditedBy", fields: [editedById], references: [id])
+
+  lines CollectionLine[]
+
+  @@index([localSupplierId])
+  @@index([date])
+  @@index([status])
+}
+
+/// One grade on a pickup. Weighed in its own bin, so each line carries its own
+/// tare rather than one tare for the vehicle.
+model CollectionLine {
+  id           String     @id @default(cuid())
+  collectionId String
+  collection   Collection @relation(fields: [collectionId], references: [id], onDelete: Cascade)
+
+  /// As on a docket line: a grade can be typed straight in without first being
+  /// added to the price list. The API requires one of the two.
+  materialId  String?
+  material    Material? @relation(fields: [materialId], references: [id])
+  description String?
+
+  /// Kilograms. net is stored rather than derived so the number the contractor
+  /// saw in the field is the number kept, even if the arithmetic ever changes.
+  grossWeight Decimal
+  tareWeight  Decimal @default(0)
+  netWeight   Decimal
+
+  @@index([collectionId])
 }

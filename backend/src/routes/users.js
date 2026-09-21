@@ -24,14 +24,16 @@ const createUserSchema = z.object({
   name: z.string().min(1),
   email: z.string().email(),
   password: z.string().min(8, 'Password must be at least 8 characters'),
-  role: z.enum(['ADMIN', 'STAFF']).default('STAFF'),
+  // CONTRACTOR is the field role: it reaches collections and local suppliers
+  // and nothing else at all — see CONTRACTOR_ALLOWED in middleware/auth.js.
+  role: z.enum(['ADMIN', 'STAFF', 'CONTRACTOR']).default('STAFF'),
 });
 
 const updateUserSchema = z.object({
   name: z.string().min(1).optional(),
   email: z.string().email().optional(),
   password: z.string().min(8).optional(),
-  role: z.enum(['ADMIN', 'STAFF']).optional(),
+  role: z.enum(['ADMIN', 'STAFF', 'CONTRACTOR']).optional(),
   active: z.boolean().optional(),
 });
 
