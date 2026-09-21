@@ -338,7 +338,7 @@ export default function NewCollectionPage() {
               <div />
             </div>
 
-            <div className="space-y-3 sm:space-y-2">
+            <div className="space-y-4 sm:space-y-2">
               {lines.map((line, i) => {
                 const net = netOf(line);
                 const invalid =
@@ -346,10 +346,36 @@ export default function NewCollectionPage() {
                 return (
                   <div
                     key={i}
-                    className="grid grid-cols-2 gap-3 rounded-lg border border-steel-100 bg-paper p-3 sm:grid-cols-[1fr_7rem_7rem_7rem_2rem] sm:items-center sm:gap-3 sm:rounded-none sm:border-0 sm:bg-transparent sm:p-0"
+                    /* On a phone this is one card per grade: the name across
+                       the top, then gross / tare / net as a single row of
+                       three underneath it. They read as one measurement of one
+                       material, which is what they are — the earlier two-column
+                       version split them so that net ended up beside nothing
+                       and the remove button had a row to itself.
+
+                       From sm up `sm:contents` dissolves the inner wrapper so
+                       its three children become cells of the outer grid, and
+                       the whole thing is the single table row it was before.
+                       One piece of markup, both shapes. */
+                    className="rounded-lg border border-steel-200 bg-white p-3 sm:grid sm:grid-cols-[1fr_7rem_7rem_7rem_2rem] sm:items-center sm:gap-3 sm:rounded-none sm:border-0 sm:bg-transparent sm:p-0"
                   >
-                    <div className="col-span-2 sm:col-span-1">
-                      <label className="field-label sm:hidden">Grade</label>
+                    <div className="mb-2 flex items-center justify-between sm:hidden">
+                      <span className="text-[11px] font-bold uppercase tracking-wider text-steel-400">
+                        Grade {i + 1}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setLines((prev) => prev.filter((_, idx) => idx !== i))}
+                        disabled={lines.length <= 1}
+                        aria-label={`Remove grade ${i + 1}`}
+                        className="btn-ghost btn-icon btn-sm -mr-1 text-steel-400 hover:bg-working-redDim hover:text-working-red"
+                      >
+                        ×
+                      </button>
+                    </div>
+
+                    <div>
+                      <label className="field-label sm:hidden">Material</label>
                       {/* The same picker the weighbridge docket uses, so a
                           grade is named the same way in the field as it is at
                           the yard. It reports a price too, which is ignored
@@ -368,56 +394,73 @@ export default function NewCollectionPage() {
                       />
                     </div>
 
-                    <div>
-                      <label className="field-label sm:hidden">Gross kg</label>
-                      <input
-                        type="number"
-                        inputMode="decimal"
-                        step="0.001"
-                        min="0"
-                        value={line.grossWeight}
-                        onChange={(e) => updateLine(i, 'grossWeight', e.target.value)}
-                        placeholder="Gross"
-                        className="num w-full rounded-md border border-steel-200 bg-white px-2.5 py-2 text-right text-sm"
-                      />
-                    </div>
+                    {/* Two inputs side by side, then net on its own line.
+                        Three across did not fit: at 390px each column is 89px
+                        and a realistic figure like "122,938.250" is about
+                        106px of monospace, so gross, tare and net were all
+                        being clipped — measured at 360, 390 and 412px. Net
+                        gets the full width, which also puts the number that
+                        matters where the eye lands last.
 
-                    <div>
-                      <label className="field-label sm:hidden">Tare kg</label>
-                      <input
-                        type="number"
-                        inputMode="decimal"
-                        step="0.001"
-                        min="0"
-                        value={line.tareWeight}
-                        onChange={(e) => updateLine(i, 'tareWeight', e.target.value)}
-                        placeholder="Tare"
-                        className={`num w-full rounded-md border bg-white px-2.5 py-2 text-right text-sm ${
-                          invalid ? 'border-working-red' : 'border-steel-200'
-                        }`}
-                      />
+                        `sm:contents` on the pair dissolves the wrapper from
+                        sm up, so gross, tare and net become three cells of the
+                        outer grid and the row is the table row it was. */}
+                    <div className="mt-3 grid grid-cols-2 gap-2 sm:contents">
+                      <div>
+                        <label className="field-label sm:hidden">Gross kg</label>
+                        <input
+                          type="number"
+                          inputMode="decimal"
+                          step="0.001"
+                          min="0"
+                          value={line.grossWeight}
+                          onChange={(e) => updateLine(i, 'grossWeight', e.target.value)}
+                          placeholder="Gross"
+                          aria-label={`Gross weight, grade ${i + 1}`}
+                          className="num w-full rounded-md border border-steel-200 bg-white px-2.5 py-2 text-right text-sm"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="field-label sm:hidden">Tare kg</label>
+                        <input
+                          type="number"
+                          inputMode="decimal"
+                          step="0.001"
+                          min="0"
+                          value={line.tareWeight}
+                          onChange={(e) => updateLine(i, 'tareWeight', e.target.value)}
+                          placeholder="Tare"
+                          aria-label={`Tare weight, grade ${i + 1}`}
+                          className={`num w-full rounded-md border bg-white px-2.5 py-2 text-right text-sm ${
+                            invalid ? 'border-working-red' : 'border-steel-200'
+                          }`}
+                        />
+                      </div>
                     </div>
 
                     {/* Worked out, not typed. The contractor reads two numbers
                         off a scale; doing the subtraction on paper is where the
                         mistakes come from. */}
-                    <div>
-                      <label className="field-label sm:hidden">Net kg</label>
-                      <div
-                        className={`num rounded-md px-2.5 py-2 text-right text-sm font-semibold ${
+                    <div className="mt-2 flex items-center justify-between rounded-md bg-paper px-2.5 py-2 sm:mt-0 sm:block sm:rounded-none sm:bg-transparent">
+                      <span className="text-[11px] font-bold uppercase tracking-wider text-steel-500 sm:hidden">
+                        Net kg
+                      </span>
+                      <span
+                        className={`num block text-right text-sm font-bold ${
                           invalid ? 'text-working-red' : 'text-steel-900'
                         }`}
                       >
                         {net === null ? '—' : formatNumber(net, 3)}
-                      </div>
+                      </span>
                     </div>
 
-                    <div className="col-span-2 flex justify-end sm:col-span-1">
+                    <div className="hidden justify-end sm:flex">
                       <button
                         type="button"
                         onClick={() => setLines((prev) => prev.filter((_, idx) => idx !== i))}
                         disabled={lines.length <= 1}
-                        aria-label={`Remove line ${i + 1}`}
+                        aria-label={`Remove grade ${i + 1}`}
                         className="btn-ghost btn-icon btn-sm text-steel-400 hover:bg-working-redDim hover:text-working-red"
                       >
                         ×
