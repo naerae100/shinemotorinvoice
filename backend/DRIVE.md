@@ -53,7 +53,11 @@ does not require Google to review the app.
 - Type: **Web application**
 - Authorised redirect URIs:
   - `https://shinemotorinvoice.vercel.app/api/drive/callback`
-  - `http://localhost:4000/api/drive/callback`
+  - `http://localhost:5174/api/drive/callback`
+
+`GET /api/drive/status` reports the exact `redirectUri` this deployment will
+send — paste that one rather than assuming, because it follows the
+deployment's own domain.
 
 Copy the **Client ID** and **Client secret**.
 

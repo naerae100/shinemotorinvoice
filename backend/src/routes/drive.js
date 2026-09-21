@@ -3,6 +3,7 @@ import crypto from 'node:crypto';
 import { requireAuth, requireRole } from '../middleware/auth.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { isConfigured } from '../lib/photoStorage.js';
+import { config } from '../config/env.js';
 
 const router = Router();
 
@@ -26,9 +27,20 @@ const router = Router();
 
 const SCOPE = 'https://www.googleapis.com/auth/drive.file';
 
+/**
+ * Where Google sends the browser back to.
+ *
+ * Derived from config.siteOrigins, not from FRONTEND_URL directly: that
+ * variable is not set in Vercel — the deployment's own domain is used
+ * instead, see config/env.js — so reading it here produced
+ * http://localhost:4000/api/drive/callback in production, which Google
+ * would refuse and which would send an approval to nobody.
+ *
+ * GOOGLE_REDIRECT_URI still overrides, for a custom domain.
+ */
 const redirectUri = () =>
   process.env.GOOGLE_REDIRECT_URI ||
-  `${(process.env.FRONTEND_URL || 'http://localhost:4000').replace(/\/$/, '')}/api/drive/callback`;
+  `${config.siteOrigins[0].replace(/\/$/, '')}/api/drive/callback`;
 
 /**
  * Google hands the browser back to the callback with no session — it is a
