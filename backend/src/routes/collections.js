@@ -8,6 +8,9 @@ import { dateFilter, pagination } from '../lib/query.js';
 import { round3 } from '../lib/money.js';
 import { audit, diff } from '../lib/audit.js';
 import { versionSchema, guardedWhere, isStaleWrite } from '../lib/concurrency.js';
+import multer from 'multer';
+import * as photoStorage from '../lib/photoStorage.js';
+import { signPhotoUrl, verifyPhotoSignature } from '../lib/signedUrl.js';
 
 const router = Router();
 
@@ -62,9 +65,31 @@ const bodySchema = z.object({
   ...versionSchema,
 });
 
+const PHOTO_SELECT = {
+  id: true,
+  lineId: true,
+  filename: true,
+  contentType: true,
+  bytes: true,
+  createdAt: true,
+  createdBy: { select: { name: true } },
+};
+
 const DETAIL_INCLUDE = {
   localSupplier: true,
-  lines: { include: { material: { select: { id: true, description: true, unit: true } } } },
+  lines: {
+    include: {
+      material: { select: { id: true, description: true, unit: true } },
+      photos: { select: PHOTO_SELECT, orderBy: { createdAt: 'asc' } },
+    },
+  },
+  photos: {
+    // Only the ones belonging to the pickup as a whole; a line's photos are
+    // already nested under the line.
+    where: { lineId: null },
+    select: PHOTO_SELECT,
+    orderBy: { createdAt: 'asc' },
+  },
   createdBy: { select: { id: true, name: true } },
   editedBy: { select: { id: true, name: true } },
   voidedBy: { select: { id: true, name: true } },
@@ -106,6 +131,178 @@ const withNet = (l) => {
       : null,
   };
 };
+
+/**
+ * Photographs.
+ *
+ * Optional everywhere. A contractor with no signal, or nothing worth
+ * photographing, saves a collection exactly as they did before — the upload
+ * is a separate request, so a failed photo never costs somebody the weights
+ * they just typed.
+ */
+const upload = multer({
+  storage: multer.memoryStorage(),
+  // The browser resizes before sending — about 300KB for a phone photo — so
+  // this is headroom for an odd one, not the working size. Without a cap a
+  // single 12MB original from a modern phone would sit in the function's
+  // memory and time the request out on a yard's signal.
+  limits: { fileSize: 12 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    if (/^image\/(jpeg|png|webp|heic|heif)$/.test(file.mimetype)) return cb(null, true);
+    cb(Object.assign(new Error('Only photographs can be uploaded'), { status: 400 }));
+  },
+});
+
+/**
+ * Attach a signed, short-lived URL to every photo on a collection.
+ *
+ * Done on the way out rather than stored, because the signature expires —
+ * a URL kept in the database would be wrong within the quarter hour.
+ */
+function withPhotoUrls(collection) {
+  if (!collection) return collection;
+  const sign = (p) => ({ ...p, url: signPhotoUrl(p.id) });
+  return {
+    ...collection,
+    photos: (collection.photos ?? []).map(sign),
+    lines: (collection.lines ?? []).map((l) => ({
+      ...l,
+      photos: (l.photos ?? []).map(sign),
+    })),
+  };
+}
+
+/** The Drive path a photo belongs in: supplier, then collection. */
+const foldersFor = (collection) => [
+  collection.localSupplier?.name || 'Unknown supplier',
+  `Collection ${collection.collectionNumber}`,
+];
+
+/** POST /api/collections/:id/photos — one photo, optionally against a line. */
+router.post(
+  '/:id/photos',
+  requireAuth,
+  upload.single('photo'),
+  asyncHandler(async (req, res) => {
+    if (!req.file) return res.status(400).json({ error: 'No photo was sent' });
+
+    const collection = await prisma.collection.findUnique({
+      where: { id: req.params.id },
+      include: { localSupplier: { select: { name: true } }, lines: { select: { id: true } } },
+    });
+    if (!collection) return res.status(404).json({ error: 'Not found' });
+    if (collection.status === 'VOID') {
+      return res.status(409).json({ error: 'This collection has been voided' });
+    }
+
+    const lineId = req.body.lineId || null;
+    if (lineId && !collection.lines.some((l) => l.id === lineId)) {
+      return res.status(400).json({ error: 'That grade is not on this collection' });
+    }
+
+    const stored = await photoStorage.save({
+      buffer: req.file.buffer,
+      filename: `${Date.now()}-${req.file.originalname || 'photo.jpg'}`,
+      contentType: req.file.mimetype,
+      folders: foldersFor(collection),
+    });
+
+    const photo = await prisma.collectionPhoto.create({
+      data: {
+        collectionId: collection.id,
+        lineId,
+        provider: stored.provider,
+        externalId: stored.externalId,
+        filename: req.file.originalname || 'photo.jpg',
+        contentType: req.file.mimetype,
+        bytes: req.file.size,
+        createdById: req.user.id,
+      },
+      select: PHOTO_SELECT,
+    });
+
+    await audit({
+      req,
+      action: 'UPDATE',
+      entity: 'Collection',
+      entityId: collection.id,
+      label: `Collection #${collection.collectionNumber}`,
+      after: { photoAdded: photo.filename, grade: lineId ? 'line' : 'collection' },
+    });
+
+    res.status(201).json({ photo: { ...photo, url: signPhotoUrl(photo.id) } });
+  })
+);
+
+/**
+ * GET /api/collections/photos/:photoId/content — the bytes.
+ *
+ * Signed rather than authenticated: see lib/signedUrl.js. The signature is
+ * checked before anything is fetched, so an expired link costs a database
+ * lookup and nothing more.
+ */
+router.get(
+  '/photos/:photoId/content',
+  asyncHandler(async (req, res) => {
+    if (!verifyPhotoSignature(req.params.photoId, req.query.e, req.query.s)) {
+      return res.status(403).json({ error: 'This photo link has expired' });
+    }
+
+    const photo = await prisma.collectionPhoto.findUnique({
+      where: { id: req.params.photoId },
+      select: { externalId: true, contentType: true, filename: true },
+    });
+    if (!photo) return res.status(404).json({ error: 'Not found' });
+
+    const { stream, contentType } = await photoStorage.read(photo.externalId);
+    res.setHeader('Content-Type', photo.contentType || contentType);
+    // Private, but cacheable for the life of the signature — the same gallery
+    // is scrolled up and down, and refetching every thumbnail on a yard's
+    // signal is the difference between usable and not.
+    res.setHeader('Cache-Control', 'private, max-age=900');
+    const { Readable } = await import('node:stream');
+    Readable.fromWeb(stream).pipe(res);
+  })
+);
+
+/** DELETE /api/collections/photos/:photoId — admin only. */
+router.delete(
+  '/photos/:photoId',
+  requireAuth,
+  requireRole('ADMIN'),
+  asyncHandler(async (req, res) => {
+    const photo = await prisma.collectionPhoto.findUnique({
+      where: { id: req.params.photoId },
+      include: { collection: { select: { collectionNumber: true } } },
+    });
+    if (!photo) return res.status(404).json({ error: 'Not found' });
+
+    // Trashed in Drive, recoverable for thirty days — see photoStorage.remove.
+    await photoStorage.remove(photo.externalId).catch(() => {
+      // A photo already gone from Drive should not strand the row here.
+    });
+    await prisma.collectionPhoto.delete({ where: { id: photo.id } });
+
+    await audit({
+      req,
+      action: 'UPDATE',
+      entity: 'Collection',
+      entityId: photo.collectionId,
+      label: `Collection #${photo.collection.collectionNumber}`,
+      before: { photo: photo.filename },
+    });
+    res.json({ ok: true });
+  })
+);
+
+/** Whether uploading will work at all, so the UI can say so before trying. */
+router.get(
+  '/photos/status',
+  requireAuth,
+  asyncHandler(async (req, res) => {
+    res.json({ configured: photoStorage.isConfigured() });
+  })
+);
 
 /**
  * GET /api/collections/materials
@@ -177,7 +374,7 @@ router.get(
     ]);
 
     res.json({
-      collections,
+      collections: collections.map(withPhotoUrls),
       totalCount,
       page: currentPage,
       filteredTotals: {
@@ -201,7 +398,7 @@ router.get(
       include: DETAIL_INCLUDE,
     });
     if (!collection) return res.status(404).json({ error: 'Not found' });
-    res.json({ collection });
+    res.json({ collection: withPhotoUrls(collection) });
   })
 );
 
@@ -247,7 +444,7 @@ router.post(
       after: { localSupplier: collection.localSupplier.name, lines: collection.lines.length },
     });
 
-    res.status(201).json({ collection });
+    res.status(201).json({ collection: withPhotoUrls(collection) });
   })
 );
 
@@ -340,7 +537,7 @@ router.patch(
         });
       }
 
-      res.json({ collection });
+      res.json({ collection: withPhotoUrls(collection) });
     } catch (err) {
       if (isStaleWrite(err)) {
         return res.status(409).json({
@@ -383,7 +580,7 @@ router.post(
       label: `Collection #${collection.collectionNumber}`,
       after: { reason: reason || null },
     });
-    res.json({ collection });
+    res.json({ collection: withPhotoUrls(collection) });
   })
 );
 
@@ -404,7 +601,7 @@ router.post(
       entityId: collection.id,
       label: `Collection #${collection.collectionNumber}`,
     });
-    res.json({ collection });
+    res.json({ collection: withPhotoUrls(collection) });
   })
 );
 

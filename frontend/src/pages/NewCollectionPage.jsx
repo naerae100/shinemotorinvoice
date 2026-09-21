@@ -4,6 +4,7 @@ import { api } from '../lib/api';
 import { formatNumber } from '../lib/format';
 import { apiErrorMessage } from '../lib/apiError';
 import MaterialField from '../components/MaterialField';
+import PhotoPicker from '../components/PhotoPicker';
 
 const BLANK_LINE = {
   // Carried on an existing line so an edit updates the row rather than
@@ -15,6 +16,8 @@ const BLANK_LINE = {
   tareWeight: '',
   supplierGrossWeight: '',
   supplierTareWeight: '',
+  // Chosen now, uploaded after the collection exists — see the save below.
+  photos: [],
 };
 // A name, and a suburb if they give one. Phone and street address were here
 // and are not: a contractor is standing in a driveway with a load to weigh,
@@ -73,12 +76,25 @@ export default function NewCollectionPage() {
   const [materials, setMaterials] = useState([]);
   const [lines, setLines] = useState([{ ...BLANK_LINE }, { ...BLANK_LINE }, { ...BLANK_LINE }]);
   const [notes, setNotes] = useState('');
+  const [collectionPhotos, setCollectionPhotos] = useState([]);
+  const [photoStorageReady, setPhotoStorageReady] = useState(true);
+  const [photoWarning, setPhotoWarning] = useState('');
   const [expectedUpdatedAt, setExpectedUpdatedAt] = useState(null);
 
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(isEdit);
   const skipSearch = useRef(false);
+
+  // Whether uploading will work at all. Asked once, so the form can say so
+  // up front rather than letting somebody photograph six grades and only
+  // then discover the storage was never connected.
+  useEffect(() => {
+    api
+      .get('/collections/photos/status')
+      .then((res) => setPhotoStorageReady(Boolean(res.data.configured)))
+      .catch(() => setPhotoStorageReady(false));
+  }, []);
 
   // The grade list, without the price list — see GET /collections/materials.
   useEffect(() => {
@@ -236,7 +252,46 @@ export default function NewCollectionPage() {
       const res = isEdit
         ? await api.patch(`/collections/${id}`, payload)
         : await api.post('/collections', payload);
-      navigate(`/collections/${res.data.collection.id}`);
+      const saved = res.data.collection;
+
+      /**
+       * Photographs go up afterwards, and their failure is never the
+       * collection's failure.
+       *
+       * The weights are the record; a photo is supporting evidence. Somebody
+       * standing beside a truck on one bar of signal must not lose what they
+       * typed because an upload timed out, so the collection is already
+       * saved by the time any of this runs and a failure here becomes a note
+       * on the next screen rather than a lost form.
+       */
+      const pending = [
+        ...collectionPhotos.map((file) => ({ file, lineId: null })),
+        // Lines come back in the order they were sent, so the nth saved line
+        // is the nth filled line on the form.
+        ...filledLines.flatMap((l, i) =>
+          (l.photos ?? []).map((file) => ({ file, lineId: saved.lines[i]?.id ?? null }))
+        ),
+      ];
+
+      let failed = 0;
+      for (const { file, lineId } of pending) {
+        try {
+          const form = new FormData();
+          form.append('photo', file);
+          if (lineId) form.append('lineId', lineId);
+          await api.post(`/collections/${saved.id}/photos`, form);
+        } catch {
+          failed += 1;
+        }
+      }
+
+      navigate(`/collections/${saved.id}`, {
+        state: failed
+          ? {
+              notice: `Saved, but ${failed} ${failed === 1 ? 'photo' : 'photos'} did not upload. You can add them here.`,
+            }
+          : undefined,
+      });
     } catch (err) {
       setError(apiErrorMessage(err, 'Could not save this collection.'));
     } finally {
@@ -496,6 +551,20 @@ export default function NewCollectionPage() {
                       </div>
                     </div>
 
+                    {photoStorageReady && (
+                      <div className="mt-3 border-t border-steel-100 pt-3">
+                        <PhotoPicker
+                          compact
+                          files={line.photos ?? []}
+                          onChange={(photos) =>
+                            setLines((prev) =>
+                              prev.map((l, idx) => (idx === i ? { ...l, photos } : l))
+                            )
+                          }
+                        />
+                      </div>
+                    )}
+
                     {/* The answer, on its own plate.
                         
                         It was a plain row and read as a footnote to the grid
@@ -554,6 +623,28 @@ export default function NewCollectionPage() {
                 className="w-full rounded-md border border-steel-200 bg-white px-3 py-2 text-sm"
               />
             </div>
+
+            {/* The load, the yard, a signed note — anything that belongs to
+                the pickup rather than to one grade. */}
+            {photoStorageReady && (
+              <div className="mt-5">
+                <label className="field-label">
+                  Photos of the pickup <span className="field-hint">optional</span>
+                </label>
+                <PhotoPicker
+                  files={collectionPhotos}
+                  onChange={setCollectionPhotos}
+                  label="Add photos"
+                />
+              </div>
+            )}
+
+            {!photoStorageReady && (
+              <p className="mt-5 rounded-lg border border-steel-200 bg-paper px-3 py-2 text-xs text-steel-500">
+                Photo storage is not connected yet, so there is nowhere to put
+                pictures. Weights save as normal.
+              </p>
+            )}
           </div>
         </div>
 

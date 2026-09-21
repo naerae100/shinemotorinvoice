@@ -20,3 +20,4 @@ uploads/
 
 # Local database backups
 backups/
+.photos/

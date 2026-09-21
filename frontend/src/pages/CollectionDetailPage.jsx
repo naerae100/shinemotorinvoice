@@ -1,23 +1,32 @@
-import { useEffect, useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { useCallback, useEffect, useState } from 'react';
+import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { format } from 'date-fns';
 import { api } from '../lib/api';
 import { formatNumber } from '../lib/format';
 import { useAuth } from '../context/AuthContext';
 import { apiErrorMessage } from '../lib/apiError';
 import ConfirmDialog from '../components/ConfirmDialog';
+import PhotoStrip from '../components/PhotoStrip';
+
+const round3 = (n) => Math.round((n + Number.EPSILON) * 1000) / 1000;
 
 /**
  * One pickup, as recorded.
  *
- * Shows who touched it as well as what it weighed. The contractor can correct
- * their own entry, which is the right trade for a weight typed beside a truck
- * — but only if the correction is visible afterwards, so who created it and
- * who last changed it sit on the record rather than only in the audit trail.
+ * A card per grade rather than a table, for the same reason the form is one:
+ * seven figures and a row of photographs do not fit a table row, and what is
+ * being read here is a comparison between two weighings — which reads as two
+ * columns, not as seven cells.
+ *
+ * It also shows who touched it. A contractor can correct their own entry,
+ * which is the right trade for a weight typed beside a truck, but only if
+ * the correction is visible afterwards — so who recorded it and who last
+ * changed it sit on the record rather than only in the audit trail.
  */
 export default function CollectionDetailPage() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
   const { isAdmin } = useAuth();
 
   const [collection, setCollection] = useState(null);
@@ -26,22 +35,28 @@ export default function CollectionDetailPage() {
   const [dialog, setDialog] = useState(null);
   const [busy, setBusy] = useState(false);
 
-  function load() {
-    setLoading(true);
-    return api
-      .get(`/collections/${id}`)
-      .then((res) => {
-        setCollection(res.data.collection);
-        setError('');
-      })
-      .catch(() => setError('Could not load that collection.'))
-      .finally(() => setLoading(false));
-  }
+  // Set when the form saved but a photo did not upload. The weights are
+  // safe; this says what is still outstanding — see the save in
+  // NewCollectionPage, which deliberately never lets a photo fail the form.
+  const [notice, setNotice] = useState(location.state?.notice ?? '');
+
+  const load = useCallback(
+    () =>
+      api
+        .get(`/collections/${id}`)
+        .then((res) => {
+          setCollection(res.data.collection);
+          setError('');
+        })
+        .catch(() => setError('Could not load that collection.'))
+        .finally(() => setLoading(false)),
+    [id]
+  );
 
   useEffect(() => {
+    setLoading(true);
     load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id]);
+  }, [load]);
 
   async function runAction(path, body) {
     setBusy(true);
@@ -68,49 +83,81 @@ export default function CollectionDetailPage() {
   }
 
   const isVoid = collection.status === 'VOID';
-  const round3 = (n) => Math.round((n + Number.EPSILON) * 1000) / 1000;
   const totalNet = round3(collection.lines.reduce((a, l) => a + Number(l.netWeight), 0));
 
-  /**
-   * The comparison, over only the lines weighed on both sides.
-   *
-   * `ours` here is deliberately not the collection total: setting our whole
-   * net against a supplier figure that covers half the grades would print a
-   * difference that is mostly the missing lines.
-   */
-  const compared = collection.lines.filter((l) => l.supplierNetWeight != null);
-  const comparison = compared.length
+  // Only the grades weighed on both sides. Setting our whole net against a
+  // supplier figure that covers half of them would report a difference which
+  // is mostly the missing lines.
+  const both = collection.lines.filter((l) => l.supplierNetWeight != null);
+  const comparison = both.length
     ? {
-        lines: compared.length,
-        ours: round3(compared.reduce((a, l) => a + Number(l.netWeight), 0)),
-        theirs: round3(compared.reduce((a, l) => a + Number(l.supplierNetWeight), 0)),
+        lines: both.length,
+        ours: round3(both.reduce((a, l) => a + Number(l.netWeight), 0)),
+        theirs: round3(both.reduce((a, l) => a + Number(l.supplierNetWeight), 0)),
       }
     : null;
 
+  const photoCount =
+    collection.photos.length + collection.lines.reduce((a, l) => a + l.photos.length, 0);
+
   return (
-    <div className="mx-auto max-w-4xl px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
-      <div className="mb-4">
+    <div className="mx-auto max-w-4xl px-4 py-5 sm:px-6 lg:px-8 lg:py-7">
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <Link to="/collections" className="text-sm font-medium text-copper-600">
           ← All collections
         </Link>
+        <div className="btn-row">
+          {!isVoid && (
+            <button
+              type="button"
+              onClick={() => navigate(`/collections/${id}/edit`)}
+              className="btn-secondary btn-sm"
+            >
+              Edit
+            </button>
+          )}
+          {isAdmin && !isVoid && (
+            <button type="button" onClick={() => setDialog('void')} className="btn-danger btn-sm">
+              Void…
+            </button>
+          )}
+          {isAdmin && isVoid && (
+            <button
+              type="button"
+              onClick={() => runAction('restore')}
+              disabled={busy}
+              className="btn-secondary btn-sm"
+            >
+              Restore
+            </button>
+          )}
+        </div>
       </div>
 
+      {notice && (
+        <div className="mb-4 flex items-start justify-between gap-3 rounded-lg border border-working-amber/30 bg-working-amberDim px-4 py-3 text-sm text-working-amber">
+          <span>{notice}</span>
+          <button type="button" onClick={() => setNotice('')} aria-label="Dismiss">
+            ×
+          </button>
+        </div>
+      )}
       {error && (
         <div className="mb-4 rounded-lg bg-working-redDim px-4 py-3 text-sm text-working-red">
           {error}
         </div>
       )}
 
+      {/* ── Header and the three headline figures ──────────────────── */}
       <div className="surface overflow-hidden">
-        <div className="flex flex-col gap-3 bg-steel-900 px-6 py-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex flex-col gap-3 bg-steel-900 px-5 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6">
           <div className="min-w-0">
-            <h1 className="font-display text-base font-semibold text-paper">
+            <h1 className="font-display text-lg font-semibold text-paper">
               Collection #{collection.collectionNumber}
             </h1>
-            {/* steel-400 on steel-900 measured about 2.8:1 — under the 4.5:1
-                floor for text this size, and the date was genuinely hard to
-                read. steel-300 clears it while staying quieter than the
-                heading above it. */}
+            {/* steel-300, not steel-400: on this ground the lighter grey
+                measured about 2.8:1, under the 4.5:1 floor, and the date was
+                genuinely hard to read. */}
             <div className="text-xs font-medium text-steel-300">
               {format(new Date(collection.date), 'EEEE d MMMM yyyy, h:mma')}
             </div>
@@ -123,13 +170,13 @@ export default function CollectionDetailPage() {
         </div>
 
         {isVoid && collection.voidReason && (
-          <div className="border-b border-working-red/20 bg-working-redDim px-6 py-3 text-sm text-working-red">
+          <div className="border-b border-working-red/20 bg-working-redDim px-5 py-3 text-sm text-working-red sm:px-6">
             {collection.voidReason}
           </div>
         )}
 
-        <div className="grid grid-cols-1 gap-x-8 gap-y-4 border-b border-steel-100 px-6 py-5 sm:grid-cols-2">
-          <Detail label="Collected from">
+        <div className="grid grid-cols-1 gap-x-8 gap-y-4 border-b border-steel-100 px-5 py-4 sm:grid-cols-2 sm:px-6">
+          <Field label="Collected from">
             <Link
               to={`/local-suppliers/${collection.localSupplier.id}`}
               className="font-semibold text-steel-900 hover:text-copper-600"
@@ -137,182 +184,155 @@ export default function CollectionDetailPage() {
               {collection.localSupplier.name}
             </Link>
             <div className="mt-0.5 text-xs text-steel-500">
-              {[
-                collection.localSupplier.address,
-                collection.localSupplier.suburb,
-                collection.localSupplier.state,
-                collection.localSupplier.postcode,
-              ]
+              {[collection.localSupplier.suburb, collection.localSupplier.state]
                 .filter(Boolean)
                 .join(', ') || 'No address on file'}
             </div>
-            {collection.localSupplier.phone && (
-              <div className="num text-xs text-steel-500">{collection.localSupplier.phone}</div>
-            )}
-          </Detail>
-
-          <Detail label="Recorded by">
+          </Field>
+          <Field label="Recorded by">
             <div className="font-semibold text-steel-900">
               {collection.createdBy?.name ?? 'Unknown'}
             </div>
-            {/* The whole point of letting a contractor edit: the change has to
-                be visible without going to the audit trail to find it. */}
             {collection.editedBy && (
               <div className="mt-0.5 text-xs text-steel-500">
                 Last edited by {collection.editedBy.name}
                 {collection.editedAt &&
-                  ` on ${format(new Date(collection.editedAt), 'd MMM yyyy, h:mma')}`}
+                  ` on ${format(new Date(collection.editedAt), 'd MMM, h:mma')}`}
               </div>
             )}
-          </Detail>
-
-          {collection.notes && (
-            <Detail label="Notes" className="sm:col-span-2">
-              <p className="text-sm leading-relaxed text-steel-700">{collection.notes}</p>
-            </Detail>
-          )}
+          </Field>
         </div>
 
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[520px] text-sm">
-            <thead>
-              <tr className="border-b border-steel-100 bg-paper text-left text-[11px] uppercase tracking-wider text-steel-500">
-                <th className="px-6 py-3 font-semibold">Grade</th>
-                <th className="px-6 py-3 text-right font-semibold">Our net</th>
-                <th className="px-6 py-3 text-right font-semibold">Their net</th>
-                <th className="px-6 py-3 text-right font-semibold">Difference</th>
-              </tr>
-            </thead>
-            <tbody>
-              {collection.lines.map((l) => {
-                const theirs = l.supplierNetWeight == null ? null : Number(l.supplierNetWeight);
-                const diff =
-                  theirs === null
-                    ? null
-                    : Math.round((Number(l.netWeight) - theirs + Number.EPSILON) * 1000) / 1000;
-                return (
-                  <tr key={l.id} className="data-row align-top">
-                    <td className="px-6 py-3 text-steel-800">
-                      {l.material?.description ?? l.description}
-                      {!l.material && (
-                        <span className="ml-2 text-xs text-steel-400">not a listed grade</span>
-                      )}
-                    </td>
-                    {/* The gross and tare that produced each net sit under it,
-                        small. They are what you check when a difference looks
-                        wrong, and they are noise until then. */}
-                    <td className="px-6 py-3 text-right">
-                      <div className="num font-semibold text-steel-900">
-                        {formatNumber(l.netWeight, 3)}
-                      </div>
-                      <div className="num text-[11px] text-steel-400">
-                        {formatNumber(l.grossWeight, 3)} − {formatNumber(l.tareWeight, 3)}
-                      </div>
-                    </td>
-                    <td className="px-6 py-3 text-right">
-                      {theirs === null ? (
-                        <span className="text-xs text-steel-400">not weighed</span>
-                      ) : (
-                        <>
-                          <div className="num font-semibold text-steel-700">
-                            {formatNumber(theirs, 3)}
-                          </div>
-                          <div className="num text-[11px] text-steel-400">
-                            {formatNumber(l.supplierGrossWeight, 3)} −{' '}
-                            {formatNumber(l.supplierTareWeight, 3)}
-                          </div>
-                        </>
-                      )}
-                    </td>
-                    {/* Same emphasis as the form gives it: a filled chip, so
-                        the eye lands on the comparison rather than having to
-                        pick it out of four columns of similar numbers. */}
-                    <td className="px-6 py-3 text-right">
-                      {diff === null ? (
-                        <span className="text-xs font-medium text-steel-300">—</span>
-                      ) : (
-                        <span className="num inline-block rounded-md bg-steel-900 px-2.5 py-1 text-sm font-bold text-white">
-                          {diff > 0 ? '+' : ''}
-                          {formatNumber(diff, 3)}
-                        </span>
-                      )}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-            {/* Two rows, not one, whenever the supplier weighed only some of
-                the grades.
-                
-                A single Total line put our whole net beside their partial one
-                with a difference worked out from neither: 4,284.600 against
-                2,300.600 reading "−7.000". The figure was right and looked
-                wrong, which is the worst way for a number to be right. The
-                collection total and the comparison are two different sums, so
-                they get two rows. */}
-            <tfoot>
-              <tr className="border-t-2 border-steel-200 font-semibold">
-                <td className="px-6 py-3 text-steel-700">Collection total</td>
-                <td className="num px-6 py-3 text-right text-steel-900">
-                  {formatNumber(totalNet, 3)}
-                </td>
-                <td className="px-6 py-3" />
-                <td className="px-6 py-3" />
-              </tr>
-              {comparison && (
-                <tr className="border-t border-steel-100 font-semibold">
-                  <td className="px-6 py-3 text-steel-700">
-                    Compared
-                    {comparison.lines < collection.lines.length && (
-                      <span className="ml-1 text-[11px] font-medium text-steel-400">
-                        {comparison.lines} of {collection.lines.length} grades
-                      </span>
-                    )}
-                  </td>
-                  <td className="num px-6 py-3 text-right text-steel-900">
-                    {formatNumber(comparison.ours, 3)}
-                  </td>
-                  <td className="num px-6 py-3 text-right text-steel-700">
-                    {formatNumber(comparison.theirs, 3)}
-                  </td>
-                  <td className="px-6 py-3 text-right">
-                    <span className="num inline-block rounded-md bg-steel-900 px-2.5 py-1 text-sm font-bold text-white">
-                      {comparison.ours - comparison.theirs > 0 ? '+' : ''}
-                      {formatNumber(round3(comparison.ours - comparison.theirs), 3)}
-                    </span>
-                  </td>
-                </tr>
-              )}
-            </tfoot>
-          </table>
+        {/* The three numbers somebody opens this page to see. */}
+        <div className="grid grid-cols-2 sm:grid-cols-3 sm:divide-x sm:divide-steel-100">
+          <Stat label="Collection total" value={`${formatNumber(totalNet, 3)} kg`} />
+          <Stat
+            label={
+              comparison && comparison.lines < collection.lines.length
+                ? `Theirs · ${comparison.lines} of ${collection.lines.length}`
+                : 'Their total'
+            }
+            value={comparison ? `${formatNumber(comparison.theirs, 3)} kg` : 'not weighed'}
+            muted={!comparison}
+          />
+          <Stat
+            label="Difference"
+            value={
+              comparison
+                ? `${comparison.ours - comparison.theirs > 0 ? '+' : ''}${formatNumber(
+                    round3(comparison.ours - comparison.theirs),
+                    3
+                  )} kg`
+                : '—'
+            }
+            plate={Boolean(comparison)}
+            className="col-span-2 border-t border-steel-100 sm:col-span-1 sm:border-t-0"
+          />
         </div>
       </div>
 
-      <div className="btn-row mt-4 justify-end">
-        {!isVoid && (
-          <button
-            type="button"
-            onClick={() => navigate(`/collections/${id}/edit`)}
-            className="btn-secondary"
-          >
-            Edit
-          </button>
+      {/* ── A card per grade ───────────────────────────────────────── */}
+      <h2 className="section-label">What was collected</h2>
+      <div className="space-y-4">
+        {collection.lines.map((l) => {
+          const theirs = l.supplierNetWeight == null ? null : Number(l.supplierNetWeight);
+          const diff = theirs === null ? null : round3(Number(l.netWeight) - theirs);
+          return (
+            <div key={l.id} className="surface overflow-hidden">
+              <div className="px-5 py-4">
+                <div className="font-semibold text-steel-900">
+                  {l.material?.description ?? l.description}
+                  {!l.material && (
+                    <span className="ml-2 text-xs font-normal text-steel-400">
+                      not a listed grade
+                    </span>
+                  )}
+                </div>
+
+                <div className="mt-3 grid grid-cols-[3.5rem_1fr_1fr] items-center gap-x-3 gap-y-1.5 text-sm">
+                  <div />
+                  <div className="text-center text-[11px] font-bold uppercase tracking-wider text-steel-500">
+                    Ours
+                  </div>
+                  <div className="text-center text-[11px] font-bold uppercase tracking-wider text-steel-400">
+                    Theirs
+                  </div>
+                  <Row label="Gross" ours={l.grossWeight} theirs={l.supplierGrossWeight} />
+                  <Row label="Tare" ours={l.tareWeight} theirs={l.supplierTareWeight} />
+                  <Row label="Net" ours={l.netWeight} theirs={l.supplierNetWeight} strong />
+                </div>
+
+                {(l.photos.length > 0 || !isVoid) && (
+                  <div className="mt-4 border-t border-steel-100 pt-3">
+                    <PhotoStrip
+                      compact
+                      collectionId={collection.id}
+                      lineId={l.id}
+                      photos={l.photos}
+                      canAdd={!isVoid}
+                      canDelete={isAdmin}
+                      onChanged={load}
+                    />
+                  </div>
+                )}
+              </div>
+
+              {/* The answer, on its own plate — the same treatment the form
+                  gives it, so the number looks the same in both places. */}
+              <div
+                className={`flex items-center justify-between px-5 py-2.5 ${
+                  diff === null ? 'bg-steel-100' : 'bg-steel-900'
+                }`}
+              >
+                <span
+                  className={`text-[11px] font-bold uppercase tracking-wider ${
+                    diff === null ? 'text-steel-500' : 'text-steel-300'
+                  }`}
+                >
+                  Difference
+                </span>
+                {diff === null ? (
+                  <span className="text-xs font-medium text-steel-500">they did not weigh</span>
+                ) : (
+                  <span className="num text-lg font-bold leading-none text-white">
+                    {diff > 0 ? '+' : ''}
+                    {formatNumber(diff, 3)}
+                    <span className="ml-1 text-xs font-semibold text-steel-300">kg</span>
+                  </span>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* ── The pickup as a whole ──────────────────────────────────── */}
+      <h2 className="section-label">The pickup</h2>
+      <div className="surface px-5 py-4">
+        {collection.notes && (
+          <div className="mb-4">
+            <div className="field-label">Notes</div>
+            <p className="whitespace-pre-line text-sm leading-relaxed text-steel-700">
+              {collection.notes}
+            </p>
+          </div>
         )}
-        {isAdmin && !isVoid && (
-          <button type="button" onClick={() => setDialog('void')} className="btn-danger">
-            Void…
-          </button>
-        )}
-        {isAdmin && isVoid && (
-          <button
-            type="button"
-            onClick={() => runAction('restore')}
-            disabled={busy}
-            className="btn-secondary"
-          >
-            Restore
-          </button>
-        )}
+        <div className="field-label">
+          Photos
+          {photoCount > 0 && (
+            <span className="ml-1 font-medium text-steel-400">
+              {photoCount} on this collection
+            </span>
+          )}
+        </div>
+        <PhotoStrip
+          collectionId={collection.id}
+          photos={collection.photos}
+          canAdd={!isVoid}
+          canDelete={isAdmin}
+          onChanged={load}
+          emptyHint="No photos."
+        />
       </div>
 
       <ConfirmDialog
@@ -330,11 +350,51 @@ export default function CollectionDetailPage() {
   );
 }
 
-function Detail({ label, children, className = '' }) {
+function Field({ label, children }) {
   return (
-    <div className={className}>
+    <div>
       <div className="field-label">{label}</div>
       {children}
     </div>
+  );
+}
+
+function Stat({ label, value, plate = false, muted = false, className = '' }) {
+  return (
+    <div className={`px-5 py-4 sm:px-6 ${className}`}>
+      <div className="text-[11px] font-bold uppercase tracking-wider text-steel-500">{label}</div>
+      {plate ? (
+        <div className="num mt-1 inline-block rounded-md bg-steel-900 px-2.5 py-1 text-base font-bold text-white">
+          {value}
+        </div>
+      ) : (
+        <div className={`num mt-1 text-lg font-bold ${muted ? 'text-steel-400' : 'text-steel-900'}`}>
+          {value}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** One weight, ours and theirs, on a single row. */
+function Row({ label, ours, theirs, strong = false }) {
+  const cell = (v, bold) =>
+    v == null ? (
+      <span className="text-steel-300">—</span>
+    ) : (
+      <span className={bold ? 'font-bold text-steel-900' : 'text-steel-700'}>
+        {formatNumber(v, 3)}
+      </span>
+    );
+  return (
+    <>
+      <div className="text-xs font-semibold text-steel-600">{label}</div>
+      <div className={`num rounded-md px-2 py-1.5 text-right ${strong ? 'bg-steel-100' : ''}`}>
+        {cell(ours, strong)}
+      </div>
+      <div className={`num rounded-md px-2 py-1.5 text-right ${strong ? 'bg-paper' : ''}`}>
+        {cell(theirs, strong)}
+      </div>
+    </>
   );
 }

@@ -41,10 +41,11 @@ model User {
   invoicesEdited  ExportInvoice[] @relation("InvoiceEditedBy")
   invoicesVoided  ExportInvoice[] @relation("InvoiceVoidedBy")
 
-  localSuppliersCreated LocalSupplier[] @relation("LocalSupplierCreatedBy")
-  collectionsCreated    Collection[]    @relation("CollectionCreatedBy")
-  collectionsEdited     Collection[]    @relation("CollectionEditedBy")
-  collectionsVoided     Collection[]    @relation("CollectionVoidedBy")
+  localSuppliersCreated LocalSupplier[]   @relation("LocalSupplierCreatedBy")
+  photosUploaded        CollectionPhoto[] @relation("PhotoUploadedBy")
+  collectionsCreated    Collection[]      @relation("CollectionCreatedBy")
+  collectionsEdited     Collection[]      @relation("CollectionEditedBy")
+  collectionsVoided     Collection[]      @relation("CollectionVoidedBy")
 }
 
 // ─────────────────────────────────────────────
@@ -609,7 +610,8 @@ model Collection {
   editedById String?
   editedBy   User?     @relation("CollectionEditedBy", fields: [editedById], references: [id])
 
-  lines CollectionLine[]
+  lines  CollectionLine[]
+  photos CollectionPhoto[]
 
   @@index([localSupplierId])
   @@index([date])
@@ -648,5 +650,53 @@ model CollectionLine {
   supplierTareWeight  Decimal?
   supplierNetWeight   Decimal?
 
+  photos CollectionPhoto[]
+
   @@index([collectionId])
+}
+
+/// A photograph taken on a pickup.
+///
+/// Attached either to one grade — "this is the copper we weighed" — or to the
+/// collection as a whole, for the load, the yard, or a signed note. Both are
+/// optional: a contractor with no signal, or nothing worth photographing,
+/// saves a collection exactly as before.
+///
+/// The bytes are NOT here. They live with a storage provider (Google Drive)
+/// and this row holds the reference, because a photograph in a database
+/// column is returned by every query that touches the row it hangs off — the
+/// collections list would have gone from tens of kilobytes to megabytes, and
+/// the yard's tablet loads that list all day.
+model CollectionPhoto {
+  id String @id @default(cuid())
+
+  /// Always set, even for a line photo, so a collection's photographs can be
+  /// found and cleaned up without walking its lines.
+  collectionId String
+  collection   Collection @relation(fields: [collectionId], references: [id], onDelete: Cascade)
+
+  /// Null for a photo of the whole pickup; set for a photo of one grade.
+  /// Cascades with the line, which is why lines had to keep their identity
+  /// across an edit before this could exist.
+  lineId String?
+  line   CollectionLine? @relation(fields: [lineId], references: [id], onDelete: Cascade)
+
+  /// Which storage holds the bytes — "GOOGLE_DRIVE" today. Recorded per photo
+  /// rather than assumed globally, so moving provider later does not strand
+  /// everything uploaded before the move.
+  provider String
+
+  /// The provider's own handle: a Drive file id.
+  externalId String
+
+  filename    String
+  contentType String
+  bytes       Int
+
+  createdAt   DateTime @default(now())
+  createdById String?
+  createdBy   User?    @relation("PhotoUploadedBy", fields: [createdById], references: [id])
+
+  @@index([collectionId])
+  @@index([lineId])
 }

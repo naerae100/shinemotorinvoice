@@ -19,6 +19,7 @@ import xeroRoutes from './routes/xero.js';
 import auditRoutes from './routes/audit.js';
 import localSupplierRoutes from './routes/localSuppliers.js';
 import collectionRoutes from './routes/collections.js';
+import driveRoutes from './routes/drive.js';
 import abnRoutes from './routes/abn.js';
 import addressRoutes from './routes/address.js';
 import { errorHandler, notFoundHandler } from './middleware/errorHandler.js';
@@ -101,6 +102,7 @@ app.use('/api/audit', auditRoutes);
 // middleware/auth.js, not the order here.
 app.use('/api/local-suppliers', localSupplierRoutes);
 app.use('/api/collections', collectionRoutes);
+app.use('/api/drive', driveRoutes);
 app.use('/api/abn', abnRoutes);
 app.use('/api/address', addressRoutes);
 

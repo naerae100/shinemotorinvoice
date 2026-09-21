@@ -8,7 +8,7 @@
     "dev": "node --watch src/index.js",
     "db:start": "/opt/homebrew/opt/postgresql@16/bin/pg_ctl -D $HOME/.local/share/shine-metals/pgdata -o \"-p 5433 -c listen_addresses=localhost -c unix_socket_directories=''\" -l $HOME/.local/share/shine-metals/pg.log start",
     "db:stop": "/opt/homebrew/opt/postgresql@16/bin/pg_ctl -D $HOME/.local/share/shine-metals/pgdata stop -m fast",
-    "dev:local": "DATABASE_URL=postgresql://postgres@localhost:5433/shine_dev DIRECT_URL=postgresql://postgres@localhost:5433/shine_dev FRONTEND_URL=http://localhost:5174 node --watch src/index.js",
+    "dev:local": "DATABASE_URL=postgresql://postgres@localhost:5433/shine_dev DIRECT_URL=postgresql://postgres@localhost:5433/shine_dev FRONTEND_URL=http://localhost:5174 PHOTO_STORAGE=local node --watch src/index.js",
     "seed:local": "DATABASE_URL=postgresql://postgres@localhost:5433/shine_dev DIRECT_URL=postgresql://postgres@localhost:5433/shine_dev SEED_ADMIN_PASSWORD=ShineDev12345 node prisma/seed.js",
     "migrate:local": "DATABASE_URL=postgresql://postgres@localhost:5433/shine_dev DIRECT_URL=postgresql://postgres@localhost:5433/shine_dev npx prisma migrate deploy",
     "start": "node src/index.js",
