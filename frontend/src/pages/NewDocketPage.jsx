@@ -412,16 +412,13 @@ export default function NewDocketPage({ defaultType = 'PURCHASE_DOCKET' }) {
     return <div className="px-4 py-6 sm:px-6 lg:px-8 lg:py-8 text-sm text-steel-500">Loading…</div>;
   }
 
+  // No standalone page title. It read "New purchase docket" in 24px directly
+  // above a dark bar that read "Purchase docket" — the same sentence twice,
+  // and about 90px of an 800px-tall tablet screen spent saying it. The bar was
+  // already a header; it is now the page's, and the form starts that much
+  // closer to the top.
   return (
-    <div className="docket-form mx-auto max-w-6xl px-4 py-6 pb-24 sm:px-6 lg:px-8 lg:py-8 lg:pb-20">
-      <h1 className="mb-6 font-display text-2xl font-semibold text-steel-900">
-        {isEdit
-          ? `Edit ${type === 'TAX_INVOICE' ? 'tax invoice' : 'docket'}`
-          : type === 'TAX_INVOICE'
-            ? 'New tax invoice'
-            : 'New purchase docket'}
-      </h1>
-
+    <div className="docket-form mx-auto max-w-6xl px-4 py-3 pb-24 sm:px-6 lg:px-8 lg:py-5 lg:pb-20">
       <form onSubmit={handleSubmit}>
         <div className="overflow-hidden rounded-xl border border-steel-200 bg-white shadow-ticket">
           {/* Stacks below sm. Side by side, "Purchase docket" and "Docket #
@@ -430,9 +427,13 @@ export default function NewDocketPage({ defaultType = 'PURCHASE_DOCKET' }) {
               340px. Above sm there is room and nothing changes. */}
           <div className="flex flex-col gap-3 bg-steel-900 px-6 py-4 sm:flex-row sm:items-center sm:justify-between">
             <div className="min-w-0">
-              <div className="font-semibold text-paper">
-                {type === 'TAX_INVOICE' ? 'Tax invoice' : 'Purchase docket'}
-              </div>
+              <h1 className="font-display text-base font-semibold text-paper">
+                {isEdit
+                  ? `Edit ${type === 'TAX_INVOICE' ? 'tax invoice' : 'docket'}`
+                  : type === 'TAX_INVOICE'
+                    ? 'New tax invoice'
+                    : 'New purchase docket'}
+              </h1>
               {!editId && <div className="text-xs text-steel-400">Docket # assigned on save</div>}
             </div>
             <div className="flex items-center gap-3">

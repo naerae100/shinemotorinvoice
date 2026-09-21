@@ -286,6 +286,9 @@ export default function AppLayout() {
 
   const navigate = useNavigate();
   const location = useLocation();
+  // Both the docket form and its edit route land on the same screen.
+  const onNewPurchase =
+    location.pathname === '/purchases/new' || location.pathname === '/tax-invoices/new';
   const [menuOpen, setMenuOpen] = useState(false);
   // Remembered per browser: someone who works from a narrow laptop collapses it
   // once and expects it to stay that way, and it is a per-person preference
@@ -379,11 +382,17 @@ export default function AppLayout() {
         {/* Was a cramped `+ New` at text-xs — the smallest control in the app,
             in the corner, and it is the one the yard presses most. It says what
             it makes, and below 380px the word gives way rather than the button
-            shrinking or the logo being pushed off. */}
-        <Link to="/purchases/new" className="btn-primary btn-sm ml-auto" aria-label="New purchase">
-          <PlusIcon />
-          <span className="hidden min-[380px]:inline">New purchase</span>
-        </Link>
+            shrinking or the logo being pushed off.
+
+            Hidden while a docket is being written: it is the loudest thing on
+            the screen, it offers the page you are already on, and on a tablet
+            in portrait that bar sits directly above the form. */}
+        {!onNewPurchase && (
+          <Link to="/purchases/new" className="btn-primary btn-sm ml-auto" aria-label="New purchase">
+            <PlusIcon />
+            <span className="hidden min-[380px]:inline">New purchase</span>
+          </Link>
+        )}
       </header>
 
       {/* ── Drawer (below lg) ───────────────────────────────────── */}
