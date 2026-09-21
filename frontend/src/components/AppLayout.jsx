@@ -71,6 +71,9 @@ const NAV_GROUPS = [
     items: [
       { to: '/collections', label: 'Collections', icon: 'purchases' },
       { to: '/local-suppliers', label: 'Local suppliers', icon: 'clients' },
+      // The grade list the field form picks from. Curating it is an office
+      // job, so a contractor sees the grades without seeing this.
+      { to: '/collection-materials', label: 'Collection grades', icon: 'materials', adminOnly: true },
     ],
   },
   {
@@ -204,7 +207,9 @@ function SidebarContent({
                   {group.title}
                 </div>
               ))}
-            {group.items.map((item) => (
+            {group.items
+              .filter((item) => !item.adminOnly || isAdmin)
+              .map((item) => (
               <NavLink
                 key={item.to}
                 to={item.to}

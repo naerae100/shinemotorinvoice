@@ -131,9 +131,15 @@ export default function MaterialField({ value, description, materials, onSelect,
                 }`}
               >
                 <span className="truncate">{label(m)}</span>
-                <span className="num shrink-0 text-[11px] text-steel-400">
-                  {Number(m.currentPrice).toFixed(2)}/{(m.unit || 'KG').toLowerCase()}
-                </span>
+                {/* Only when there is one. The field collection list carries
+                    no price on purpose — a contractor has no reason to know
+                    what the yard pays — and rendering it regardless printed
+                    "ICW 30%NaN/kg" beside every grade. */}
+                {m.currentPrice != null && Number.isFinite(Number(m.currentPrice)) && (
+                  <span className="num shrink-0 text-[11px] text-steel-400">
+                    {Number(m.currentPrice).toFixed(2)}/{(m.unit || 'KG').toLowerCase()}
+                  </span>
+                )}
               </button>
             </li>
           ))}

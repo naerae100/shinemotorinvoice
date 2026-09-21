@@ -85,18 +85,23 @@ const withNet = (l) => ({
 /**
  * GET /api/collections/materials
  *
- * The grade list, without the price list. A contractor picks a grade but has
- * no reason to know what the yard pays for it, and /api/materials — which
- * returns currentPrice on every row — is closed to them for exactly that
- * reason. Buying grades only: these are pickups, not export sales.
+ * Its own catalogue (kind COLLECTION), not the buying price list.
+ *
+ * The grades called for in a driveway are not the set the weighbridge buys
+ * on, and the field list is deliberately flat — no codes, no categories —
+ * because a contractor scrolling for "ICW 42%" should not have to know which
+ * category it was filed under.
+ *
+ * No price is returned either way, and /api/materials, which carries
+ * currentPrice on every row, stays closed to this role.
  */
 router.get(
   '/materials',
   requireAuth,
   asyncHandler(async (req, res) => {
     const materials = await prisma.material.findMany({
-      where: { active: true, kind: 'PURCHASE' },
-      select: { id: true, description: true, unit: true, code: true },
+      where: { active: true, kind: 'COLLECTION' },
+      select: { id: true, description: true, unit: true },
       orderBy: { description: 'asc' },
     });
     res.json({ materials });

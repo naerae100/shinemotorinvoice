@@ -47,12 +47,44 @@ const KINDS = {
     empty: 'No grades match.',
     defaultUnit: 'TONNE',
     showPrice: false,
+    noPriceLabel: 'Per contract',
+  },
+  COLLECTION: {
+    label: 'Field grades',
+    title: 'Collection grades',
+    adminBlurb:
+      'The grades a contractor picks from when weighing scrap in the field. Weighed, never priced — nothing is bought at this list.',
+    staffBlurb: 'The grades used on field collections.',
+    addLabel: '+ Add grade',
+    exportLabel: 'Export grade list',
+    empty: 'No grades match.',
+    // Everything in the field goes across a set of scales.
+    defaultUnit: 'KG',
+    showPrice: false,
+    // Not "Per contract" — an export grade is priced somewhere else, a field
+    // grade is not priced at all, and saying the wrong one invites somebody
+    // to go looking for a rate that does not exist.
+    noPriceLabel: 'Not priced',
+    // One flat list. The other two catalogues group by category because they
+    // are long and someone is hunting a known grade; the field list is short
+    // and read straight through, and grouping it would put every row under a
+    // single "Uncategorised" heading.
+    showCategory: false,
   },
 };
 
-export default function MaterialsPage() {
+/**
+ * `fixedKind` pins the page to one catalogue and hides the tab strip.
+ *
+ * The field grades are reached from the Field group in the sidebar, as their
+ * own section, rather than as a third tab on a page called "Materials &
+ * pricing" — they are not priced, and a contractor's grade list is a
+ * different thing from the yard's buying rates. The screen underneath is the
+ * same one, because the job is the same: list, add, rename, retire.
+ */
+export default function MaterialsPage({ fixedKind }) {
   const { isAdmin } = useAuth();
-  const [kind, setKind] = useState('PURCHASE');
+  const [kind, setKind] = useState(fixedKind ?? 'PURCHASE');
   const cfg = KINDS[kind];
   const [materials, setMaterials] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -101,13 +133,16 @@ export default function MaterialsPage() {
   }, [materials, search, showInactive]);
 
   const grouped = useMemo(() => {
+    // A catalogue without categories is one group with no heading — see
+    // showCategory above.
+    if (cfg.showCategory === false) return [[null, visible]];
     const out = {};
     for (const m of visible) {
       const cat = m.category || 'Uncategorised';
       (out[cat] ||= []).push(m);
     }
     return Object.entries(out).sort(([a], [b]) => a.localeCompare(b));
-  }, [visible]);
+  }, [visible, cfg.showCategory]);
 
   async function savePrice(id) {
     setSaving(true);
@@ -209,15 +244,18 @@ export default function MaterialsPage() {
               />
             </div>
             {/* Typing a new name here creates the category — there is no separate
-                list to maintain, categories are simply what materials say they are. */}
-            <ComboField
-              label="Category"
-              value={form.category}
-              onChange={(v) => setForm({ ...form, category: v })}
-              options={categories}
-              placeholder="Pick or type a new one"
-              className="md:col-span-1"
-            />
+                list to maintain, categories are simply what materials say they are.
+                Absent for the field list, which is deliberately flat. */}
+            {cfg.showCategory !== false && (
+              <ComboField
+                label="Category"
+                value={form.category}
+                onChange={(v) => setForm({ ...form, category: v })}
+                options={categories}
+                placeholder="Pick or type a new one"
+                className="md:col-span-1"
+              />
+            )}
             <div>
               <label className="field-label">Unit</label>
               <select
@@ -293,7 +331,9 @@ export default function MaterialsPage() {
       <div
         role="tablist"
         aria-label="Catalogue"
-        className="mb-4 flex w-fit rounded-lg border border-steel-200 bg-white p-0.5"
+        className={`mb-4 w-fit rounded-lg border border-steel-200 bg-white p-0.5 ${
+          fixedKind ? 'hidden' : 'flex'
+        }`}
       >
         {Object.entries(KINDS).map(([key, k]) => (
           <button
@@ -318,9 +358,9 @@ export default function MaterialsPage() {
         <input
           type="text"
           placeholder={
-            kind === 'EXPORT'
-              ? 'Search grades or categories…'
-              : 'Search materials, codes or categories…'
+            kind === 'PURCHASE'
+              ? 'Search materials, codes or categories…'
+              : 'Search grades…'
           }
           value={search}
           onChange={(e) => setSearch(e.target.value)}
@@ -364,15 +404,17 @@ export default function MaterialsPage() {
         <div className="space-y-5">
           {grouped.map(([category, items]) => (
             <div
-              key={category}
+              key={category ?? 'all'}
               className="overflow-hidden rounded-xl border border-steel-200 bg-white shadow-ticket"
             >
-              <div className="flex items-center justify-between border-b border-steel-100 bg-paper px-5 py-2.5">
-                <h2 className="text-xs font-semibold uppercase tracking-wider text-steel-600">
-                  {category}
-                </h2>
-                <span className="num text-xs text-steel-400">{items.length}</span>
-              </div>
+              {category !== null && (
+                <div className="flex items-center justify-between border-b border-steel-100 bg-paper px-5 py-2.5">
+                  <h2 className="text-xs font-semibold uppercase tracking-wider text-steel-600">
+                    {category}
+                  </h2>
+                  <span className="num text-xs text-steel-400">{items.length}</span>
+                </div>
+              )}
               <div className="overflow-x-auto">
               <table className="w-full min-w-[560px] text-sm">
                 <tbody>
@@ -406,7 +448,7 @@ export default function MaterialsPage() {
                             printing it as "AUD 0.00" read as a grade worth
                             nothing rather than one priced elsewhere. */}
                         {!cfg.showPrice ? (
-                          <span className="text-xs italic text-steel-400">Per contract</span>
+                          <span className="text-xs italic text-steel-400">{cfg.noPriceLabel}</span>
                         ) : editingPriceId === m.id ? (
                           <div className="flex items-center justify-end gap-1.5">
                             <input

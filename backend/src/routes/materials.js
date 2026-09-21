@@ -19,13 +19,31 @@ const AUDITED_FIELDS = ['description', 'code', 'category', 'unit', 'currentPrice
 const materialSchema = z.object({
   // "PURCHASE" is the 33-item price list the yard buys on; "EXPORT" is the
   // trade-grade catalogue it sells under.
-  kind: z.enum(['PURCHASE', 'EXPORT']).default('PURCHASE'),
+  // COLLECTION is the field list: the grades a contractor can pick from
+  // when weighing scrap at a seller's place. They are weighed, never priced,
+  // which is why currentPrice below is optional for them and required for the
+  // other two — a buying price should always be a deliberate act.
+  kind: z.enum(['PURCHASE', 'EXPORT', 'COLLECTION']).default('PURCHASE'),
   code: z.number().int().optional().nullable(),
   description: z.string().min(1),
   category: z.string().optional().nullable(),
   unit: z.enum(['KG', 'TONNE', 'UNIT']).default('KG'),
-  currentPrice: z.number().nonnegative(),
+  currentPrice: z.number().nonnegative().optional(),
   active: z.boolean().optional(),
+});
+
+/**
+ * A price is still required for anything bought or sold.
+ *
+ * Making currentPrice optional at the field level was for COLLECTION grades,
+ * which have no price at all. Without this it would also have quietly stopped
+ * requiring one on the buying list, where a missing price means a docket line
+ * worth nothing.
+ */
+const createSchema = materialSchema.superRefine((m, ctx) => {
+  if (m.kind !== 'COLLECTION' && m.currentPrice == null) {
+    ctx.addIssue({ code: 'custom', path: ['currentPrice'], message: 'A price is required' });
+  }
 });
 
 // GET /api/materials — everyone can view (needed for docket entry)
@@ -43,10 +61,14 @@ router.get(
         ...(kind ? { kind: String(kind) } : {}),
       },
       // Export grades have no code, so they order by category then name.
+      // Collection grades have neither a code nor a category — the field
+      // list is deliberately flat — so they are simply alphabetical.
       orderBy:
         kind === 'EXPORT'
           ? [{ category: 'asc' }, { description: 'asc' }]
-          : [{ code: 'asc' }, { description: 'asc' }],
+          : kind === 'COLLECTION'
+            ? [{ description: 'asc' }]
+            : [{ code: 'asc' }, { description: 'asc' }],
     });
     res.json({ materials });
   })
@@ -85,11 +107,15 @@ router.post(
   requireAuth,
   requireRole('ADMIN'),
   asyncHandler(async (req, res) => {
-    const parsed = materialSchema.safeParse(req.body);
+    const parsed = createSchema.safeParse(req.body);
     if (!parsed.success) {
       return res.status(400).json({ error: parsed.error.flatten() });
     }
-    const material = await prisma.material.create({ data: parsed.data });
+    // The column is not nullable. A collection grade has no price, so it
+    // stores zero rather than the column being loosened for every material.
+    const material = await prisma.material.create({
+      data: { ...parsed.data, currentPrice: parsed.data.currentPrice ?? 0 },
+    });
     await audit({
       req,
       action: 'CREATE',

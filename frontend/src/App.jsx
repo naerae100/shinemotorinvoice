@@ -83,6 +83,18 @@ export default function App() {
                 element={<NewCollectionPage key="edit-collection" />}
               />
               <Route path="local-suppliers" element={<LocalSuppliersPage />} />
+              {/* The same catalogue screen, pinned to the field grades and
+                  reached from the Field group rather than from Materials &
+                  pricing — these are weighed, not priced. Admin only: a
+                  contractor uses the list, they do not curate it. */}
+              <Route
+                path="collection-materials"
+                element={
+                  <ProtectedRoute adminOnly>
+                    <MaterialsPage key="collection-grades" fixedKind="COLLECTION" />
+                  </ProtectedRoute>
+                }
+              />
               <Route path="local-suppliers/:id" element={<LocalSupplierDetailPage />} />
               {/* Distinct keys: the purchase and tax-invoice variants are the same
                   component, so without these React reuses one instance and carries
