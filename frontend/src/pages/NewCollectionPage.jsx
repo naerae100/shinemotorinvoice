@@ -304,7 +304,7 @@ export default function NewCollectionPage() {
   }
 
   return (
-    <div className="docket-form mx-auto max-w-5xl px-4 py-3 pb-24 sm:px-6 lg:px-8 lg:py-5 lg:pb-20">
+    <div className="docket-form mx-auto max-w-5xl px-4 py-3 pb-20 sm:px-6 lg:px-8 lg:py-5 lg:pb-16">
       <form onSubmit={handleSubmit}>
         <div className="surface overflow-hidden">
           <div className="flex flex-col gap-3 bg-steel-900 px-6 py-4 sm:flex-row sm:items-center sm:justify-between">
@@ -652,41 +652,55 @@ export default function NewCollectionPage() {
           className="pad-safe-bar fixed bottom-0 right-0 z-20 border-t border-steel-200 bg-white/95 px-4 pt-2 backdrop-blur supports-[backdrop-filter]:bg-white/85 sm:px-6 print:hidden"
           style={{ left: 'var(--app-sidebar-w, 0px)' }}
         >
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
-            {/* Our total, and the running difference beside it. The bar is
-                the only thing on screen the whole time the form is open, so
-                the comparison belongs here rather than only at the bottom of
-                a long list of grades. */}
-            <div className="flex min-w-0 flex-wrap items-baseline gap-x-3 gap-y-0.5">
-              <span className="num text-lg font-bold leading-none text-steel-900">
-                {formatNumber(totals.ours, 3)} kg
+          {/* One row, at every width.
+              
+              It was three on a phone — a total, a "net over N grades"
+              caption, a difference line, then two full-width buttons — and
+              measured 117px, fifteen percent of a 360px screen, permanently,
+              while somebody was trying to read the form underneath it.
+
+              What went: the grade count, which is countable on the form
+              itself; the word kg after the difference, since the figure
+              beside it already says kg; and "collection" from the save
+              button, which is the only thing this form saves. */}
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex min-w-0 items-baseline gap-2">
+              <span className="num shrink-0 text-base font-bold leading-none text-steel-900">
+                {formatNumber(totals.ours, 3)}
+                <span className="ml-0.5 text-[11px] font-semibold text-steel-500">kg</span>
               </span>
-              <span className="truncate text-xs font-medium text-steel-500">
-                net over {filledLines.length} {filledLines.length === 1 ? 'grade' : 'grades'}
-              </span>
+              {/* On a chip, because below 400px there is no room for the
+                  words "vs theirs" and a bare signed number floating beside
+                  the total does not announce itself as a comparison. The
+                  chip does that without costing a line. */}
               {totals.difference !== null && (
-                <span className="num w-full text-xs font-semibold text-steel-600 sm:w-auto">
+                <span className="num truncate rounded bg-steel-100 px-1.5 py-0.5 text-xs font-bold text-steel-700">
                   {totals.difference > 0 ? '+' : ''}
-                  {formatNumber(totals.difference, 3)} kg vs theirs
+                  {formatNumber(totals.difference, 3)}
+                  <span className="hidden font-semibold text-steel-500 min-[400px]:inline">
+                    {' '}
+                    vs theirs
+                  </span>
                   {totals.compared < filledLines.length && (
                     <span className="font-medium text-steel-400">
                       {' '}
-                      ({totals.compared} of {filledLines.length})
+                      ({totals.compared}/{filledLines.length})
                     </span>
                   )}
                 </span>
               )}
             </div>
-            <div className="btn-row flex-nowrap justify-stretch sm:justify-end">
+
+            <div className="flex shrink-0 items-center gap-1.5">
               <button
                 type="button"
                 onClick={() => navigate('/collections')}
-                className="btn-secondary flex-1 sm:flex-none"
+                className="btn-ghost btn-sm"
               >
                 Cancel
               </button>
-              <button type="submit" disabled={submitting} className="btn-primary flex-1 sm:flex-none">
-                {submitting ? 'Saving…' : isEdit ? 'Save changes' : 'Save collection'}
+              <button type="submit" disabled={submitting} className="btn-primary btn-sm">
+                {submitting ? 'Saving…' : isEdit ? 'Save changes' : 'Save'}
               </button>
             </div>
           </div>

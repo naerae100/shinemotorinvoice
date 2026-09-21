@@ -418,7 +418,7 @@ export default function NewDocketPage({ defaultType = 'PURCHASE_DOCKET' }) {
   // already a header; it is now the page's, and the form starts that much
   // closer to the top.
   return (
-    <div className="docket-form mx-auto max-w-6xl px-4 py-3 pb-24 sm:px-6 lg:px-8 lg:py-5 lg:pb-20">
+    <div className="docket-form mx-auto max-w-6xl px-4 py-3 pb-20 sm:px-6 lg:px-8 lg:py-5 lg:pb-16">
       <form onSubmit={handleSubmit}>
         <div className="overflow-hidden rounded-xl border border-steel-200 bg-white shadow-ticket">
           {/* Stacks below sm. Side by side, "Purchase docket" and "Docket #
@@ -867,38 +867,38 @@ export default function NewDocketPage({ defaultType = 'PURCHASE_DOCKET' }) {
           className="pad-safe-bar fixed bottom-0 right-0 z-20 border-t border-steel-200 bg-white/95 px-4 pt-2 backdrop-blur supports-[backdrop-filter]:bg-white/85 sm:px-6 print:hidden"
           style={{ left: 'var(--app-sidebar-w, 0px)' }}
         >
-          {/* One row, always.
-              The bar was two stacked blocks — a caption over a large total on
-              the left, two btn-lg buttons on the right — and it ate about a
-              seventh of an 800px-tall tablet screen permanently. The total
-              reads on one line with its tax basis beside it rather than above
-              it, the buttons come down to the default size, and the whole
-              thing is roughly half the height. Nothing was removed.
-
-              It still stacks below sm, where one row genuinely does not fit. */}
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+          {/* One row, at every width — the same shape the collection form
+              uses, so the two screens do not disagree about how a pinned bar
+              looks. It stacked below sm and measured 93px on a phone, twelve
+              percent of the screen, held there for as long as the form was
+              open. */}
+          <div className="flex items-center justify-between gap-3">
             <div className="flex min-w-0 items-baseline gap-2">
-              <span className="num text-lg font-bold leading-none text-steel-900">
+              <span className="num shrink-0 text-base font-bold leading-none text-steel-900">
                 {formatCurrency(total)}
               </span>
-              <span className="truncate text-xs font-medium text-steel-500">
+              {/* Hidden under 400px, where a six-figure total leaves no room
+                  and it truncated to "in…", which says less than nothing. It
+                  is not lost: the header above the form states the tax basis
+                  as the control that sets it. */}
+              <span className="hidden whitespace-nowrap text-[11px] font-medium text-steel-500 min-[400px]:inline">
                 {taxMode === 'INCLUSIVE'
-                  ? 'incl. GST'
+                  ? 'inc GST'
                   : taxMode === 'EXCLUSIVE'
-                    ? 'plus GST'
+                    ? '+ GST'
                     : 'no GST'}
               </span>
             </div>
-            <div className="btn-row flex-nowrap justify-stretch sm:justify-end">
+            <div className="flex shrink-0 items-center gap-1.5">
           <button
             type="submit"
             onClick={() => {
               printAfterSave.current = false;
             }}
             disabled={submitting}
-            className="btn-secondary flex-1 sm:flex-none"
+            className="btn-secondary btn-sm"
           >
-            {submitting ? 'Saving…' : isEdit ? 'Save changes' : 'Save docket'}
+            {submitting ? 'Saving…' : isEdit ? 'Save changes' : 'Save'}
           </button>
           {/* The weighbridge case: the supplier is standing there waiting for
               their copy, so saving and printing is one action rather than a
@@ -909,7 +909,7 @@ export default function NewDocketPage({ defaultType = 'PURCHASE_DOCKET' }) {
               printAfterSave.current = true;
             }}
             disabled={submitting}
-            className="btn-primary flex-1 sm:flex-none"
+            className="btn-primary btn-sm"
           >
             {submitting ? 'Saving…' : 'Save & print'}
           </button>
