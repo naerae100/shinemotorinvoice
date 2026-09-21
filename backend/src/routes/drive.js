@@ -49,8 +49,19 @@ const redirectUri = () =>
  * minutes, so only somebody who was an admin a moment ago can start a flow
  * that this server will finish.
  */
+/**
+ * Thirty minutes, not ten.
+ *
+ * This is a one-time setup that runs alongside configuring the Google Cloud
+ * console — registering a redirect URI, publishing a consent screen — and
+ * ten minutes ran out mid-way through that more than once. The state is
+ * CSRF protection for a flow only an admin can start, so a longer window
+ * costs little; a window too short to finish the task costs the task.
+ */
+const STATE_TTL_SECONDS = 30 * 60;
+
 const signState = () => {
-  const expires = Math.floor(Date.now() / 1000) + 600;
+  const expires = Math.floor(Date.now() / 1000) + STATE_TTL_SECONDS;
   const mac = crypto
     .createHmac('sha256', process.env.JWT_SECRET)
     .update(`drive:${expires}`)
@@ -118,9 +129,14 @@ router.get(
   '/callback',
   asyncHandler(async (req, res) => {
     if (!verifyState(req.query.state)) {
-      return res
-        .status(403)
-        .send(page('That link has expired', '<p>Start again from the app, signed in as an admin.</p>'));
+      return res.status(403).send(
+        page(
+          'That link has expired',
+          `<p>Approval links are good for thirty minutes. Generate a fresh one and
+            open it straight away — it is the last step, so do the Google Cloud
+            console parts first.</p>`
+        )
+      );
     }
     if (req.query.error) {
       return res.status(400).send(page('Google refused', `<p><code>${req.query.error}</code></p>`));

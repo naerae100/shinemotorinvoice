@@ -80,8 +80,9 @@ Signed in as an **admin**, open:
 /api/drive/auth
 ```
 
-It returns a Google URL. Open it, sign in **as the account that should own
-the photographs**, and approve. Google returns to `/api/drive/callback`,
+It returns a Google URL, good for **thirty minutes**. Do steps 1–4 first,
+then open it, sign in **as the account that should own the photographs**,
+and approve. Google returns to `/api/drive/callback`,
 which shows a refresh token once.
 
 Add it and redeploy:
