@@ -189,6 +189,26 @@ async function resolveFolders(folders = []) {
   return parent;
 }
 
+/**
+ * Does the stored credential actually work?
+ *
+ * `configured` only says the variables are present. A token that was
+ * truncated on the way into Vercel, revoked since, or minted while the
+ * consent screen was still in Testing looks identical until the first
+ * upload — and the first upload happens in a yard, which is the worst place
+ * to discover it. This asks Google, and creates nothing.
+ */
+export async function verifyCredentials() {
+  if (useLocal()) return { ok: true, provider: 'LOCAL' };
+  if (!isConfigured()) return { ok: false, error: 'Not configured' };
+  try {
+    await accessToken();
+    return { ok: true, provider: 'GOOGLE_DRIVE' };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+}
+
 export async function save({ buffer, filename, contentType, folders }) {
   if (useLocal()) {
     const { writeFile } = await import('node:fs/promises');

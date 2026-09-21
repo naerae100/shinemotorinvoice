@@ -2,7 +2,7 @@ import { Router } from 'express';
 import crypto from 'node:crypto';
 import { requireAuth, requireRole } from '../middleware/auth.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
-import { isConfigured } from '../lib/photoStorage.js';
+import { isConfigured, verifyCredentials } from '../lib/photoStorage.js';
 import { config } from '../config/env.js';
 
 const router = Router();
@@ -186,8 +186,14 @@ router.get(
   requireAuth,
   requireRole('ADMIN'),
   asyncHandler(async (req, res) => {
+    // ?check=1 asks Google whether the credential still works. Left out of
+    // the plain status because it is a network round trip, and the status is
+    // polled by a screen.
+    const live = req.query.check ? await verifyCredentials() : undefined;
+
     res.json({
       configured: isConfigured(),
+      ...(live ? { works: live.ok, ...(live.error ? { error: live.error } : {}) } : {}),
       hasClient: Boolean(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET),
       hasRefreshToken: Boolean(process.env.GOOGLE_REFRESH_TOKEN),
       rootFolderId: process.env.GOOGLE_DRIVE_ROOT_FOLDER_ID || null,
