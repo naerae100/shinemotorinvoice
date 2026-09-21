@@ -6,7 +6,11 @@ import { apiErrorMessage } from '../lib/apiError';
 import MaterialField from '../components/MaterialField';
 
 const BLANK_LINE = { materialId: '', description: '', grossWeight: '', tareWeight: '' };
-const BLANK_SELLER = { name: '', phone: '', address: '', suburb: '', state: 'NSW', postcode: '' };
+// A name, and a suburb if they give one. Phone and street address were here
+// and are not: a contractor is standing in a driveway with a load to weigh,
+// and a field nobody fills in is a field that only slows the form down. The
+// API still accepts both, so an admin can add them to a record later.
+const BLANK_SELLER = { name: '', suburb: '' };
 
 /** net = gross − tare, to three decimals, never below zero. */
 function netOf(line) {
@@ -263,7 +267,7 @@ export default function NewCollectionPage() {
             {/* Only asked for on somebody genuinely new, and only what can
                 actually be answered standing in a yard. */}
             {isNewSeller && (
-              <div className="mt-4 grid grid-cols-1 gap-3 rounded-md border border-steel-100 bg-paper p-4 sm:grid-cols-2">
+              <div className="mt-4 grid grid-cols-1 gap-3 rounded-md border border-steel-100 bg-paper p-4">
                 <div className="sm:col-span-2">
                   <label className="field-label" htmlFor="ls-name">
                     Name
@@ -275,40 +279,15 @@ export default function NewCollectionPage() {
                     className="w-full rounded-md border border-steel-200 px-3 py-2 text-sm"
                   />
                 </div>
-                <div>
-                  <label className="field-label" htmlFor="ls-phone">
-                    Phone <span className="field-hint">optional</span>
-                  </label>
-                  <input
-                    id="ls-phone"
-                    type="tel"
-                    inputMode="tel"
-                    value={newSeller.phone}
-                    onChange={(e) => setNewSeller({ ...newSeller, phone: e.target.value })}
-                    placeholder="0412 345 678"
-                    className="w-full rounded-md border border-steel-200 px-3 py-2 text-sm"
-                  />
-                </div>
-                <div>
+                <div className="sm:col-span-2">
                   <label className="field-label" htmlFor="ls-suburb">
-                    Suburb
+                    Suburb <span className="field-hint">optional</span>
                   </label>
                   <input
                     id="ls-suburb"
                     value={newSeller.suburb}
                     onChange={(e) => setNewSeller({ ...newSeller, suburb: e.target.value })}
                     placeholder="Riverstone"
-                    className="w-full rounded-md border border-steel-200 px-3 py-2 text-sm"
-                  />
-                </div>
-                <div className="sm:col-span-2">
-                  <label className="field-label" htmlFor="ls-address">
-                    Street address <span className="field-hint">optional</span>
-                  </label>
-                  <input
-                    id="ls-address"
-                    value={newSeller.address}
-                    onChange={(e) => setNewSeller({ ...newSeller, address: e.target.value })}
                     className="w-full rounded-md border border-steel-200 px-3 py-2 text-sm"
                   />
                 </div>

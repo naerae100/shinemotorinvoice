@@ -60,7 +60,7 @@ export default function LocalSuppliersPage() {
         <input
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search a name, suburb or phone number…"
+          placeholder="Search a name or suburb…"
           className="w-full rounded-md border border-steel-200 bg-white px-3 py-2.5 text-sm"
         />
       </div>
@@ -72,21 +72,20 @@ export default function LocalSuppliersPage() {
               <tr className="border-b border-steel-100 bg-paper text-left text-[11px] uppercase tracking-wider text-steel-500">
                 <th className="px-5 py-3 font-semibold">Name</th>
                 <th className="px-5 py-3 font-semibold">Where</th>
-                <th className="px-5 py-3 font-semibold">Phone</th>
                 <th className="px-5 py-3 text-right font-semibold">Collections</th>
               </tr>
             </thead>
             <tbody>
               {loading && rows.length === 0 && (
                 <tr>
-                  <td colSpan={4} className="px-5 py-10 text-center text-sm text-steel-500">
+                  <td colSpan={3} className="px-5 py-10 text-center text-sm text-steel-500">
                     Loading…
                   </td>
                 </tr>
               )}
               {!loading && rows.length === 0 && (
                 <tr>
-                  <td colSpan={4} className="px-5 py-10 text-center text-sm text-steel-500">
+                  <td colSpan={3} className="px-5 py-10 text-center text-sm text-steel-500">
                     {search
                       ? 'Nobody by that name.'
                       : 'No local suppliers yet — the first one is added on your first collection.'}
@@ -106,7 +105,6 @@ export default function LocalSuppliersPage() {
                   <td className="px-5 py-3 text-steel-600">
                     {[s.suburb, s.state].filter(Boolean).join(', ') || '—'}
                   </td>
-                  <td className="num px-5 py-3 text-steel-600">{s.phone || '—'}</td>
                   <td className="num px-5 py-3 text-right font-semibold text-steel-900">
                     {formatNumber(s._count?.collections ?? 0, 0)}
                   </td>
