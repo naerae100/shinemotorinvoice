@@ -224,11 +224,17 @@ export default function CollectionDetailPage() {
                         </>
                       )}
                     </td>
-                    <td className="num px-6 py-3 text-right font-bold text-steel-900">
+                    {/* Same emphasis as the form gives it: a filled chip, so
+                        the eye lands on the comparison rather than having to
+                        pick it out of four columns of similar numbers. */}
+                    <td className="px-6 py-3 text-right">
                       {diff === null ? (
                         <span className="text-xs font-medium text-steel-300">—</span>
                       ) : (
-                        `${diff > 0 ? '+' : ''}${formatNumber(diff, 3)}`
+                        <span className="num inline-block rounded-md bg-steel-900 px-2.5 py-1 text-sm font-bold text-white">
+                          {diff > 0 ? '+' : ''}
+                          {formatNumber(diff, 3)}
+                        </span>
                       )}
                     </td>
                   </tr>
@@ -269,9 +275,11 @@ export default function CollectionDetailPage() {
                   <td className="num px-6 py-3 text-right text-steel-700">
                     {formatNumber(comparison.theirs, 3)}
                   </td>
-                  <td className="num px-6 py-3 text-right text-steel-900">
-                    {comparison.ours - comparison.theirs > 0 ? '+' : ''}
-                    {formatNumber(round3(comparison.ours - comparison.theirs), 3)}
+                  <td className="px-6 py-3 text-right">
+                    <span className="num inline-block rounded-md bg-steel-900 px-2.5 py-1 text-sm font-bold text-white">
+                      {comparison.ours - comparison.theirs > 0 ? '+' : ''}
+                      {formatNumber(round3(comparison.ours - comparison.theirs), 3)}
+                    </span>
                   </td>
                 </tr>
               )}

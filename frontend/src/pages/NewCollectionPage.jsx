@@ -496,21 +496,37 @@ export default function NewCollectionPage() {
                       </div>
                     </div>
 
-                    {/* Ours minus theirs, stated plainly. No threshold and no
-                        colour: what counts as a real discrepancy is a judgement
-                        about this seller and this load, and a number that turns
-                        amber on its own would be making that call for you. */}
-                    <div className="mt-2 flex items-baseline justify-between border-t border-steel-100 pt-2">
-                      <span className="text-xs font-semibold text-steel-600">Difference</span>
-                      <span className="num text-sm font-bold text-steel-900">
-                        {diff === null ? (
-                          <span className="text-xs font-medium text-steel-400">
-                            they did not weigh
-                          </span>
-                        ) : (
-                          `${diff > 0 ? '+' : ''}${formatNumber(diff, 3)} kg`
-                        )}
+                    {/* The answer, on its own plate.
+                        
+                        It was a plain row and read as a footnote to the grid
+                        above it, when it is the only line on the card anyone
+                        is actually looking for. Weight, not colour: the same
+                        dark plate the docket puts its total on, so it carries
+                        emphasis without the app deciding for you whether two
+                        kilos is a problem. */}
+                    <div
+                      className={`-mx-3 -mb-3 mt-3 flex items-center justify-between gap-3 rounded-b-xl px-3 py-2.5 sm:-mx-4 sm:-mb-4 sm:px-4 ${
+                        diff === null ? 'bg-steel-100' : 'bg-steel-900'
+                      }`}
+                    >
+                      <span
+                        className={`text-[11px] font-bold uppercase tracking-wider ${
+                          diff === null ? 'text-steel-500' : 'text-steel-300'
+                        }`}
+                      >
+                        Difference
                       </span>
+                      {diff === null ? (
+                        <span className="text-xs font-medium text-steel-500">
+                          they did not weigh
+                        </span>
+                      ) : (
+                        <span className="num text-lg font-bold leading-none text-white">
+                          {diff > 0 ? '+' : ''}
+                          {formatNumber(diff, 3)}
+                          <span className="ml-1 text-xs font-semibold text-steel-300">kg</span>
+                        </span>
+                      )}
                     </div>
                   </div>
                 );
