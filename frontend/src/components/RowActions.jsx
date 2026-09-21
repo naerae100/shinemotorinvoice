@@ -74,8 +74,7 @@ export default function RowActions({ viewTo, onEdit, onVoid, onRestore, isVoid, 
   }, [open]);
 
   const item = 'block w-full px-3 py-2 text-left text-sm hover:bg-paper';
-  const btn =
-    'rounded-md border border-steel-200 bg-white px-2.5 py-1 text-xs font-semibold text-steel-700 hover:bg-paper';
+  const btn = 'btn-secondary btn-sm';
 
   const hasMenu = (!isVoid && onVoid) || (isVoid && onRestore);
 
@@ -100,7 +99,7 @@ export default function RowActions({ viewTo, onEdit, onVoid, onRestore, isVoid, 
             aria-label="More actions"
             aria-expanded={open}
             aria-haspopup="menu"
-            className="rounded-md border border-steel-200 bg-white px-2 py-1 text-xs font-semibold text-steel-600 hover:bg-paper"
+            className="btn-secondary btn-sm btn-icon"
           >
             ⋯
           </button>

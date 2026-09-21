@@ -75,7 +75,7 @@ export default function UsersPage() {
         </div>
         <button
           onClick={() => setForm({ ...BLANK })}
-          className="rounded-md bg-copper-500 px-4 py-2.5 text-sm font-semibold text-white hover:bg-copper-400"
+          className="btn-primary"
         >
           + Add staff member
         </button>
@@ -97,17 +97,17 @@ export default function UsersPage() {
           </h2>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div>
-              <label className="mb-1 block text-xs font-medium text-steel-500">Full name</label>
+              <label className="field-label">Full name</label>
               <input required value={form.name}
                 onChange={(e) => setForm({ ...form, name: e.target.value })} className={field} />
             </div>
             <div>
-              <label className="mb-1 block text-xs font-medium text-steel-500">Email (their login)</label>
+              <label className="field-label">Email (their login)</label>
               <input required type="email" value={form.email}
                 onChange={(e) => setForm({ ...form, email: e.target.value })} className={field} />
             </div>
             <div>
-              <label className="mb-1 block text-xs font-medium text-steel-500">
+              <label className="field-label">
                 {form.id ? 'New password (leave blank to keep)' : 'Password'}
               </label>
               <input required={!form.id} type="password" minLength={8} value={form.password || ''}
@@ -115,7 +115,7 @@ export default function UsersPage() {
                 placeholder="At least 8 characters" className={field} />
             </div>
             <div>
-              <label className="mb-1 block text-xs font-medium text-steel-500">Role</label>
+              <label className="field-label">Role</label>
               <select value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })} className={field}>
                 <option value="STAFF">Staff — write dockets and invoices</option>
                 <option value="ADMIN">Admin — also prices, settings, staff, delete</option>
@@ -124,7 +124,7 @@ export default function UsersPage() {
           </div>
           <div className="mt-4 flex gap-2">
             <button type="submit" disabled={saving}
-              className="rounded-md bg-copper-500 px-4 py-2 text-sm font-semibold text-white hover:bg-copper-400 disabled:opacity-60">
+              className="btn-primary">
               {saving ? 'Saving…' : 'Save'}
             </button>
             <button type="button" onClick={() => setForm(null)}

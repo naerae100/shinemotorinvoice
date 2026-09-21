@@ -84,6 +84,22 @@ const linkClass = ({ isActive }) =>
       : 'text-steel-300 hover:bg-steel-800/60 hover:text-paper'
   }`;
 
+/** The one plus sign in the app, so the two New purchase buttons agree. */
+function PlusIcon() {
+  return (
+    <svg
+      viewBox="0 0 20 20"
+      className="h-4 w-4 shrink-0"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2.5"
+      aria-hidden="true"
+    >
+      <path d="M10 4v12M4 10h12" strokeLinecap="round" />
+    </svg>
+  );
+}
+
 function SidebarContent({ isAdmin, user, onNavigate, onLogout, collapsed = false, onToggleCollapse }) {
   return (
     <>
@@ -130,15 +146,18 @@ function SidebarContent({ isAdmin, user, onNavigate, onLogout, collapsed = false
       </div>
 
       <div className={collapsed ? 'px-2 pt-4' : 'px-3 pt-4'}>
+        {/* Collapsed, this is an icon button and must be square — it was a
+            full-width bar holding a single "+", which read as a broken label
+            rather than a button. */}
         <Link
           to="/purchases/new"
           onClick={onNavigate}
           title={collapsed ? 'New purchase' : undefined}
-          className={`block rounded-lg bg-copper-500 text-center text-sm font-semibold text-white transition-colors hover:bg-copper-400 ${
-            collapsed ? 'px-0 py-2.5' : 'px-3 py-2.5'
-          }`}
+          aria-label="New purchase"
+          className={collapsed ? 'btn-primary btn-icon mx-auto' : 'btn-primary btn-block'}
         >
-          {collapsed ? '+' : '+ New purchase'}
+          <PlusIcon />
+          {!collapsed && <span>New purchase</span>}
         </Link>
       </div>
 
@@ -206,7 +225,13 @@ function SidebarContent({ isAdmin, user, onNavigate, onLogout, collapsed = false
         )}
       </nav>
 
-      <div className={`border-t border-steel-700/60 py-4 ${collapsed ? 'px-2' : 'px-4'}`}>
+      {/* pad-safe-bottom: full screen means this footer can otherwise land under
+          Android's gesture bar, which is exactly where Sign out was. */}
+      <div
+        className={`pad-safe-bottom border-t border-steel-700/60 pt-4 ${
+          collapsed ? 'px-2' : 'px-4'
+        }`}
+      >
         {!collapsed && (
           <div className="mb-2 px-1">
             <div className="truncate text-sm font-semibold text-paper">{user?.name}</div>
@@ -216,19 +241,32 @@ function SidebarContent({ isAdmin, user, onNavigate, onLogout, collapsed = false
           </div>
         )}
         <button
+          type="button"
           onClick={onLogout}
           title={collapsed ? 'Sign out' : undefined}
-          className={`w-full rounded-lg py-2 text-sm text-steel-300 transition-colors hover:bg-steel-800/60 hover:text-paper ${
-            collapsed ? 'px-0 text-center' : 'px-3 text-left'
+          aria-label="Sign out"
+          className={`btn-ghost text-steel-300 hover:bg-steel-800/60 hover:text-paper ${
+            collapsed ? 'btn-icon mx-auto' : 'btn-block justify-start'
           }`}
         >
-          {collapsed ? (
-            <svg viewBox="0 0 20 20" className="mx-auto h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M8 16H5a1 1 0 01-1-1V5a1 1 0 011-1h3M13 13l3-3-3-3M16 10H8" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-          ) : (
-            'Sign out'
-          )}
+          <svg
+            viewBox="0 0 20 20"
+            className="h-5 w-5 shrink-0"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            aria-hidden="true"
+          >
+            <path
+              d="M8 16H5a1 1 0 01-1-1V5a1 1 0 011-1h3M13 13l3-3-3-3M16 10H8"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
+          {/* The icon shows in both states now. Collapsed it was the only
+              thing there and expanded it vanished, so the same control looked
+              like two different ones either side of the toggle. */}
+          {!collapsed && <span>Sign out</span>}
         </button>
       </div>
     </>
@@ -318,10 +356,14 @@ export default function AppLayout() {
       style={{ '--app-sidebar-w': sidebarWidth }}
     >
       {/* ── Mobile top bar ──────────────────────────────────────── */}
-      <header className="sticky top-0 z-30 flex items-center gap-3 border-b border-steel-700/60 bg-steel-900 px-4 py-3 lg:hidden print:hidden">
+      {/* pad-safe-* rather than plain padding: the app is full screen now and
+          lays out into the display cutout, so this bar is what would sit under
+          a notch. */}
+      <header className="pad-safe-top pad-safe-x sticky top-0 z-30 flex items-center gap-3 border-b border-steel-700/60 bg-steel-900 pb-3 lg:hidden print:hidden">
         <button
+          type="button"
           onClick={() => setMenuOpen(true)}
-          className="-ml-1 rounded-md p-2 text-steel-300 hover:bg-steel-800 hover:text-paper"
+          className="btn-ghost btn-icon -ml-1 text-steel-300 hover:bg-steel-800 hover:text-paper"
           aria-label="Open menu"
           aria-expanded={menuOpen}
         >
@@ -332,13 +374,15 @@ export default function AppLayout() {
         <img
           src="/branding/logo.png"
           alt="Shine Motor Corporation"
-          className="h-6 w-auto max-w-[140px] object-contain"
+          className="h-6 w-auto max-w-[140px] shrink-0 object-contain"
         />
-        <Link
-          to="/purchases/new"
-          className="ml-auto rounded-lg bg-copper-500 px-3 py-1.5 text-xs font-semibold text-white"
-        >
-          + New
+        {/* Was a cramped `+ New` at text-xs — the smallest control in the app,
+            in the corner, and it is the one the yard presses most. It says what
+            it makes, and below 380px the word gives way rather than the button
+            shrinking or the logo being pushed off. */}
+        <Link to="/purchases/new" className="btn-primary btn-sm ml-auto" aria-label="New purchase">
+          <PlusIcon />
+          <span className="hidden min-[380px]:inline">New purchase</span>
         </Link>
       </header>
 

@@ -52,7 +52,7 @@ export default function ConfirmDialog({
 
         {requireReason && (
           <div className="mt-4">
-            <label className="mb-1 block text-xs font-medium text-steel-500">{reasonLabel}</label>
+            <label className="field-label">{reasonLabel}</label>
             <input
               ref={inputRef}
               value={reason}
@@ -64,21 +64,24 @@ export default function ConfirmDialog({
           </div>
         )}
 
-        <div className="mt-6 flex justify-end gap-2">
+        {/* Stacked and reversed on a narrow screen: the confirm sits above the
+            cancel so the thumb reaches the action being asked for, and neither
+            button is a half-width sliver. */}
+        <div className="btn-row mt-6 flex-col-reverse sm:flex-row sm:justify-end">
           <button
+            type="button"
             onClick={onCancel}
             disabled={busy}
-            className="rounded-md border border-steel-300 bg-white px-4 py-2 text-sm font-semibold text-steel-700 hover:bg-paper disabled:opacity-50"
+            className="btn-secondary btn-block sm:w-auto"
           >
             Cancel
           </button>
           <button
+            type="button"
             onClick={() => onConfirm(reason.trim())}
             disabled={!canConfirm}
-            className={`rounded-md px-4 py-2 text-sm font-semibold text-white disabled:opacity-40 ${
-              tone === 'danger'
-                ? 'bg-working-red hover:brightness-110'
-                : 'bg-steel-800 hover:bg-steel-700'
+            className={`btn-block sm:w-auto ${
+              tone === 'danger' ? 'btn-danger' : 'btn-primary'
             }`}
           >
             {busy ? 'Working…' : confirmLabel}

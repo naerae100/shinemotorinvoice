@@ -136,7 +136,7 @@ export default function InvoicesPage({ stage = 'INVOICED' }) {
           />
           <Link
             to={`${cfg.basePath}/new`}
-            className="rounded-lg bg-copper-500 px-4 py-2.5 text-sm font-semibold text-white hover:bg-copper-400"
+            className="btn-primary"
           >
             {cfg.newLabel}
           </Link>
@@ -364,14 +364,14 @@ export default function InvoicesPage({ stage = 'INVOICED' }) {
             <button
               disabled={page <= 1}
               onClick={() => setPage((p) => p - 1)}
-              className="rounded-md border border-steel-200 bg-white px-3 py-1.5 disabled:opacity-40"
+              className="btn-secondary btn-sm"
             >
               Previous
             </button>
             <button
               disabled={page >= totalPages}
               onClick={() => setPage((p) => p + 1)}
-              className="rounded-md border border-steel-200 bg-white px-3 py-1.5 disabled:opacity-40"
+              className="btn-secondary btn-sm"
             >
               Next
             </button>

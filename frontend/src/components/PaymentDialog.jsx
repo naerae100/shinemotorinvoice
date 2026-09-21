@@ -91,7 +91,7 @@ export default function PaymentDialog({ open, docket, busy = false, onConfirm, o
         )}
 
         <div className="mt-4">
-          <label className="mb-1 block text-xs font-medium text-steel-500">Paid by</label>
+          <label className="field-label">Paid by</label>
           <div className="flex flex-wrap gap-2">
             {METHODS.map(([value, label]) => (
               <button
@@ -111,7 +111,7 @@ export default function PaymentDialog({ open, docket, busy = false, onConfirm, o
         </div>
 
         <div className="mt-4">
-          <label htmlFor="payment-reference" className="mb-1 block text-xs font-medium text-steel-500">
+          <label htmlFor="payment-reference" className="field-label">
             Reference <span className="font-normal text-steel-400">(optional)</span>
           </label>
           <input
@@ -132,7 +132,7 @@ export default function PaymentDialog({ open, docket, busy = false, onConfirm, o
           <button
             onClick={onCancel}
             disabled={busy}
-            className="rounded-md border border-steel-300 bg-white px-4 py-2 text-sm font-semibold text-steel-700 hover:bg-paper disabled:opacity-50"
+            className="btn-secondary"
           >
             Cancel
           </button>

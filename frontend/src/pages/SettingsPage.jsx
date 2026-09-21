@@ -135,7 +135,7 @@ export default function SettingsPage() {
         <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
           {/* Logo Upload */}
           <div>
-            <label className="mb-2 block text-xs font-medium text-steel-500">Company Logo</label>
+            <label className="field-label">Company Logo</label>
             <div className="flex flex-col items-start gap-3">
               {settings.logoUrl ? (
                 <img src={settings.logoUrl} alt="Logo" className="h-16 rounded border bg-paper object-contain p-1" />
@@ -153,7 +153,7 @@ export default function SettingsPage() {
 
           {/* Stamp Upload */}
           <div>
-            <label className="mb-2 block text-xs font-medium text-steel-500">Official Stamp</label>
+            <label className="field-label">Official Stamp</label>
             <div className="flex flex-col items-start gap-3">
               {settings.stampUrl ? (
                 <img src={settings.stampUrl} alt="Stamp" className="h-16 rounded border bg-paper object-contain p-1" />
@@ -179,7 +179,7 @@ export default function SettingsPage() {
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             {group.fields.map(([key, label]) => (
               <div key={key}>
-                <label className="mb-1 block text-xs font-medium text-steel-500">{label}</label>
+                <label className="field-label">{label}</label>
                 <input
                   value={settings[key] || ''}
                   onChange={(e) => update(key, e.target.value)}
@@ -216,7 +216,7 @@ export default function SettingsPage() {
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                   {BANK_FIELDS.map(([key, label]) => (
                     <div key={key} className={key === 'bankAddress' || key === 'beneficiary' ? 'sm:col-span-2' : ''}>
-                      <label className="mb-1 block text-xs font-medium text-steel-500">{label}</label>
+                      <label className="field-label">{label}</label>
                       <input
                         value={acct[key] || ''}
                         onChange={(e) => updateBank(acct.currency, key, e.target.value)}
@@ -251,7 +251,7 @@ export default function SettingsPage() {
           </div>
           <a
             href={`${import.meta.env.VITE_API_URL || '/api'}/xero/connect`}
-            className="rounded-md border border-steel-300 bg-white px-4 py-2 text-sm font-semibold text-steel-700 shadow-sm hover:bg-paper"
+            className="btn-secondary"
           >
             {xeroStatus?.connected ? 'Reconnect Xero' : 'Connect to Xero'}
           </a>
@@ -262,7 +262,7 @@ export default function SettingsPage() {
         <button
           onClick={handleSave}
           disabled={saving}
-          className="rounded-md bg-copper-500 px-5 py-2.5 text-sm font-semibold text-white hover:bg-copper-400 disabled:opacity-60"
+          className="btn-primary"
         >
           {saving ? 'Saving…' : 'Save settings'}
         </button>

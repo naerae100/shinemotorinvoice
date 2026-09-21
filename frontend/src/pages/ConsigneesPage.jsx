@@ -23,7 +23,7 @@ const BLANK = {
   notes: '',
 };
 
-const L = 'mb-1 block text-xs font-medium text-steel-500';
+const L = 'field-label';
 
 /** A labelled field. The form was a wall of placeholder-only inputs, which lose
  *  their label the moment anything is typed into them. */
@@ -88,7 +88,7 @@ export default function ConsigneesPage() {
           <ExportButton endpoint="/consignees/export" />
           <button
             onClick={() => setForm({ ...BLANK })}
-            className="rounded-lg bg-copper-500 px-4 py-2.5 text-sm font-semibold text-white hover:bg-copper-400"
+            className="btn-primary"
           >
             + Add buyer
           </button>
@@ -186,7 +186,7 @@ export default function ConsigneesPage() {
           </div>
           <div className="mt-4 flex gap-2">
             <button type="submit" disabled={saving}
-              className="rounded-md bg-copper-500 px-4 py-2 text-sm font-semibold text-white hover:bg-copper-400 disabled:opacity-60">
+              className="btn-primary">
               {saving ? 'Saving…' : 'Save consignee'}
             </button>
             <button type="button" onClick={() => setForm(null)}

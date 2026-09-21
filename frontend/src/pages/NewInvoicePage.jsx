@@ -399,7 +399,7 @@ export default function NewInvoicePage({ mode = 'invoice' }) {
   }
 
   const field = 'w-full rounded-md border border-steel-200 bg-paper px-3 py-2 text-sm focus:border-copper-500 focus:bg-white';
-  const labelCls = 'mb-1 block text-xs font-medium text-steel-500';
+  const labelCls = 'field-label';
 
   if (loadingInvoice) {
     return <div className="px-4 py-6 sm:px-6 lg:px-8 lg:py-8 text-sm text-steel-500">Loading…</div>;
@@ -649,7 +649,7 @@ export default function NewInvoicePage({ mode = 'invoice' }) {
                 <button
                   type="button"
                   onClick={handleAddConsignee}
-                  className="whitespace-nowrap rounded-md bg-copper-500 px-3 py-2 text-sm font-semibold text-white hover:bg-copper-400"
+                  className="btn-primary btn-sm"
                 >
                   Add
                 </button>
@@ -890,7 +890,7 @@ export default function NewInvoicePage({ mode = 'invoice' }) {
                       </div>
                       <span className="pb-2 text-lg font-medium text-steel-300">=</span>
                       <div className="min-w-[92px] flex-1">
-                        <label className={`${labelCls} font-semibold text-steel-700`}>Net MT</label>
+                        <label className={`${labelCls} text-copper-600`}>Net MT</label>
                         <input
                           type="number"
                           step="0.001"
@@ -950,7 +950,7 @@ export default function NewInvoicePage({ mode = 'invoice' }) {
           <div className="grid grid-cols-1 gap-6 border-t border-steel-100 px-4 py-5 sm:grid-cols-2 sm:px-6">
             <DiscountField value={discount} onChange={setDiscount} subtotal={subtotal} />
             <div>
-              <label className="mb-1.5 block text-sm font-medium text-steel-700">GST</label>
+              <label className="field-label">GST</label>
               <label className="flex cursor-pointer items-center gap-2.5 rounded-md border border-steel-200 bg-paper px-3 py-2">
                 <input
                   type="checkbox"

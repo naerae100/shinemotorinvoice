@@ -113,7 +113,7 @@ export default function PartyAddressFields({
 
   const field =
     'w-full rounded-md border border-steel-200 bg-white px-3 py-2.5 text-sm focus:border-copper-500';
-  const label = 'mb-1 block text-xs font-medium text-steel-500';
+  const label = 'field-label';
 
   return (
     <div className={`grid grid-cols-1 gap-3 sm:grid-cols-2 ${className}`}>

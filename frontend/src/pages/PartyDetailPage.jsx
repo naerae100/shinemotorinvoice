@@ -205,13 +205,13 @@ export default function PartyDetailPage({ kind }) {
           <Link
             to={listPath}
             state={{ editId: party.id }}
-            className="rounded-md border border-steel-300 bg-white px-4 py-2.5 text-sm font-semibold text-steel-700 hover:bg-paper"
+            className="btn-secondary"
           >
             Edit
           </Link>
           <Link
             to={isSupplier ? `/purchases?supplierId=${party.id}` : `/export-invoices?consigneeId=${party.id}`}
-            className="rounded-md border border-steel-300 bg-white px-4 py-2.5 text-sm font-semibold text-steel-700 hover:bg-paper"
+            className="btn-secondary"
           >
             All documents →
           </Link>
@@ -436,14 +436,14 @@ export default function PartyDetailPage({ kind }) {
                       <div className="flex items-center justify-end gap-1">
                         <Link
                           to={doc.path}
-                          className="rounded-md border border-steel-200 bg-white px-2.5 py-1 text-xs font-semibold text-steel-700 hover:bg-paper"
+                          className="btn-secondary btn-sm"
                         >
                           View
                         </Link>
                         {!isVoid && (
                           <Link
                             to={doc.editPath}
-                            className="rounded-md border border-steel-200 bg-white px-2.5 py-1 text-xs font-semibold text-steel-700 hover:bg-paper"
+                            className="btn-secondary btn-sm"
                           >
                             Edit
                           </Link>

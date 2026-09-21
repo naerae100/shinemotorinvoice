@@ -148,13 +148,13 @@ export default function PurchasesPage() {
           />
           <Link
             to="/purchases/new"
-            className="rounded-lg bg-copper-500 px-4 py-2.5 text-sm font-semibold text-white hover:bg-copper-400"
+            className="btn-primary"
           >
             + New docket
           </Link>
           <Link
             to="/tax-invoices/new"
-            className="rounded-lg border border-steel-300 bg-white px-4 py-2.5 text-sm font-semibold text-steel-700 hover:bg-paper"
+            className="btn-secondary"
           >
             + Tax invoice
           </Link>
@@ -417,14 +417,14 @@ export default function PurchasesPage() {
             <button
               disabled={page <= 1}
               onClick={() => setFilters({ page: page - 1 }, { resetPage: false })}
-              className="rounded-lg border border-steel-200 bg-white px-3 py-1.5 disabled:opacity-40"
+              className="btn-secondary btn-sm"
             >
               Previous
             </button>
             <button
               disabled={page >= totalPages}
               onClick={() => setFilters({ page: page + 1 }, { resetPage: false })}
-              className="rounded-lg border border-steel-200 bg-white px-3 py-1.5 disabled:opacity-40"
+              className="btn-secondary btn-sm"
             >
               Next
             </button>

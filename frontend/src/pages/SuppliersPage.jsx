@@ -19,7 +19,7 @@ const normalisePhone = (v) => {
 
 const BLANK = { name: '', saleType: 'PRIVATE', address: '', suburb: '', state: 'NSW', postcode: '', country: 'Australia', phone: PHONE_PREFIX, email: '', abn: '', licenceNo: '', bankAccountName: '', bankBsb: '', bankAccountNo: '', payId: '' };
 
-const L = 'mb-1 block text-xs font-medium text-steel-500';
+const L = 'field-label';
 
 /** A labelled field — a placeholder disappears as soon as anything is typed. */
 function Field({ label, className = '', children }) {
@@ -85,7 +85,7 @@ export default function SuppliersPage() {
           <ExportButton endpoint="/suppliers/export" params={search ? { search } : {}} />
           <button
             onClick={() => setForm({ ...BLANK })}
-            className="rounded-lg bg-copper-500 px-4 py-2.5 text-sm font-semibold text-white hover:bg-copper-400"
+            className="btn-primary"
           >
             + Add supplier
           </button>
@@ -172,7 +172,7 @@ export default function SuppliersPage() {
           </div>
           <div className="mt-4 flex gap-2">
             <button type="submit" disabled={saving}
-              className="rounded-md bg-copper-500 px-4 py-2 text-sm font-semibold text-white hover:bg-copper-400 disabled:opacity-60">
+              className="btn-primary">
               {saving ? 'Saving…' : 'Save client'}
             </button>
             <button type="button" onClick={() => setForm(null)}

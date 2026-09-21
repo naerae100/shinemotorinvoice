@@ -91,6 +91,159 @@
 }
 
 /* ---------------------------------------------------------------------------
+   Buttons
+   ---------------------------------------------------------------------------
+   Every button in the app was written out longhand where it stood, and they
+   drifted: the same primary action appeared as `px-4 py-2` on one screen and
+   `px-4 py-2.5` on the next, some carried a disabled style and some did not,
+   several had no hover at all, and none had a press state. Nothing was broken,
+   which is exactly why it went unfixed — it just looked assembled rather than
+   designed, and buttons sat a pixel or two off the controls beside them.
+
+   One class per role, defined once. The rules that matter and were missing
+   everywhere:
+
+     `inline-flex` + `items-center` + `justify-center` — a button holding an
+     icon and a word now centres both, instead of the icon riding the text
+     baseline and making the button look lopsided.
+
+     `whitespace-nowrap` — "+ New purchase" wrapped to two lines in a narrow
+     column and the button grew to match, which is most of what read as bad
+     alignment on a tablet in portrait.
+
+     `leading-none` with symmetric padding — the real cause of buttons and
+     inputs of the "same" height disagreeing by a pixel.
+
+     `active:` — a finger gets no cursor and no hover, so without a pressed
+     state a tap on a slow connection feels like a button that did nothing. */
+@layer components {
+  .btn {
+    @apply inline-flex shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-lg
+           px-4 py-2.5 text-sm font-semibold leading-none
+           transition-[background-color,border-color,color,box-shadow,transform] duration-150
+           active:translate-y-px
+           disabled:pointer-events-none disabled:opacity-45;
+  }
+
+  /* The one obvious action on a screen. */
+  .btn-primary {
+    @apply btn bg-copper-500 text-white shadow-sm hover:bg-copper-400
+           focus-visible:ring-2 focus-visible:ring-copper-500/30;
+  }
+
+  /* Everything else a screen can do. Bordered rather than filled, so a row of
+     actions has exactly one thing competing for the eye. */
+  .btn-secondary {
+    @apply btn border border-steel-200 bg-white text-steel-700 shadow-sm
+           hover:border-steel-300 hover:bg-paper hover:text-steel-900
+           focus-visible:ring-2 focus-visible:ring-copper-500/25;
+  }
+
+  /* Borderless — for toolbars and card headers, where a box per action would
+     be more furniture than information. */
+  .btn-ghost {
+    @apply btn text-steel-600 hover:bg-steel-100 hover:text-steel-900
+           focus-visible:ring-2 focus-visible:ring-copper-500/25;
+  }
+
+  /* Void, delete, unpay. Outlined, not filled: a destructive button that is as
+     loud as the primary one gets pressed by accident. */
+  .btn-danger {
+    @apply btn border border-working-red/30 bg-working-redDim text-working-red
+           hover:border-working-red/50 hover:bg-working-red hover:text-white
+           focus-visible:ring-2 focus-visible:ring-working-red/30;
+  }
+
+  /* On the dark sidebar, where the bordered variants disappear. */
+  .btn-on-dark {
+    @apply btn border border-steel-700 bg-steel-800 text-steel-100
+           hover:border-steel-600 hover:bg-steel-700 hover:text-white
+           focus-visible:ring-2 focus-visible:ring-copper-400/40;
+  }
+
+  /* Sizes. Only the padding and type size change — never the shape, so a small
+     button still reads as the same component. */
+  .btn-sm {
+    @apply px-3 py-2 text-xs;
+  }
+  .btn-lg {
+    @apply px-5 py-3 text-base;
+  }
+
+  /* Square, for an icon on its own. Without this an icon button inherits the
+     text padding and comes out a wide rectangle around a 16px glyph. */
+  .btn-icon {
+    @apply aspect-square p-2.5;
+  }
+  .btn-icon.btn-sm {
+    @apply p-2;
+  }
+
+  /* Full width — the right shape for a form's submit on a phone, and for the
+     sidebar's primary action. */
+  .btn-block {
+    @apply w-full;
+  }
+
+  /* A row of actions. Wraps instead of overflowing, and keeps one gap value so
+     toolbars line up between screens. `items-center` is what stops a small
+     button sitting a few pixels high next to a large one. */
+  .btn-row {
+    @apply flex flex-wrap items-center gap-2;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   Form labels
+   ---------------------------------------------------------------------------
+   Labels were `font-medium` in `steel-500` — the same weight as the body text
+   and a lighter colour than the value they describe, so a form read as an
+   undifferentiated grey field and you had to hunt for "Postcode". They are
+   the structure of a form and should be the part you can scan.
+
+   Semibold, and a colour with real contrast. Defined once because the same
+   string was repeated in five files, which is how the two variants that
+   already existed came about. */
+@layer components {
+  .field-label {
+    @apply mb-1.5 block text-xs font-semibold tracking-wide text-steel-700;
+  }
+
+  /* The unit or example that sits beside a label — deliberately the lighter
+     of the two, so the label still wins. */
+  .field-hint {
+    @apply text-xs font-medium text-steel-400;
+  }
+
+  /* Section headings inside a form, above a group of fields. */
+  .field-legend {
+    @apply mb-3 text-xs font-bold uppercase tracking-wider text-steel-500;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   Safe areas
+   ---------------------------------------------------------------------------
+   The app now runs genuinely full screen, and the Android theme lays it out
+   into the display cutout. That reclaims the status bar's height, which is the
+   point — but anything pinned to an edge has to keep clear of the notch and of
+   the gesture bar at the bottom, or the Save button ends up under the strip
+   Android uses for swipe-to-home. `env()` resolves to 0 where there is no
+   inset, so these are inert on a desktop. */
+@layer utilities {
+  .pad-safe-top {
+    padding-top: max(0.75rem, env(safe-area-inset-top));
+  }
+  .pad-safe-bottom {
+    padding-bottom: max(0.75rem, env(safe-area-inset-bottom));
+  }
+  .pad-safe-x {
+    padding-left: max(1rem, env(safe-area-inset-left));
+    padding-right: max(1rem, env(safe-area-inset-right));
+  }
+}
+
+/* ---------------------------------------------------------------------------
    Touch
    ---------------------------------------------------------------------------
    The yard runs this on a tablet, outdoors, by someone who may be wearing

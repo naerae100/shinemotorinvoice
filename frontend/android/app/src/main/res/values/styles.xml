@@ -9,10 +9,20 @@
         <item name="colorAccent">@color/colorAccent</item>
     </style>
 
+    <!--
+        The manifest's display:fullscreen governs the installed web app; it says
+        nothing about the APK, which is a native Activity. Without these the
+        shell would keep the status bar that the PWA hides, so the same build
+        would have two different amounts of screen depending on how it was
+        installed. Declared here rather than through a plugin: it is a theme
+        attribute, and a dependency to set a boolean is a dependency to keep.
+    -->
     <style name="AppTheme.NoActionBar" parent="Theme.AppCompat.DayNight.NoActionBar">
         <item name="windowActionBar">false</item>
         <item name="windowNoTitle">true</item>
         <item name="android:background">@null</item>
+        <item name="android:windowFullscreen">true</item>
+        <item name="android:windowLayoutInDisplayCutoutMode">shortEdges</item>
     </style>
 
 

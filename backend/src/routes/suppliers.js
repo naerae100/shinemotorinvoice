@@ -82,6 +82,12 @@ router.get(
               { phone: contains(String(search)) },
               { email: contains(String(search)) },
               { abn: contains(String(search)) },
+              // The picker now shows the licence number to tell two sellers of
+              // the same name apart, so it has to be searchable by it too — a
+              // value you can read off a row but not type into the box is a
+              // dead end.
+              { licenceNo: contains(String(search)) },
+              { suburb: contains(String(search)) },
             ],
           }
         : {},
@@ -106,6 +112,12 @@ router.get(
               { phone: contains(String(search)) },
               { email: contains(String(search)) },
               { abn: contains(String(search)) },
+              // The picker now shows the licence number to tell two sellers of
+              // the same name apart, so it has to be searchable by it too — a
+              // value you can read off a row but not type into the box is a
+              // dead end.
+              { licenceNo: contains(String(search)) },
+              { suburb: contains(String(search)) },
             ],
           }
         : {},

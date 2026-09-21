@@ -70,6 +70,25 @@ const supplierFormValues = (s) => ({
   payId: s?.payId || '',
 });
 
+/**
+ * What distinguishes one supplier from another in the picker.
+ *
+ * The name alone is not enough: a yard has more than one Amin, more than one
+ * Mohammed, and a docket written against the wrong record is a payment to the
+ * wrong bank account and a licence number that does not match the seller. The
+ * suburb narrows it; the licence number settles it, because it is the one
+ * value that is unique to a person and the one NSW requires be recorded for a
+ * scrap purchase.
+ *
+ * Licence last, not first — the operator is reading names, and a row starting
+ * with a number is a row they have to decode. Absent for a company or an older
+ * record, in which case the qualifier is just the suburb rather than a dangling
+ * separator.
+ */
+function supplierQualifier(s) {
+  return [s?.suburb, s?.licenceNo].filter(Boolean).join(' — ');
+}
+
 export default function NewDocketPage({ defaultType = 'PURCHASE_DOCKET' }) {
   // A purchase docket is quoted to the supplier with GST already in the price —
   // that is the number said at the weighbridge. A tax invoice is the opposite:
@@ -403,7 +422,7 @@ export default function NewDocketPage({ defaultType = 'PURCHASE_DOCKET' }) {
               {!editId && <div className="text-xs text-steel-400">Docket # assigned on save</div>}
             </div>
             <div className="flex items-center gap-3">
-              <label className="text-xs text-steel-400">Amounts are</label>
+              <label className="text-xs font-semibold text-steel-300">Amounts are</label>
               <select
                 value={taxMode}
                 onChange={(e) => setTaxMode(e.target.value)}
@@ -419,7 +438,7 @@ export default function NewDocketPage({ defaultType = 'PURCHASE_DOCKET' }) {
           </div>
 
           <div className="border-b border-steel-100 px-6 py-5">
-            <label className="mb-1.5 block text-sm font-medium text-steel-700">Supplier</label>
+            <label className="field-label">Supplier</label>
             <div className="relative">
               <input
                 type="text"
@@ -441,8 +460,10 @@ export default function NewDocketPage({ defaultType = 'PURCHASE_DOCKET' }) {
                         onClick={() => selectSupplier(s)}
                         className="block w-full px-3 py-2 text-left text-sm hover:bg-paper"
                       >
-                        {s.name}
-                        {s.suburb && <span className="text-steel-400"> — {s.suburb}</span>}
+                        <span className="font-semibold text-steel-900">{s.name}</span>
+                        {supplierQualifier(s) && (
+                          <span className="text-steel-500"> — {supplierQualifier(s)}</span>
+                        )}
                       </button>
                     </li>
                   ))}
@@ -482,83 +503,147 @@ export default function NewDocketPage({ defaultType = 'PURCHASE_DOCKET' }) {
                     idPrefix="docket-supplier"
                   />
                 </div>
-                <input
-                  placeholder="Phone"
-                  value={newSupplier.phone || ''}
-                  onChange={(e) => setNewSupplier({ ...newSupplier, phone: e.target.value })}
-                  className="rounded-md border border-steel-200 px-3 py-2 text-sm"
-                />
-                <input
-                  type="email"
-                  placeholder="Email"
-                  value={newSupplier.email || ''}
-                  onChange={(e) => setNewSupplier({ ...newSupplier, email: e.target.value })}
-                  className="rounded-md border border-steel-200 px-3 py-2 text-sm"
-                />
-                <input
-                  placeholder="Driver Licence No."
-                  value={newSupplier.licenceNo || ''}
-                  onChange={(e) => setNewSupplier({ ...newSupplier, licenceNo: e.target.value })}
-                  className="rounded-md border border-steel-200 px-3 py-2 text-sm"
-                />
-                <select
-                  value={newSupplier.saleType}
-                  onChange={(e) => setNewSupplier({ ...newSupplier, saleType: e.target.value })}
-                  className="rounded-md border border-steel-200 px-3 py-2 text-sm"
-                >
-                  <option value="PRIVATE">Private sale</option>
-                  <option value="BUSINESS">Business sale</option>
-                </select>
+{/* Labelled, like the address block above them. These five were
+                    placeholder-only, so the panel read as labelled down to
+                    Postcode and then turned into a column of grey hints — and a
+                    placeholder is gone the moment anything is typed, which on
+                    the licence field is exactly when you want to check you are
+                    in the right box. */}
+                <div>
+                  <label className="field-label" htmlFor="docket-supplier-phone">
+                    Phone
+                  </label>
+                  <input
+                    id="docket-supplier-phone"
+                    type="tel"
+                    inputMode="tel"
+                    placeholder="0412 345 678"
+                    value={newSupplier.phone || ''}
+                    onChange={(e) => setNewSupplier({ ...newSupplier, phone: e.target.value })}
+                    className="w-full rounded-md border border-steel-200 px-3 py-2 text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="field-label" htmlFor="docket-supplier-email">
+                    Email
+                  </label>
+                  <input
+                    id="docket-supplier-email"
+                    type="email"
+                    inputMode="email"
+                    placeholder="name@example.com.au"
+                    value={newSupplier.email || ''}
+                    onChange={(e) => setNewSupplier({ ...newSupplier, email: e.target.value })}
+                    className="w-full rounded-md border border-steel-200 px-3 py-2 text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="field-label" htmlFor="docket-supplier-licence">
+                    Driver licence no.
+                  </label>
+                  <input
+                    id="docket-supplier-licence"
+                    placeholder="Recorded for every scrap purchase"
+                    value={newSupplier.licenceNo || ''}
+                    onChange={(e) => setNewSupplier({ ...newSupplier, licenceNo: e.target.value })}
+                    className="w-full rounded-md border border-steel-200 px-3 py-2 text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="field-label" htmlFor="docket-supplier-saletype">
+                    Sale type
+                  </label>
+                  <select
+                    id="docket-supplier-saletype"
+                    value={newSupplier.saleType}
+                    onChange={(e) => setNewSupplier({ ...newSupplier, saleType: e.target.value })}
+                    className="w-full rounded-md border border-steel-200 px-3 py-2 text-sm"
+                  >
+                    <option value="PRIVATE">Private sale</option>
+                    <option value="BUSINESS">Business sale</option>
+                  </select>
+                </div>
                 {/* The weighbridge is exactly where a wrong ABN gets written
                     down, so this is the form that most needs to say whose it
                     is — before the PAYG declaration is made on it. */}
-                <AbnField
-                  id="docket-supplier-abn"
-                  placeholder="ABN (if business)"
-                  value={newSupplier.abn}
-                  onChange={(abn) => setNewSupplier({ ...newSupplier, abn })}
-                  className="w-full rounded-md border border-steel-200 px-3 py-2 text-sm"
-                />
+                <div>
+                  <label className="field-label" htmlFor="docket-supplier-abn">
+                    ABN <span className="field-hint">if a business sale</span>
+                  </label>
+                  <AbnField
+                    id="docket-supplier-abn"
+                    placeholder="11 digits"
+                    value={newSupplier.abn}
+                    onChange={(abn) => setNewSupplier({ ...newSupplier, abn })}
+                    className="w-full rounded-md border border-steel-200 px-3 py-2 text-sm"
+                  />
+                </div>
 
                 {/* Saved against the supplier, not the docket, so the next load
                     from the same seller arrives with these already filled in and
                     a docket left unpaid can be settled from its own page. */}
                 <div className="sm:col-span-2 mt-1 border-t border-steel-200 pt-3">
-                  <div className="mb-2 text-xs font-semibold uppercase tracking-wider text-steel-500">
+                  <div className="field-legend">
                     Payment details
                     <span className="ml-2 font-medium normal-case tracking-normal text-steel-400">
                       Saved to this supplier for next time
                     </span>
                   </div>
                   <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                    <input
-                      placeholder="Account name"
-                      value={newSupplier.bankAccountName || ''}
-                      onChange={(e) =>
-                        setNewSupplier({ ...newSupplier, bankAccountName: e.target.value })
-                      }
-                      className="sm:col-span-2 rounded-md border border-steel-200 px-3 py-2 text-sm"
-                    />
-                    <input
-                      placeholder="BSB"
-                      value={newSupplier.bankBsb || ''}
-                      onChange={(e) => setNewSupplier({ ...newSupplier, bankBsb: e.target.value })}
-                      className="num rounded-md border border-steel-200 px-3 py-2 text-sm"
-                    />
-                    <input
-                      placeholder="Account number"
-                      value={newSupplier.bankAccountNo || ''}
-                      onChange={(e) =>
-                        setNewSupplier({ ...newSupplier, bankAccountNo: e.target.value })
-                      }
-                      className="num rounded-md border border-steel-200 px-3 py-2 text-sm"
-                    />
-                    <input
-                      placeholder="or PayID (email or mobile)"
-                      value={newSupplier.payId || ''}
-                      onChange={(e) => setNewSupplier({ ...newSupplier, payId: e.target.value })}
-                      className="sm:col-span-2 rounded-md border border-steel-200 px-3 py-2 text-sm"
-                    />
+                    <div className="sm:col-span-2">
+                      <label className="field-label" htmlFor="docket-supplier-acctname">
+                        Account name
+                      </label>
+                      <input
+                        id="docket-supplier-acctname"
+                        placeholder="Name on the account"
+                        value={newSupplier.bankAccountName || ''}
+                        onChange={(e) =>
+                          setNewSupplier({ ...newSupplier, bankAccountName: e.target.value })
+                        }
+                        className="w-full rounded-md border border-steel-200 px-3 py-2 text-sm"
+                      />
+                    </div>
+                    <div className="">
+                      <label className="field-label" htmlFor="docket-supplier-bsb">
+                        BSB
+                      </label>
+                      <input
+                        id="docket-supplier-bsb"
+                        placeholder="123-456"
+                        value={newSupplier.bankBsb || ''}
+                        onChange={(e) =>
+                          setNewSupplier({ ...newSupplier, bankBsb: e.target.value })
+                        }
+                        className="num w-full rounded-md border border-steel-200 px-3 py-2 text-sm"
+                      />
+                    </div>
+                    <div className="">
+                      <label className="field-label" htmlFor="docket-supplier-acctno">
+                        Account number
+                      </label>
+                      <input
+                        id="docket-supplier-acctno"
+                        placeholder="Account number"
+                        value={newSupplier.bankAccountNo || ''}
+                        onChange={(e) =>
+                          setNewSupplier({ ...newSupplier, bankAccountNo: e.target.value })
+                        }
+                        className="num w-full rounded-md border border-steel-200 px-3 py-2 text-sm"
+                      />
+                    </div>
+                    <div className="sm:col-span-2">
+                      <label className="field-label" htmlFor="docket-supplier-payid">
+                        PayID <span className="field-hint">instead of BSB and account</span>
+                      </label>
+                      <input
+                        id="docket-supplier-payid"
+                        placeholder="Email address or mobile number"
+                        value={newSupplier.payId || ''}
+                        onChange={(e) => setNewSupplier({ ...newSupplier, payId: e.target.value })}
+                        className="w-full rounded-md border border-steel-200 px-3 py-2 text-sm"
+                      />
+                    </div>
                   </div>
                 </div>
               </div>
@@ -670,7 +755,7 @@ export default function NewDocketPage({ defaultType = 'PURCHASE_DOCKET' }) {
           </div>
 
           <div className="border-t border-steel-100 px-6 py-5">
-            <label className="mb-1.5 block text-sm font-medium text-steel-700">
+            <label className="field-label">
               Supplier statement (PAYG)
             </label>
             <select
@@ -777,10 +862,14 @@ export default function NewDocketPage({ defaultType = 'PURCHASE_DOCKET' }) {
             own width, published by AppLayout as --app-sidebar-w and correct
             whether the nav is open, collapsed or hidden. */}
         <div
-          className="fixed bottom-0 right-0 z-20 border-t border-steel-200 bg-white/95 px-4 py-3 backdrop-blur supports-[backdrop-filter]:bg-white/85 sm:px-6 print:hidden"
+          className="pad-safe-bottom fixed bottom-0 right-0 z-20 border-t border-steel-200 bg-white/95 px-4 pt-3 backdrop-blur supports-[backdrop-filter]:bg-white/85 sm:px-6 print:hidden"
           style={{ left: 'var(--app-sidebar-w, 0px)' }}
         >
-          <div className="flex flex-wrap items-center justify-between gap-3">
+          {/* Total and actions on one line when there is room; the total above
+              the buttons when there is not. Previously both halves wrapped
+              independently, so at a middling width the buttons split across two
+              rows while the total kept the first to itself. */}
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="min-w-0">
               <div className="text-[10px] font-bold uppercase tracking-[0.12em] text-steel-500">
                 Total {taxMode === 'INCLUSIVE' ? '(GST included)' : taxMode === 'EXCLUSIVE' ? '(plus GST)' : '(no GST)'}
@@ -789,14 +878,14 @@ export default function NewDocketPage({ defaultType = 'PURCHASE_DOCKET' }) {
                 {formatCurrency(total)}
               </div>
             </div>
-            <div className="flex flex-wrap justify-end gap-3">
+            <div className="btn-row justify-stretch sm:justify-end">
           <button
             type="submit"
             onClick={() => {
               printAfterSave.current = false;
             }}
             disabled={submitting}
-            className="rounded-md border border-steel-300 bg-white px-6 py-3 text-sm font-semibold text-steel-800 transition-colors hover:bg-paper disabled:opacity-60"
+            className="btn-secondary btn-lg flex-1 sm:flex-none"
           >
             {submitting ? 'Saving…' : isEdit ? 'Save changes' : 'Save docket'}
           </button>
@@ -809,7 +898,7 @@ export default function NewDocketPage({ defaultType = 'PURCHASE_DOCKET' }) {
               printAfterSave.current = true;
             }}
             disabled={submitting}
-            className="rounded-md bg-copper-500 px-6 py-3 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-copper-400 disabled:opacity-60"
+            className="btn-primary btn-lg flex-1 sm:flex-none"
           >
             {submitting ? 'Saving…' : 'Save & print receipt'}
           </button>

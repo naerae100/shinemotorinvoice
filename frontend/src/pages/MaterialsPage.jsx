@@ -189,7 +189,7 @@ export default function MaterialsPage() {
           </h2>
           <div className="grid grid-cols-2 gap-4 md:grid-cols-6">
             <div className="md:col-span-1">
-              <label className="mb-1 block text-xs font-medium text-steel-500">Code</label>
+              <label className="field-label">Code</label>
               <input
                 type="number"
                 value={form.code ?? ''}
@@ -199,7 +199,7 @@ export default function MaterialsPage() {
               />
             </div>
             <div className="sm:col-span-2 md:col-span-2">
-              <label className="mb-1 block text-xs font-medium text-steel-500">Description</label>
+              <label className="field-label">Description</label>
               <input
                 required
                 value={form.description}
@@ -219,7 +219,7 @@ export default function MaterialsPage() {
               className="md:col-span-1"
             />
             <div>
-              <label className="mb-1 block text-xs font-medium text-steel-500">Unit</label>
+              <label className="field-label">Unit</label>
               <select
                 value={form.unit}
                 onChange={(e) => setForm({ ...form, unit: e.target.value })}
@@ -233,7 +233,7 @@ export default function MaterialsPage() {
               </select>
             </div>
             <div>
-              <label className="mb-1 block text-xs font-medium text-steel-500">Rate (AUD)</label>
+              <label className="field-label">Rate (AUD)</label>
               <input
                 type="number"
                 step="0.01"
@@ -249,7 +249,7 @@ export default function MaterialsPage() {
             <button
               type="submit"
               disabled={saving}
-              className="rounded-lg bg-copper-500 px-4 py-2 text-sm font-semibold text-white hover:bg-copper-400 disabled:opacity-60"
+              className="btn-primary"
             >
               {saving ? 'Saving…' : form.id ? 'Save changes' : 'Add material'}
             </button>
@@ -282,7 +282,7 @@ export default function MaterialsPage() {
           {isAdmin && (
             <button
               onClick={() => setForm({ ...BLANK, unit: cfg.defaultUnit })}
-              className="rounded-lg bg-copper-500 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-copper-400"
+              className="btn-primary"
             >
               {cfg.addLabel}
             </button>

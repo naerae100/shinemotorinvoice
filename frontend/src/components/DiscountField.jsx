@@ -15,7 +15,7 @@ export default function DiscountField({ value, onChange, subtotal }) {
 
   return (
     <div>
-      <label className="mb-1.5 block text-sm font-medium text-steel-700">Discount</label>
+      <label className="field-label">Discount</label>
       <div className="flex items-center gap-2">
         <select
           value={discountType}

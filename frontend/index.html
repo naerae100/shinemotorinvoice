@@ -2,7 +2,20 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- viewport-fit=cover lets the page paint into the area a camera cutout
+         occupies instead of letterboxing around it; the safe-area insets in
+         index.css keep the controls out from under it. interactive-widget
+         stops the Android keyboard from shrinking the viewport, which was
+         resizing the layout under a field that was being typed into. -->
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-visual"
+    />
+    <!-- Full screen when launched from the home screen on iOS, to match the
+         manifest's display:fullscreen on Android. -->
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <title>Shine Motor — Docket &amp; Invoice System</title>
     <meta name="description" content="Scrap metal purchasing, tax invoicing and container export for Shine Motor Corporation." />
 

@@ -40,12 +40,45 @@ export const CHART_INK = {
   surface: '#FFFFFF',
 };
 
-export const formatAxisMoney = (n) => {
+/**
+ * A compact axis figure.
+ *
+ * AUD keeps the bare dollar sign — it is the default and the axis is not the
+ * place to restate it. Any other currency is named, because two panels stacked
+ * in one figure, one in AUD and one in USD, both reading `$1.2k` would be a
+ * chart that actively misleads.
+ */
+export const formatAxisMoney = (n, currency = 'AUD') => {
   const abs = Math.abs(n);
-  if (abs >= 1_000_000) return `$${(n / 1_000_000).toFixed(abs >= 10_000_000 ? 0 : 1)}M`;
-  if (abs >= 1_000) return `$${(n / 1_000).toFixed(abs >= 10_000 ? 0 : 1)}k`;
-  return `$${n.toFixed(0)}`;
+  // A non-breaking space, not a plain one. Recharts measures a tick against
+  // the axis width and splits it at spaces when it does not fit, so "USD 400k"
+  // came out as two stacked lines with the top one clipped by the panel above.
+  const unit = currency === 'AUD' ? '$' : `${currency}\u00A0`;
+  if (abs >= 1_000_000) return `${unit}${(n / 1_000_000).toFixed(abs >= 10_000_000 ? 0 : 1)}M`;
+  if (abs >= 1_000) return `${unit}${(n / 1_000).toFixed(abs >= 10_000 ? 0 : 1)}k`;
+  return `${unit}${n.toFixed(0)}`;
 };
+
+/**
+ * Colours for the sales panels, one per currency.
+ *
+ * AUD keeps the validated sales orange. Anything else is a hue that stays
+ * separable from both it and the purchases blue under protanopia — a teal, not
+ * a second orange, so two sales panels are not told apart by brightness alone.
+ */
+export const CURRENCY_INK = {
+  AUD: SERIES.sales,
+  USD: '#1F8A70',
+  NZD: '#7D4E9E',
+  EUR: '#A8437B',
+  GBP: '#4B6BAF',
+};
+
+/** Fallback for a currency not in the map above, stable for a given code. */
+export const currencyColor = (code) =>
+  CURRENCY_INK[code] ?? ['#1F8A70', '#7D4E9E', '#A8437B', '#4B6BAF', '#8A6A1F'][
+    [...String(code)].reduce((a, c) => a + c.charCodeAt(0), 0) % 5
+  ];
 
 /** Clean axis ceiling — 1/2/5 × a power of ten, so ticks land on round numbers. */
 export function niceCeiling(max) {

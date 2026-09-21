@@ -150,7 +150,7 @@ export default function LoginPage() {
 
           <form onSubmit={handleSubmit} className="mt-7">
             <div className="mb-4">
-              <label htmlFor="email" className="mb-1.5 block text-sm font-medium text-steel-700">
+              <label htmlFor="email" className="field-label">
                 Email
               </label>
               <input
@@ -167,7 +167,7 @@ export default function LoginPage() {
             </div>
 
             <div className="mb-5">
-              <label htmlFor="password" className="mb-1.5 block text-sm font-medium text-steel-700">
+              <label htmlFor="password" className="field-label">
                 Password
               </label>
               <div className="relative">
@@ -213,7 +213,7 @@ export default function LoginPage() {
             <button
               type="submit"
               disabled={loading}
-              className="flex w-full items-center justify-center gap-2 rounded-lg bg-copper-500 px-4 py-3 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-copper-400 disabled:cursor-not-allowed disabled:opacity-60"
+              className="btn-primary btn-lg btn-block"
             >
               {loading && (
                 <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-steel-950/30 border-t-steel-950" />

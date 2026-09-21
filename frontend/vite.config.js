@@ -53,7 +53,27 @@ export default defineConfig({
           'Purchase dockets, packing lists and export invoices for Shine Motor Corporation.',
         theme_color: '#141F24',
         background_color: '#F8FAFC',
-        display: 'standalone',
+
+        /**
+         * Full screen, not merely standalone.
+         *
+         * `standalone` drops the browser chrome but keeps Android's status bar
+         * — the clock, the battery, and every notification that arrives. On a
+         * shared yard tablet that strip is both a distraction mid-docket and
+         * about 24dp of an 800px-tall screen that a table of line items could
+         * be using. `fullscreen` takes the whole panel.
+         *
+         * `display_override` is the modern field and is read first;
+         * `display` stays as the fallback for anything that ignores it, so an
+         * older browser still installs the app rather than refusing the
+         * manifest outright.
+         */
+        display_override: ['fullscreen', 'standalone', 'minimal-ui'],
+        display: 'fullscreen',
+        // Not locked. The tablet's native orientation is landscape and that is
+        // how it sits in the stand, but a locked manifest also stops someone
+        // turning it to read a long invoice, and both orientations lay out
+        // properly — so this stays the user's choice.
         orientation: 'any',
         start_url: '/',
         scope: '/',

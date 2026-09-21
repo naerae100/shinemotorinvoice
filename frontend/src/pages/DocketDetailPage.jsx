@@ -359,7 +359,7 @@ export default function DocketDetailPage() {
             />
             <button
               onClick={() => printAs(downloadName)}
-              className="rounded-md bg-copper-500 px-4 py-2 text-xs font-semibold text-white hover:bg-copper-400"
+              className="btn-primary btn-sm"
             >
               Print {view === 'receipt' ? 'receipt' : docNoun}
             </button>

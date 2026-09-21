@@ -23,7 +23,7 @@ export default function ComboField({
   return (
     <div className={className}>
       {label && (
-        <label htmlFor={id} className="mb-1 block text-xs font-medium text-steel-500">
+        <label htmlFor={id} className="field-label">
           {label}
         </label>
       )}

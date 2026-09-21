@@ -10,6 +10,7 @@ import {
 } from '../lib/timezone.js';
 import { requireAuth } from '../middleware/auth.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
+import { round3 } from '../lib/money.js';
 
 const router = Router();
 
@@ -208,7 +209,11 @@ function buildSeries(from, to, granularity, datasets) {
     .map(([period, values]) => ({
       period,
       ...Object.fromEntries(
-        Object.entries(values).map(([k, v]) => [k, typeof v === 'number' ? Math.round(v * 100) / 100 : v])
+        // round3, like every other money figure in the system. At two decimals
+        // the chart's own table printed USD 316,611.880 directly underneath a
+        // tile reading USD 316,611.879, off by a tenth of a cent — the same
+        // number twice on one screen, disagreeing.
+        Object.entries(values).map(([k, v]) => [k, typeof v === 'number' ? round3(v) : v])
       ),
     }));
 }
@@ -273,14 +278,25 @@ router.get(
         WHERE status = 'ACTIVE' AND date >= ${from} AND date <= ${to}
         GROUP BY period
       `,
+      // Grouped by currency, not filtered to one.
+      //
+      // This was `currency = 'AUD'`, which meant a container sold in USD —
+      // most of them — was simply absent from the chart and from the table
+      // behind it. The tiles above already reported USD on their own card, so
+      // the dashboard said the yard had sold something and then drew a flat
+      // line underneath it.
+      //
+      // Currencies are still never added together; they become separate series
+      // downstream, each with its own scale and its own label.
       prisma.$queryRaw`
         SELECT 
           to_char(date_trunc(${granularity}::text, "date" AT TIME ZONE ${process.env.BUSINESS_TZ || 'Australia/Sydney'}), ${granularity === 'month' ? 'YYYY-MM' : 'YYYY-MM-DD'}) AS period,
+          COALESCE(currency, 'AUD') AS currency,
           SUM(total) as value,
           CAST(COUNT(*) AS INTEGER) as count
         FROM "ExportInvoice"
-        WHERE status = 'ACTIVE' AND stage = 'INVOICED' AND currency = 'AUD' AND date >= ${from} AND date <= ${to}
-        GROUP BY period
+        WHERE status = 'ACTIVE' AND stage = 'INVOICED' AND date >= ${from} AND date <= ${to}
+        GROUP BY period, COALESCE(currency, 'AUD')
       `,
       prisma.docketLineItem.groupBy({
         by: ['materialId'],
@@ -476,6 +492,18 @@ router.get(
     });
     const salesTotal = Number(salesIn('AUD')?._sum.total ?? 0);
 
+    // Every currency the chart has rows for, AUD first and the rest
+    // alphabetical. Taken from the series rows themselves rather than from
+    // salesAgg, so the keys promised to the chart and the data behind them
+    // cannot disagree. AUD is always present even in a period with no AUD
+    // sales, because purchases are AUD and the chart pairs the two.
+    const seriesCurrencies = [
+      'AUD',
+      ...[...new Set(invoiceRows.map((r) => r.currency))]
+        .filter((c) => c && c !== 'AUD')
+        .sort(),
+    ];
+
     // Deliberately NOT s-maxage. This response is per-account financial data
     // behind requireAuth, and a shared CDN keys its cache on the URL, not on the
     // Authorization header — so an edge-cached copy could be served to a request
@@ -503,7 +531,7 @@ router.get(
       // figure, not accounting profit — stock bought this month may not be sold
       // until next, so a negative number is normal in a buying month. USD sales
       // are excluded rather than converted at an invented rate.
-      grossMargin: Math.round((salesTotal - purchasesTotal) * 100) / 100,
+      grossMargin: round3(salesTotal - purchasesTotal),
       gst: {
         paid: sumOf(purchaseAgg, 'gst'),
         collected: Number(salesIn('AUD')?._sum.gst ?? 0)
@@ -553,8 +581,19 @@ router.get(
       voidedInRange: voidCount,
       series: buildSeries(from, to, granularity, {
         purchases: docketRows,
-        sales: invoiceRows,
+        // `sales` stays the AUD figure, because the tiles and sparklines beside
+        // the chart are AUD and must not silently start including USD.
+        sales: invoiceRows.filter((r) => r.currency === 'AUD'),
+        // One extra dataset per foreign currency, keyed sales_USD, sales_NZD …
+        ...Object.fromEntries(
+          seriesCurrencies
+            .filter((c) => c !== 'AUD')
+            .map((c) => [`sales_${c}`, invoiceRows.filter((r) => r.currency === c)])
+        ),
       }),
+      // Which sales series the rows above actually carry, in a stable order, so
+      // the chart does not have to guess at key names or scan every row.
+      seriesCurrencies,
       topMaterialsBought: topBought
         .filter((r) => materialMap[r.materialId])
         .map((r) => ({
