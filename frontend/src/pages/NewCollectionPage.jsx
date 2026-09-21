@@ -5,19 +5,48 @@ import { formatNumber } from '../lib/format';
 import { apiErrorMessage } from '../lib/apiError';
 import MaterialField from '../components/MaterialField';
 
-const BLANK_LINE = { materialId: '', description: '', grossWeight: '', tareWeight: '' };
+const BLANK_LINE = {
+  // Carried on an existing line so an edit updates the row rather than
+  // replacing it — the line's identity is what a photo will hang off.
+  id: null,
+  materialId: '',
+  description: '',
+  grossWeight: '',
+  tareWeight: '',
+  supplierGrossWeight: '',
+  supplierTareWeight: '',
+};
 // A name, and a suburb if they give one. Phone and street address were here
 // and are not: a contractor is standing in a driveway with a load to weigh,
 // and a field nobody fills in is a field that only slows the form down. The
 // API still accepts both, so an admin can add them to a record later.
 const BLANK_SELLER = { name: '', suburb: '' };
 
+const round3 = (n) => Math.round((n + Number.EPSILON) * 1000) / 1000;
+
 /** net = gross − tare, to three decimals, never below zero. */
-function netOf(line) {
-  const gross = parseFloat(line.grossWeight);
-  const tare = parseFloat(line.tareWeight) || 0;
-  if (!Number.isFinite(gross)) return null;
-  return Math.max(0, Math.round((gross - tare + Number.EPSILON) * 1000) / 1000);
+function net(gross, tare) {
+  const g = parseFloat(gross);
+  if (!Number.isFinite(g)) return null;
+  return Math.max(0, round3(g - (parseFloat(tare) || 0)));
+}
+
+const ourNet = (l) => net(l.grossWeight, l.tareWeight);
+const theirNet = (l) => net(l.supplierGrossWeight, l.supplierTareWeight);
+
+/**
+ * Ours minus theirs.
+ *
+ * That direction on purpose: a negative number means the supplier's scales
+ * said more than ours did, which is the direction that costs the yard money.
+ * Null when either side has not been weighed — there is nothing to compare,
+ * and showing the whole of our net as a "difference" would be a lie.
+ */
+function difference(l) {
+  const a = ourNet(l);
+  const b = theirNet(l);
+  if (a === null || b === null) return null;
+  return round3(a - b);
 }
 
 /**
@@ -73,10 +102,15 @@ export default function NewCollectionPage() {
         setExpectedUpdatedAt(c.updatedAt);
         setLines(
           c.lines.map((l) => ({
+            id: l.id,
             materialId: l.materialId || '',
             description: l.description || '',
             grossWeight: String(l.grossWeight),
             tareWeight: String(l.tareWeight),
+            supplierGrossWeight:
+              l.supplierGrossWeight == null ? '' : String(l.supplierGrossWeight),
+            supplierTareWeight:
+              l.supplierTareWeight == null ? '' : String(l.supplierTareWeight),
           }))
         );
       })
@@ -102,10 +136,30 @@ export default function NewCollectionPage() {
     return () => clearTimeout(t);
   }, [sellerQuery, selectedSeller]);
 
-  const totalNet = useMemo(
-    () => lines.reduce((a, l) => a + (netOf(l) ?? 0), 0),
-    [lines]
-  );
+  const totals = useMemo(() => {
+    let ours = 0;
+    // Our net counted again over only the lines they also weighed. Comparing
+    // our whole total against a supplier total that is missing half its lines
+    // would report a difference that is really just the gaps — which is the
+    // one number on this screen nobody could sanity-check by eye.
+    let oursCompared = 0;
+    let theirs = 0;
+    let compared = 0;
+    for (const l of lines) {
+      const mine = ourNet(l) ?? 0;
+      ours += mine;
+      if (difference(l) !== null) {
+        oursCompared += mine;
+        theirs += theirNet(l);
+        compared += 1;
+      }
+    }
+    return {
+      ours: round3(ours),
+      difference: compared ? round3(oursCompared - theirs) : null,
+      compared,
+    };
+  }, [lines]);
   const filledLines = lines.filter((l) => (l.materialId || l.description.trim()) && l.grossWeight);
 
   function updateLine(i, field, value) {
@@ -164,10 +218,17 @@ export default function NewCollectionPage() {
         localSupplierId,
         notes: notes.trim() || null,
         lines: filledLines.map((l) => ({
+          ...(l.id ? { id: l.id } : {}),
           materialId: l.materialId || null,
           description: l.materialId ? null : l.description.trim(),
           grossWeight: parseFloat(l.grossWeight),
           tareWeight: parseFloat(l.tareWeight) || 0,
+          // Left out entirely rather than sent as zero: a seller who did not
+          // weigh is not a seller who weighed nothing.
+          supplierGrossWeight:
+            l.supplierGrossWeight === '' ? null : parseFloat(l.supplierGrossWeight),
+          supplierTareWeight:
+            l.supplierGrossWeight === '' ? null : parseFloat(l.supplierTareWeight) || 0,
         })),
         ...(isEdit && expectedUpdatedAt ? { expectedUpdatedAt } : {}),
       };
@@ -309,36 +370,28 @@ export default function NewCollectionPage() {
             {/* Column headings on a wide screen; each field labels itself on a
                 narrow one, where a header row would scroll away from its
                 inputs. */}
-            <div className="hidden gap-3 pb-2 text-[11px] font-semibold uppercase tracking-wider text-steel-500 sm:grid sm:grid-cols-[1fr_7rem_7rem_7rem_2rem]">
-              <div>Grade</div>
-              <div className="text-right">Gross kg</div>
-              <div className="text-right">Tare kg</div>
-              <div className="text-right">Net kg</div>
-              <div />
-            </div>
-
-            <div className="space-y-4 sm:space-y-2">
+            {/* A card per grade at every width, not a table row.
+                Seven figures now live on a line — our gross, tare and net,
+                theirs, and the difference — and no row holds seven numbers
+                legibly on a phone or a tablet. Two labelled columns, Ours and
+                Theirs, is also how the comparison is actually read aloud. */}
+            <div className="space-y-4">
               {lines.map((line, i) => {
-                const net = netOf(line);
-                const invalid =
-                  net !== null && (parseFloat(line.tareWeight) || 0) > parseFloat(line.grossWeight);
+                const mine = ourNet(line);
+                const yours = theirNet(line);
+                const diff = difference(line);
+                const ourTareBad =
+                  mine !== null && (parseFloat(line.tareWeight) || 0) > parseFloat(line.grossWeight);
+                const theirTareBad =
+                  yours !== null &&
+                  (parseFloat(line.supplierTareWeight) || 0) > parseFloat(line.supplierGrossWeight);
+
                 return (
                   <div
-                    key={i}
-                    /* On a phone this is one card per grade: the name across
-                       the top, then gross / tare / net as a single row of
-                       three underneath it. They read as one measurement of one
-                       material, which is what they are — the earlier two-column
-                       version split them so that net ended up beside nothing
-                       and the remove button had a row to itself.
-
-                       From sm up `sm:contents` dissolves the inner wrapper so
-                       its three children become cells of the outer grid, and
-                       the whole thing is the single table row it was before.
-                       One piece of markup, both shapes. */
-                    className="rounded-lg border border-steel-200 bg-white p-3 sm:grid sm:grid-cols-[1fr_7rem_7rem_7rem_2rem] sm:items-center sm:gap-3 sm:rounded-none sm:border-0 sm:bg-transparent sm:p-0"
+                    key={line.id ?? i}
+                    className="rounded-xl border border-steel-200 bg-white p-3 shadow-sm sm:p-4"
                   >
-                    <div className="mb-2 flex items-center justify-between sm:hidden">
+                    <div className="mb-2 flex items-center justify-between gap-2">
                       <span className="text-[11px] font-bold uppercase tracking-wider text-steel-400">
                         Grade {i + 1}
                       </span>
@@ -353,97 +406,111 @@ export default function NewCollectionPage() {
                       </button>
                     </div>
 
-                    <div>
-                      <label className="field-label sm:hidden">Material</label>
-                      {/* The same picker the weighbridge docket uses, so a
-                          grade is named the same way in the field as it is at
-                          the yard. It reports a price too, which is ignored
-                          here — nothing on this screen has a price. */}
-                      <MaterialField
-                        materials={materials}
-                        value={line.materialId}
-                        description={line.description}
-                        onSelect={({ materialId, description }) =>
-                          setLines((prev) =>
-                            prev.map((l, idx) =>
-                              idx === i ? { ...l, materialId, description } : l
-                            )
-                          )
-                        }
+                    <MaterialField
+                      materials={materials}
+                      value={line.materialId}
+                      description={line.description}
+                      onSelect={({ materialId, description }) =>
+                        setLines((prev) =>
+                          prev.map((l, idx) => (idx === i ? { ...l, materialId, description } : l))
+                        )
+                      }
+                    />
+
+                    {/* Row label, ours, theirs. The label column is what lets
+                        two sets of weights sit side by side without repeating
+                        "gross" and "tare" four times. */}
+                    <div className="mt-3 grid grid-cols-[3.2rem_1fr_1fr] items-center gap-x-2 gap-y-2 sm:grid-cols-[4.5rem_1fr_1fr] sm:gap-x-3">
+                      <div />
+                      <div className="text-center text-[11px] font-bold uppercase tracking-wider text-steel-500">
+                        Ours
+                      </div>
+                      <div className="text-center text-[11px] font-bold uppercase tracking-wider text-steel-400">
+                        Theirs
+                      </div>
+
+                      <label className="text-xs font-semibold text-steel-600" htmlFor={`g-${i}`}>
+                        Gross
+                      </label>
+                      <input
+                        id={`g-${i}`}
+                        type="number"
+                        inputMode="decimal"
+                        step="0.001"
+                        min="0"
+                        value={line.grossWeight}
+                        onChange={(e) => updateLine(i, 'grossWeight', e.target.value)}
+                        placeholder="kg"
+                        aria-label={`Our gross weight, grade ${i + 1}`}
+                        className="num w-full rounded-md border border-steel-200 bg-white px-2 py-2 text-right text-sm"
                       />
-                    </div>
+                      <input
+                        type="number"
+                        inputMode="decimal"
+                        step="0.001"
+                        min="0"
+                        value={line.supplierGrossWeight}
+                        onChange={(e) => updateLine(i, 'supplierGrossWeight', e.target.value)}
+                        placeholder="kg"
+                        aria-label={`Their gross weight, grade ${i + 1}`}
+                        className="num w-full rounded-md border border-steel-200 bg-paper px-2 py-2 text-right text-sm"
+                      />
 
-                    {/* Two inputs side by side, then net on its own line.
-                        Three across did not fit: at 390px each column is 89px
-                        and a realistic figure like "122,938.250" is about
-                        106px of monospace, so gross, tare and net were all
-                        being clipped — measured at 360, 390 and 412px. Net
-                        gets the full width, which also puts the number that
-                        matters where the eye lands last.
-
-                        `sm:contents` on the pair dissolves the wrapper from
-                        sm up, so gross, tare and net become three cells of the
-                        outer grid and the row is the table row it was. */}
-                    <div className="mt-3 grid grid-cols-2 gap-2 sm:contents">
-                      <div>
-                        <label className="field-label sm:hidden">Gross kg</label>
-                        <input
-                          type="number"
-                          inputMode="decimal"
-                          step="0.001"
-                          min="0"
-                          value={line.grossWeight}
-                          onChange={(e) => updateLine(i, 'grossWeight', e.target.value)}
-                          placeholder="Gross"
-                          aria-label={`Gross weight, grade ${i + 1}`}
-                          className="num w-full rounded-md border border-steel-200 bg-white px-2.5 py-2 text-right text-sm"
-                        />
-                      </div>
-
-                      <div>
-                        <label className="field-label sm:hidden">Tare kg</label>
-                        <input
-                          type="number"
-                          inputMode="decimal"
-                          step="0.001"
-                          min="0"
-                          value={line.tareWeight}
-                          onChange={(e) => updateLine(i, 'tareWeight', e.target.value)}
-                          placeholder="Tare"
-                          aria-label={`Tare weight, grade ${i + 1}`}
-                          className={`num w-full rounded-md border bg-white px-2.5 py-2 text-right text-sm ${
-                            invalid ? 'border-working-red' : 'border-steel-200'
-                          }`}
-                        />
-                      </div>
-                    </div>
-
-                    {/* Worked out, not typed. The contractor reads two numbers
-                        off a scale; doing the subtraction on paper is where the
-                        mistakes come from. */}
-                    <div className="mt-2 flex items-center justify-between rounded-md bg-paper px-2.5 py-2 sm:mt-0 sm:block sm:rounded-none sm:bg-transparent">
-                      <span className="text-[11px] font-bold uppercase tracking-wider text-steel-500 sm:hidden">
-                        Net kg
-                      </span>
-                      <span
-                        className={`num block text-right text-sm font-bold ${
-                          invalid ? 'text-working-red' : 'text-steel-900'
+                      <label className="text-xs font-semibold text-steel-600" htmlFor={`t-${i}`}>
+                        Tare
+                      </label>
+                      <input
+                        id={`t-${i}`}
+                        type="number"
+                        inputMode="decimal"
+                        step="0.001"
+                        min="0"
+                        value={line.tareWeight}
+                        onChange={(e) => updateLine(i, 'tareWeight', e.target.value)}
+                        placeholder="kg"
+                        aria-label={`Our tare weight, grade ${i + 1}`}
+                        className={`num w-full rounded-md border bg-white px-2 py-2 text-right text-sm ${
+                          ourTareBad ? 'border-working-red' : 'border-steel-200'
                         }`}
-                      >
-                        {net === null ? '—' : formatNumber(net, 3)}
-                      </span>
+                      />
+                      <input
+                        type="number"
+                        inputMode="decimal"
+                        step="0.001"
+                        min="0"
+                        value={line.supplierTareWeight}
+                        onChange={(e) => updateLine(i, 'supplierTareWeight', e.target.value)}
+                        placeholder="kg"
+                        aria-label={`Their tare weight, grade ${i + 1}`}
+                        className={`num w-full rounded-md border bg-paper px-2 py-2 text-right text-sm ${
+                          theirTareBad ? 'border-working-red' : 'border-steel-200'
+                        }`}
+                      />
+
+                      <div className="text-xs font-semibold text-steel-600">Net</div>
+                      <div className="num rounded-md bg-steel-100 px-2 py-2 text-right text-sm font-bold text-steel-900">
+                        {mine === null ? '—' : formatNumber(mine, 3)}
+                      </div>
+                      <div className="num rounded-md bg-paper px-2 py-2 text-right text-sm font-bold text-steel-700">
+                        {yours === null ? '—' : formatNumber(yours, 3)}
+                      </div>
                     </div>
 
-                    <div className="hidden justify-end sm:flex">
-                      <button
-                        type="button"
-                        onClick={() => setLines((prev) => prev.filter((_, idx) => idx !== i))}
-                        disabled={lines.length <= 1}
-                        aria-label={`Remove grade ${i + 1}`}
-                        className="btn-ghost btn-icon btn-sm text-steel-400 hover:bg-working-redDim hover:text-working-red"
-                      >
-                        ×
-                      </button>
+                    {/* Ours minus theirs, stated plainly. No threshold and no
+                        colour: what counts as a real discrepancy is a judgement
+                        about this seller and this load, and a number that turns
+                        amber on its own would be making that call for you. */}
+                    <div className="mt-2 flex items-baseline justify-between border-t border-steel-100 pt-2">
+                      <span className="text-xs font-semibold text-steel-600">Difference</span>
+                      <span className="num text-sm font-bold text-steel-900">
+                        {diff === null ? (
+                          <span className="text-xs font-medium text-steel-400">
+                            they did not weigh
+                          </span>
+                        ) : (
+                          `${diff > 0 ? '+' : ''}${formatNumber(diff, 3)} kg`
+                        )}
+                      </span>
                     </div>
                   </div>
                 );
@@ -479,13 +546,29 @@ export default function NewCollectionPage() {
           style={{ left: 'var(--app-sidebar-w, 0px)' }}
         >
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
-            <div className="flex min-w-0 items-baseline gap-2">
+            {/* Our total, and the running difference beside it. The bar is
+                the only thing on screen the whole time the form is open, so
+                the comparison belongs here rather than only at the bottom of
+                a long list of grades. */}
+            <div className="flex min-w-0 flex-wrap items-baseline gap-x-3 gap-y-0.5">
               <span className="num text-lg font-bold leading-none text-steel-900">
-                {formatNumber(totalNet, 3)} kg
+                {formatNumber(totals.ours, 3)} kg
               </span>
               <span className="truncate text-xs font-medium text-steel-500">
                 net over {filledLines.length} {filledLines.length === 1 ? 'grade' : 'grades'}
               </span>
+              {totals.difference !== null && (
+                <span className="num w-full text-xs font-semibold text-steel-600 sm:w-auto">
+                  {totals.difference > 0 ? '+' : ''}
+                  {formatNumber(totals.difference, 3)} kg vs theirs
+                  {totals.compared < filledLines.length && (
+                    <span className="font-medium text-steel-400">
+                      {' '}
+                      ({totals.compared} of {filledLines.length})
+                    </span>
+                  )}
+                </span>
+              )}
             </div>
             <div className="btn-row flex-nowrap justify-stretch sm:justify-end">
               <button

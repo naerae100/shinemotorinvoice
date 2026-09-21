@@ -629,11 +629,24 @@ model CollectionLine {
   material    Material? @relation(fields: [materialId], references: [id])
   description String?
 
-  /// Kilograms. net is stored rather than derived so the number the contractor
-  /// saw in the field is the number kept, even if the arithmetic ever changes.
+  /// What our scales said. Kilograms. net is stored rather than derived so the
+  /// number the contractor saw in the field is the number kept, even if the
+  /// arithmetic ever changes.
   grossWeight Decimal
   tareWeight  Decimal @default(0)
   netWeight   Decimal
+
+  /// What the supplier's scales said, weighed independently — their own
+  /// container, their own tare. Nullable throughout: a seller who does not
+  /// weigh, or has not weighed yet, leaves these empty and the line is still
+  /// a complete record of what we took.
+  ///
+  /// The difference is deliberately NOT stored. It is ours minus theirs and
+  /// nothing else, so deriving it means there is one place it can be wrong
+  /// rather than two that can disagree.
+  supplierGrossWeight Decimal?
+  supplierTareWeight  Decimal?
+  supplierNetWeight   Decimal?
 
   @@index([collectionId])
 }

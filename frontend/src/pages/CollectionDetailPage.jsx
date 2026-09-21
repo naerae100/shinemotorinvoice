@@ -68,8 +68,24 @@ export default function CollectionDetailPage() {
   }
 
   const isVoid = collection.status === 'VOID';
-  const totalNet = collection.lines.reduce((a, l) => a + Number(l.netWeight), 0);
-  const totalGross = collection.lines.reduce((a, l) => a + Number(l.grossWeight), 0);
+  const round3 = (n) => Math.round((n + Number.EPSILON) * 1000) / 1000;
+  const totalNet = round3(collection.lines.reduce((a, l) => a + Number(l.netWeight), 0));
+
+  /**
+   * The comparison, over only the lines weighed on both sides.
+   *
+   * `ours` here is deliberately not the collection total: setting our whole
+   * net against a supplier figure that covers half the grades would print a
+   * difference that is mostly the missing lines.
+   */
+  const compared = collection.lines.filter((l) => l.supplierNetWeight != null);
+  const comparison = compared.length
+    ? {
+        lines: compared.length,
+        ours: round3(compared.reduce((a, l) => a + Number(l.netWeight), 0)),
+        theirs: round3(compared.reduce((a, l) => a + Number(l.supplierNetWeight), 0)),
+      }
+    : null;
 
   return (
     <div className="mx-auto max-w-4xl px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
@@ -91,7 +107,11 @@ export default function CollectionDetailPage() {
             <h1 className="font-display text-base font-semibold text-paper">
               Collection #{collection.collectionNumber}
             </h1>
-            <div className="text-xs text-steel-400">
+            {/* steel-400 on steel-900 measured about 2.8:1 — under the 4.5:1
+                floor for text this size, and the date was genuinely hard to
+                read. steel-300 clears it while staying quieter than the
+                heading above it. */}
+            <div className="text-xs font-medium text-steel-300">
               {format(new Date(collection.date), 'EEEE d MMMM yyyy, h:mma')}
             </div>
           </div>
@@ -158,43 +178,103 @@ export default function CollectionDetailPage() {
             <thead>
               <tr className="border-b border-steel-100 bg-paper text-left text-[11px] uppercase tracking-wider text-steel-500">
                 <th className="px-6 py-3 font-semibold">Grade</th>
-                <th className="px-6 py-3 text-right font-semibold">Gross kg</th>
-                <th className="px-6 py-3 text-right font-semibold">Tare kg</th>
-                <th className="px-6 py-3 text-right font-semibold">Net kg</th>
+                <th className="px-6 py-3 text-right font-semibold">Our net</th>
+                <th className="px-6 py-3 text-right font-semibold">Their net</th>
+                <th className="px-6 py-3 text-right font-semibold">Difference</th>
               </tr>
             </thead>
             <tbody>
-              {collection.lines.map((l) => (
-                <tr key={l.id} className="data-row">
-                  <td className="px-6 py-3 text-steel-800">
-                    {l.material?.description ?? l.description}
-                    {!l.material && (
-                      <span className="ml-2 text-xs text-steel-400">not on the price list</span>
-                    )}
-                  </td>
-                  <td className="num px-6 py-3 text-right text-steel-700">
-                    {formatNumber(l.grossWeight, 3)}
-                  </td>
-                  <td className="num px-6 py-3 text-right text-steel-700">
-                    {formatNumber(l.tareWeight, 3)}
-                  </td>
-                  <td className="num px-6 py-3 text-right font-semibold text-steel-900">
-                    {formatNumber(l.netWeight, 3)}
-                  </td>
-                </tr>
-              ))}
+              {collection.lines.map((l) => {
+                const theirs = l.supplierNetWeight == null ? null : Number(l.supplierNetWeight);
+                const diff =
+                  theirs === null
+                    ? null
+                    : Math.round((Number(l.netWeight) - theirs + Number.EPSILON) * 1000) / 1000;
+                return (
+                  <tr key={l.id} className="data-row align-top">
+                    <td className="px-6 py-3 text-steel-800">
+                      {l.material?.description ?? l.description}
+                      {!l.material && (
+                        <span className="ml-2 text-xs text-steel-400">not a listed grade</span>
+                      )}
+                    </td>
+                    {/* The gross and tare that produced each net sit under it,
+                        small. They are what you check when a difference looks
+                        wrong, and they are noise until then. */}
+                    <td className="px-6 py-3 text-right">
+                      <div className="num font-semibold text-steel-900">
+                        {formatNumber(l.netWeight, 3)}
+                      </div>
+                      <div className="num text-[11px] text-steel-400">
+                        {formatNumber(l.grossWeight, 3)} − {formatNumber(l.tareWeight, 3)}
+                      </div>
+                    </td>
+                    <td className="px-6 py-3 text-right">
+                      {theirs === null ? (
+                        <span className="text-xs text-steel-400">not weighed</span>
+                      ) : (
+                        <>
+                          <div className="num font-semibold text-steel-700">
+                            {formatNumber(theirs, 3)}
+                          </div>
+                          <div className="num text-[11px] text-steel-400">
+                            {formatNumber(l.supplierGrossWeight, 3)} −{' '}
+                            {formatNumber(l.supplierTareWeight, 3)}
+                          </div>
+                        </>
+                      )}
+                    </td>
+                    <td className="num px-6 py-3 text-right font-bold text-steel-900">
+                      {diff === null ? (
+                        <span className="text-xs font-medium text-steel-300">—</span>
+                      ) : (
+                        `${diff > 0 ? '+' : ''}${formatNumber(diff, 3)}`
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
+            {/* Two rows, not one, whenever the supplier weighed only some of
+                the grades.
+                
+                A single Total line put our whole net beside their partial one
+                with a difference worked out from neither: 4,284.600 against
+                2,300.600 reading "−7.000". The figure was right and looked
+                wrong, which is the worst way for a number to be right. The
+                collection total and the comparison are two different sums, so
+                they get two rows. */}
             <tfoot>
               <tr className="border-t-2 border-steel-200 font-semibold">
-                <td className="px-6 py-3 text-steel-700">Total</td>
-                <td className="num px-6 py-3 text-right text-steel-700">
-                  {formatNumber(totalGross, 3)}
-                </td>
-                <td className="px-6 py-3" />
+                <td className="px-6 py-3 text-steel-700">Collection total</td>
                 <td className="num px-6 py-3 text-right text-steel-900">
                   {formatNumber(totalNet, 3)}
                 </td>
+                <td className="px-6 py-3" />
+                <td className="px-6 py-3" />
               </tr>
+              {comparison && (
+                <tr className="border-t border-steel-100 font-semibold">
+                  <td className="px-6 py-3 text-steel-700">
+                    Compared
+                    {comparison.lines < collection.lines.length && (
+                      <span className="ml-1 text-[11px] font-medium text-steel-400">
+                        {comparison.lines} of {collection.lines.length} grades
+                      </span>
+                    )}
+                  </td>
+                  <td className="num px-6 py-3 text-right text-steel-900">
+                    {formatNumber(comparison.ours, 3)}
+                  </td>
+                  <td className="num px-6 py-3 text-right text-steel-700">
+                    {formatNumber(comparison.theirs, 3)}
+                  </td>
+                  <td className="num px-6 py-3 text-right text-steel-900">
+                    {comparison.ours - comparison.theirs > 0 ? '+' : ''}
+                    {formatNumber(round3(comparison.ours - comparison.theirs), 3)}
+                  </td>
+                </tr>
+              )}
             </tfoot>
           </table>
         </div>

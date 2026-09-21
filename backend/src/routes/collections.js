@@ -26,10 +26,16 @@ const router = Router();
 
 const lineSchema = z
   .object({
+    // Present when the line already exists. Lines are matched on it so an
+    // edit updates a row rather than replacing it — see PATCH below.
+    id: z.string().optional(),
     materialId: z.string().optional().nullable(),
     description: z.string().trim().optional().nullable(),
     grossWeight: z.coerce.number().nonnegative('Weights cannot be negative'),
     tareWeight: z.coerce.number().nonnegative('Weights cannot be negative').default(0),
+    // The supplier's own weighing. Optional: plenty of sellers do not weigh.
+    supplierGrossWeight: z.coerce.number().nonnegative().nullish(),
+    supplierTareWeight: z.coerce.number().nonnegative().nullish(),
   })
   .refine((l) => l.materialId || l.description?.trim(), {
     message: 'Choose a grade or type what it is',
@@ -37,7 +43,16 @@ const lineSchema = z
   .refine((l) => l.tareWeight <= l.grossWeight, {
     message: 'Tare cannot be more than the gross weight',
     path: ['tareWeight'],
-  });
+  })
+  .refine(
+    (l) =>
+      l.supplierGrossWeight == null ||
+      (l.supplierTareWeight ?? 0) <= l.supplierGrossWeight,
+    {
+      message: "Their tare cannot be more than their gross weight",
+      path: ['supplierTareWeight'],
+    }
+  );
 
 const bodySchema = z.object({
   localSupplierId: z.string().min(1, 'Choose who it came from'),
@@ -74,13 +89,23 @@ const DETAIL_INCLUDE = {
  */
 const toWeight = (n) => round3(n).toFixed(3);
 
-const withNet = (l) => ({
-  materialId: l.materialId || null,
-  description: l.description?.trim() || null,
-  grossWeight: toWeight(l.grossWeight),
-  tareWeight: toWeight(l.tareWeight ?? 0),
-  netWeight: toWeight(l.grossWeight - (l.tareWeight ?? 0)),
-});
+const withNet = (l) => {
+  // Their net only exists if they gave a gross. A tare with no gross is not
+  // half a weighing, it is a typo.
+  const hasTheirs = l.supplierGrossWeight != null;
+  return {
+    materialId: l.materialId || null,
+    description: l.description?.trim() || null,
+    grossWeight: toWeight(l.grossWeight),
+    tareWeight: toWeight(l.tareWeight ?? 0),
+    netWeight: toWeight(l.grossWeight - (l.tareWeight ?? 0)),
+    supplierGrossWeight: hasTheirs ? toWeight(l.supplierGrossWeight) : null,
+    supplierTareWeight: hasTheirs ? toWeight(l.supplierTareWeight ?? 0) : null,
+    supplierNetWeight: hasTheirs
+      ? toWeight(l.supplierGrossWeight - (l.supplierTareWeight ?? 0))
+      : null,
+  };
+};
 
 /**
  * GET /api/collections/materials
@@ -147,7 +172,7 @@ router.get(
       // The weight the filtered list adds up to. There is no money to total.
       prisma.collectionLine.aggregate({
         where: { collection: where },
-        _sum: { netWeight: true, grossWeight: true },
+        _sum: { netWeight: true, grossWeight: true, supplierNetWeight: true },
       }),
     ]);
 
@@ -158,6 +183,10 @@ router.get(
       filteredTotals: {
         netWeight: round3(Number(lineAgg._sum.netWeight ?? 0)),
         grossWeight: round3(Number(lineAgg._sum.grossWeight ?? 0)),
+        // Only across the lines where they actually weighed. Summing our net
+        // against a supplier total that is missing half its lines would put a
+        // difference on screen that is really just the gaps.
+        supplierNetWeight: round3(Number(lineAgg._sum.supplierNetWeight ?? 0)),
       },
     });
   })
@@ -249,7 +278,27 @@ router.patch(
     try {
       const collection = await prisma.$transaction(async (tx) => {
         if (data.lines) {
-          await tx.collectionLine.deleteMany({ where: { collectionId: req.params.id } });
+          // Lines are matched on their id, not wiped and rebuilt.
+          //
+          // Deleting them all and recreating was simpler and about to be
+          // destructive: photographs of a load hang off the line they belong
+          // to, and every correction of a mistyped weight would have taken
+          // the evidence with it. A line's identity has to outlive an edit,
+          // because it is the thing the photo is of.
+          const keep = data.lines.filter((l) => l.id).map((l) => l.id);
+          await tx.collectionLine.deleteMany({
+            where: { collectionId: req.params.id, id: { notIn: keep.length ? keep : ['-'] } },
+          });
+          for (const line of data.lines) {
+            const values = withNet(line);
+            if (line.id) {
+              await tx.collectionLine.update({ where: { id: line.id }, data: values });
+            } else {
+              await tx.collectionLine.create({
+                data: { ...values, collectionId: req.params.id },
+              });
+            }
+          }
         }
         return tx.collection.update({
           where: guardedWhere(req.params.id, data.expectedUpdatedAt),
@@ -257,7 +306,6 @@ router.patch(
             ...(data.localSupplierId ? { localSupplierId: data.localSupplierId } : {}),
             ...(data.date ? { date: new Date(data.date) } : {}),
             ...(data.notes !== undefined ? { notes: data.notes || null } : {}),
-            ...(data.lines ? { lines: { create: data.lines.map(withNet) } } : {}),
             editedById: req.user.id,
             editedAt: new Date(),
           },
@@ -269,7 +317,11 @@ router.patch(
         localSupplier: c.localSupplier?.name,
         notes: c.notes,
         weights: c.lines
-          .map((l) => `${l.material?.description ?? l.description}: ${l.netWeight}`)
+          .map(
+            (l) =>
+              `${l.material?.description ?? l.description}: ${l.netWeight}` +
+              (l.supplierNetWeight != null ? ` (theirs ${l.supplierNetWeight})` : '')
+          )
           .join(', '),
       });
       const changed = diff(summarise(before), summarise(collection), [
