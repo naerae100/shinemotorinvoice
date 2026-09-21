@@ -31,6 +31,9 @@ const DEFAULTS = {
   status: 'ACTIVE',
   // '' is every docket; 'UNPAID' is the payment run.
   paymentStatus: '',
+  // '' is every docket; 'no' is the dashboard's "not issued" pipeline, i.e.
+  // drafts that still have to be turned into a document.
+  issued: '',
   page: '1',
 };
 
@@ -214,6 +217,22 @@ export default function PurchasesPage() {
                 {unpaid.count}
               </span>
             )}
+          </button>
+
+          {/* Drafts. The dashboard's pipeline links straight here, and without
+              a visible control the list would arrive filtered with nothing on
+              screen to say why or any way back. */}
+          <button
+            type="button"
+            onClick={() => setFilters({ issued: filters.issued === 'no' ? '' : 'no' })}
+            aria-pressed={filters.issued === 'no'}
+            className={`flex items-center gap-2 whitespace-nowrap rounded-lg border px-3 py-2 text-xs font-semibold transition-colors ${
+              filters.issued === 'no'
+                ? 'border-steel-800 bg-steel-800 text-white'
+                : 'border-steel-200 bg-white text-steel-700 hover:bg-paper'
+            }`}
+          >
+            Not issued
           </button>
 
           <input

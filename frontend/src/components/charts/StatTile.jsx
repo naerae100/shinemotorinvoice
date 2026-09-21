@@ -92,12 +92,23 @@ export default function StatTile({
   // A headline figure is a question ("34 dockets — which ones?"), so where there
   // is an answer to show, the whole tile is the way through to it.
   const Wrapper = to ? Link : 'div';
+  /**
+   * "AUD 6,563.868" → { code: 'AUD', amount: '6,563.868' }.
+   *
+   * Only splits a real ISO-style prefix, so a plain value ("587 kg", "16")
+   * falls through and renders as it always did.
+   */
+  const money = (() => {
+    const m = typeof value === 'string' && /^([A-Z]{3})\s+(.+)$/.exec(value.trim());
+    return m ? { code: m[1], amount: m[2] } : null;
+  })();
+
   const wrapperProps = to ? { to } : {};
 
   return (
     <Wrapper
       {...wrapperProps}
-      className={`group relative block overflow-hidden rounded-xl border border-steel-200 bg-white p-5 shadow-ticket transition-all ${
+      className={`surface group relative block overflow-hidden p-5 transition-all ${
         to
           ? 'hover:-translate-y-0.5 hover:border-copper-300 hover:shadow-md focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-copper-500'
           : 'hover:shadow-md'
@@ -120,8 +131,36 @@ export default function StatTile({
           </svg>
         )}
       </div>
-      <div className={`num mt-1.5 text-[26px] font-semibold leading-none tracking-tight ${toneClass}`}>
-        {value}
+      {/* The currency code is set small and on its own line.
+          "USD 316,611.879" at 26px is wider than a quarter of a tablet, so it
+          wrapped between the code and the figure — leaving a tile whose first
+          line read "USD" and whose second was the number. Splitting them is
+          what the eye does anyway: the code is a unit, the figure is the
+          value. The figure then scales down a step if it is still too long,
+          so a seven-figure total does not wrap either. */}
+      <div className="mt-1.5">
+        {money ? (
+          <>
+            <div className="num text-[11px] font-semibold uppercase tracking-wider text-steel-400">
+              {money.code}
+            </div>
+            <div
+              className={`num mt-0.5 truncate font-semibold leading-none tracking-tight ${
+                money.amount.length > 11 ? 'text-[21px]' : 'text-[26px]'
+              } ${toneClass}`}
+              title={value}
+            >
+              {money.amount}
+            </div>
+          </>
+        ) : (
+          <div
+            className={`num truncate text-[26px] font-semibold leading-none tracking-tight ${toneClass}`}
+            title={value}
+          >
+            {value}
+          </div>
+        )}
       </div>
 
       <div className="mt-2 flex min-h-[18px] items-center gap-2">

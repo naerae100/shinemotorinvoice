@@ -43,6 +43,10 @@ export default function InvoicesPage({ stage = 'INVOICED' }) {
   // Carried in the URL so the dashboard can link straight to a period.
   const from = searchParams.get('from') || '';
   const to = searchParams.get('to') || '';
+  // 'no' is the dashboard pipeline's "invoices not issued" — raised but not
+  // yet sent. Read from the URL so the link is shareable and the back button
+  // takes the filter off again.
+  const issued = searchParams.get('issued') || '';
 
   const [invoices, setInvoices] = useState([]);
   const [totalCount, setTotalCount] = useState(0);
@@ -60,7 +64,16 @@ export default function InvoicesPage({ stage = 'INVOICED' }) {
   // shipment. So this list shows every shipment by default and lets the
   // unpriced ones be singled out, rather than hiding a slip the moment an
   // invoice is raised against it.
-  const [slipFilter, setSlipFilter] = useState('ALL');
+  // In the URL, not component state: the dashboard links straight to the
+  // unpriced slips, and a tab that cannot be linked to cannot be the target of
+  // a pipeline row. Defaults to every shipment, as before.
+  const slipFilter = searchParams.get('slipFilter') || 'ALL';
+  const setSlipFilter = (value) => {
+    const next = new URLSearchParams(searchParams);
+    if (value === 'ALL') next.delete('slipFilter');
+    else next.set('slipFilter', value);
+    setSearchParams(next, { replace: true });
+  };
   const isSlipList = stage === 'PACKING_SLIP';
   const effectiveStage = isSlipList ? slipFilter : stage;
 
@@ -76,6 +89,7 @@ export default function InvoicesPage({ stage = 'INVOICED' }) {
             consigneeId,
             from,
             to,
+            issued,
             page,
             pageSize: PAGE_SIZE,
           }).filter(([, v]) => v !== '' && v != null)
@@ -89,7 +103,7 @@ export default function InvoicesPage({ stage = 'INVOICED' }) {
       })
       .catch(() => setError('Could not load invoices.'))
       .finally(() => setLoading(false));
-  }, [search, status, effectiveStage, consigneeId, from, to, page]);
+  }, [search, status, effectiveStage, consigneeId, from, to, issued, page]);
 
   useEffect(() => {
     const t = setTimeout(load, 200);
@@ -184,6 +198,27 @@ export default function InvoicesPage({ stage = 'INVOICED' }) {
           <option value="ALL">Include voided</option>
           <option value="VOID">Voided only</option>
         </select>
+        {/* The dashboard pipeline links here with issued=no. Shown as a chip
+            the operator can take off, rather than an invisible narrowing that
+            makes the list look like it has lost records. */}
+        {!isSlipList && issued === 'no' && (
+          <button
+            type="button"
+            onClick={() => {
+              const next = new URLSearchParams(searchParams);
+              next.delete('issued');
+              setSearchParams(next, { replace: true });
+              setPage(1);
+            }}
+            className="flex items-center gap-2 whitespace-nowrap rounded-lg border border-steel-800 bg-steel-800 px-3 py-2 text-xs font-semibold text-white"
+            title="Show every invoice again"
+          >
+            Not issued
+            <span aria-hidden="true" className="text-white/70">
+              ×
+            </span>
+          </button>
+        )}
         {isSlipList && (
           <div className="flex rounded-md border border-steel-200 bg-white p-0.5">
             {[

@@ -245,7 +245,7 @@ export default function DocketReceipt({ docket, settings }) {
             line invites the supplier to add it again. */}
         {taxMode === 'EXCLUSIVE' && <Row label="GST (10%)" value={formatAud(docket.gst)} />}
         {taxMode === 'INCLUSIVE' && (
-          <Row label="Includes GST" value={formatAud(docket.gst)} />
+          <Row label="Includes GST (10%)" value={formatAud(docket.gst)} />
         )}
       </div>
 

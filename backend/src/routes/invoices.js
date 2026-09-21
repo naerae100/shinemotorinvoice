@@ -199,9 +199,18 @@ function withParsedSnapshot(invoice) {
 }
 
 /** Shared by the list, its totals and the CSV export. */
+/** See issuedFilter in routes/dockets.js — same idea, same three states. */
+const issuedFilter = (issued) =>
+  issued === 'no'
+    ? { issuedAt: null }
+    : issued === 'yes'
+      ? { issuedAt: { not: null } }
+      : {};
+
 function buildInvoiceWhere(query) {
-  const { search, consigneeId, materialId, from, to, status, stage } = query;
+  const { search, consigneeId, materialId, from, to, status, stage, issued } = query;
   return {
+    ...issuedFilter(issued),
     // Packing slips and invoices live in one table but are two different
     // screens. Defaulting to INVOICED keeps unpriced slips out of the sales
     // list, its totals and its CSV, where a row worth 0 would read as a sale

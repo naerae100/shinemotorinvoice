@@ -623,7 +623,7 @@ export default function DocketDetailPage() {
                 {taxMode !== 'NO_TAX' && (
                   <div className="flex justify-between">
                     <dt className="text-steel-500">
-                      {taxMode === 'INCLUSIVE' ? 'Includes GST' : 'GST (10%)'}
+                      {taxMode === 'INCLUSIVE' ? 'Includes GST (10%)' : 'GST (10%)'}
                     </dt>
                     <dd className="num text-steel-900">{formatAud(docket.gst)}</dd>
                   </div>

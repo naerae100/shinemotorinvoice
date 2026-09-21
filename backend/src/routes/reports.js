@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { Prisma } from '@prisma/client';
 import { prisma } from '../config/prisma.js';
 import {
   boundaryInstant,
@@ -13,6 +14,50 @@ import { asyncHandler } from '../middleware/asyncHandler.js';
 import { round3 } from '../lib/money.js';
 
 const router = Router();
+
+const BUSINESS_TZ = process.env.BUSINESS_TZ || 'Australia/Sydney';
+
+/**
+ * A stored timestamp as business-local wall clock.
+ *
+ * Prisma maps DateTime to `timestamp without time zone`, and the values in it
+ * are UTC instants. `"date" AT TIME ZONE 'Australia/Sydney'` on such a column
+ * does the opposite of what it looks like: it *interprets* the naive value as
+ * Sydney wall clock rather than converting a UTC instant into one. The result
+ * is the UTC calendar day wearing a Sydney label.
+ *
+ * At UTC+10/+11 that means every docket written before 10am — most of a
+ * morning at a scrap yard — was filed under the previous day. It did not just
+ * shift a bar: buildSeries drops any row whose bucket key is not in the
+ * requested window, so a docket bought this morning counted in the tile above
+ * the chart and was silently absent from the chart itself. Same for the
+ * payables ageing, and the activity heatmap was plotting UTC hours, so a 9am
+ * load appeared at 23:00.
+ *
+ * Attaching UTC first and then converting is the whole fix. It is also why
+ * this returns a naive timestamp rather than a timestamptz: the result no
+ * longer depends on the database session's own TimeZone setting, which is
+ * Sydney on this laptop and UTC on the server.
+ */
+const localTime = (column) =>
+  Prisma.sql`(${Prisma.raw(`"${column}"`)} AT TIME ZONE 'UTC' AT TIME ZONE ${BUSINESS_TZ})`;
+
+/**
+ * The same stored timestamp as a true instant, for comparing against a bound
+ * Date.
+ *
+ * $queryRaw binds a JS Date as `timestamptz`. Comparing that to a naive column
+ * makes Postgres read the column in the database session's own TimeZone — so
+ * the identical window returned different rows depending on where the query
+ * ran. Measured: for 18 September, prisma.findMany matched three dockets and
+ * the raw query matched none, because this laptop's session is Sydney while
+ * the server's is UTC.
+ *
+ * Attaching UTC to the column puts both sides of the comparison on real
+ * instants, and the answer stops depending on the connection.
+ */
+const utcInstant = (column) =>
+  Prisma.sql`(${Prisma.raw(`"${column}"`)} AT TIME ZONE 'UTC')`;
 
 /**
  * Everything here reports on ACTIVE records only — a voided docket must not
@@ -171,15 +216,33 @@ const KEY_FOR = { day: dayKey, week: weekKey, month: monthKey };
  * Buckets rows into a continuous series — including empty periods, so a chart
  * shows the gap on a quiet Tuesday rather than joining Monday to Wednesday.
  */
-function buildSeries(from, to, granularity, datasets) {
+export function buildSeries(from, to, granularity, datasets) {
   const keyFn = KEY_FOR[granularity] || dayKey;
   const buckets = new Map();
 
   // Walk business days, not server days. Midday is used as each step's instant
   // so a daylight-saving change — 2am on a Sunday in April and October — cannot
   // push a step onto the wrong side of midnight and drop or repeat a column.
+  //
+  // The walk starts at the beginning of the period the range starts in, not at
+  // the range's own first day. Stepping seven days from an arbitrary start
+  // landed every week bucket on that weekday — a range beginning on a
+  // Wednesday produced Wednesday keys — while the SQL groups by date_trunc,
+  // which is always a Monday. The keys only had to differ for a row to be
+  // dropped: anything whose period is not already a bucket is skipped below.
+  // The visible symptom was the last week of a range going missing, because
+  // the final step overshot `to` before that Monday was ever created.
   const start = zonedParts(from);
   let cursor = zonedInstant(start.year, start.month, start.day, 12);
+  if (granularity === 'month') {
+    cursor = zonedInstant(start.year, start.month, 1, 12);
+  } else if (granularity === 'week') {
+    // Back up to Monday, the same anchor Postgres uses and the same one
+    // zonedWeekKey uses when it labels a row.
+    const dow = new Date(cursor).getUTCDay(); // relative to the noon instant
+    const backTo = zonedParts(cursor);
+    cursor = zonedInstant(backTo.year, backTo.month, backTo.day - ((dow + 6) % 7), 12);
+  }
 
   while (cursor <= to) {
     const key = keyFn(cursor);
@@ -271,11 +334,11 @@ router.get(
       prisma.docket.count({ where: { status: 'VOID', date: dateRange } }),
       prisma.$queryRaw`
         SELECT 
-          to_char(date_trunc(${granularity}::text, "date" AT TIME ZONE ${process.env.BUSINESS_TZ || 'Australia/Sydney'}), ${granularity === 'month' ? 'YYYY-MM' : 'YYYY-MM-DD'}) AS period,
+          to_char(date_trunc(${granularity}::text, ${localTime('date')}), ${granularity === 'month' ? 'YYYY-MM' : 'YYYY-MM-DD'}) AS period,
           SUM(total) as value,
           CAST(COUNT(*) AS INTEGER) as count
         FROM "Docket"
-        WHERE status = 'ACTIVE' AND date >= ${from} AND date <= ${to}
+        WHERE status = 'ACTIVE' AND ${utcInstant('date')} >= ${from} AND ${utcInstant('date')} <= ${to}
         GROUP BY period
       `,
       // Grouped by currency, not filtered to one.
@@ -290,12 +353,12 @@ router.get(
       // downstream, each with its own scale and its own label.
       prisma.$queryRaw`
         SELECT 
-          to_char(date_trunc(${granularity}::text, "date" AT TIME ZONE ${process.env.BUSINESS_TZ || 'Australia/Sydney'}), ${granularity === 'month' ? 'YYYY-MM' : 'YYYY-MM-DD'}) AS period,
+          to_char(date_trunc(${granularity}::text, ${localTime('date')}), ${granularity === 'month' ? 'YYYY-MM' : 'YYYY-MM-DD'}) AS period,
           COALESCE(currency, 'AUD') AS currency,
           SUM(total) as value,
           CAST(COUNT(*) AS INTEGER) as count
         FROM "ExportInvoice"
-        WHERE status = 'ACTIVE' AND stage = 'INVOICED' AND date >= ${from} AND date <= ${to}
+        WHERE status = 'ACTIVE' AND stage = 'INVOICED' AND ${utcInstant('date')} >= ${from} AND ${utcInstant('date')} <= ${to}
         GROUP BY period, COALESCE(currency, 'AUD')
       `,
       prisma.docketLineItem.groupBy({
@@ -365,9 +428,9 @@ router.get(
       prisma.$queryRaw`
         SELECT 
           CASE
-            WHEN (CURRENT_TIMESTAMP AT TIME ZONE ${process.env.BUSINESS_TZ || 'Australia/Sydney'})::date - ("date" AT TIME ZONE ${process.env.BUSINESS_TZ || 'Australia/Sydney'})::date <= 2 THEN '0-2'
-            WHEN (CURRENT_TIMESTAMP AT TIME ZONE ${process.env.BUSINESS_TZ || 'Australia/Sydney'})::date - ("date" AT TIME ZONE ${process.env.BUSINESS_TZ || 'Australia/Sydney'})::date <= 7 THEN '3-7'
-            WHEN (CURRENT_TIMESTAMP AT TIME ZONE ${process.env.BUSINESS_TZ || 'Australia/Sydney'})::date - ("date" AT TIME ZONE ${process.env.BUSINESS_TZ || 'Australia/Sydney'})::date <= 14 THEN '8-14'
+            WHEN (CURRENT_TIMESTAMP AT TIME ZONE ${BUSINESS_TZ})::date - (${localTime('date')})::date <= 2 THEN '0-2'
+            WHEN (CURRENT_TIMESTAMP AT TIME ZONE ${BUSINESS_TZ})::date - (${localTime('date')})::date <= 7 THEN '3-7'
+            WHEN (CURRENT_TIMESTAMP AT TIME ZONE ${BUSINESS_TZ})::date - (${localTime('date')})::date <= 14 THEN '8-14'
             ELSE '15+'
           END as bucket,
           CAST(COUNT(*) AS INTEGER) as count,
@@ -394,11 +457,11 @@ router.get(
       }),
       prisma.$queryRaw`
         SELECT 
-          CAST(EXTRACT(ISODOW FROM "createdAt" AT TIME ZONE ${process.env.BUSINESS_TZ || 'Australia/Sydney'}) AS INTEGER) as weekday,
-          CAST(EXTRACT(HOUR FROM "createdAt" AT TIME ZONE ${process.env.BUSINESS_TZ || 'Australia/Sydney'}) AS INTEGER) as hour,
+          CAST(EXTRACT(ISODOW FROM ${localTime('createdAt')}) AS INTEGER) as weekday,
+          CAST(EXTRACT(HOUR FROM ${localTime('createdAt')}) AS INTEGER) as hour,
           CAST(COUNT(*) AS INTEGER) as count
         FROM "Docket"
-        WHERE status = 'ACTIVE' AND date >= ${from} AND date <= ${to}
+        WHERE status = 'ACTIVE' AND ${utcInstant('date')} >= ${from} AND ${utcInstant('date')} <= ${to}
         GROUP BY weekday, hour
       `,
       prisma.docket.groupBy({

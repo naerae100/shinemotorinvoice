@@ -120,10 +120,32 @@ const totalsFor = (lines, data) =>
  * is the point: an export that quietly returned a different set from the list
  * you were looking at would be worse than no export.
  */
+/**
+ * "Not issued yet" as a filter, so the dashboard's pipeline can be opened.
+ *
+ * The pipeline card counted three things — unissued dockets, unpriced slips,
+ * unissued invoices — and there was no way to see any of them. A number a
+ * person cannot act on is decoration, and the first question anyone asks of
+ * "9 dockets not issued" is which nine.
+ *
+ * `no` is a draft: saved, still editable, not yet a document anybody has been
+ * given. Anything other than yes/no is ignored rather than rejected, so a
+ * stale bookmark shows the ordinary list instead of an error.
+ */
+const issuedFilter = (issued) =>
+  issued === 'no'
+    ? { issuedAt: null }
+    : issued === 'yes'
+      ? { issuedAt: { not: null } }
+      : {};
+
 function buildDocketWhere(query) {
-  const { search, type, supplierId, materialId, from, to, status, minTotal, maxTotal, paymentStatus } =
-    query;
+  const {
+    search, type, supplierId, materialId, from, to, status, minTotal, maxTotal, paymentStatus,
+    issued,
+  } = query;
   return {
+    ...issuedFilter(issued),
     ...(type ? { type: String(type) } : {}),
     ...(supplierId ? { supplierId: String(supplierId) } : {}),
     // Absent means both, so the ordinary list is unchanged; the payment run
@@ -149,7 +171,7 @@ function buildDocketWhere(query) {
   };
 }
 
-// GET /api/dockets?search=&type=&supplierId=&materialId=&from=&to=&status=&page=&pageSize=
+// GET /api/dockets?search=&type=&supplierId=&materialId=&from=&to=&status=&issued=&page=&pageSize=
 router.get(
   '/',
   requireAuth,

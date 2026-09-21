@@ -83,6 +83,40 @@
   }
 }
 
+/* ---------------------------------------------------------------------------
+   Surfaces
+   ---------------------------------------------------------------------------
+   Three card treatments were in use at once on the dashboard: the stat tiles
+   and the filter bar at `rounded-xl` with a steel border and the theme's
+   `shadow-ticket`, and the panels below them at `rounded-2xl` with no border
+   and a bespoke two-layer shadow. Nothing looked broken — the page just read
+   as assembled from parts, because a 12px corner sits directly above a 16px
+   one and the eye reads the difference without naming it.
+
+   One surface, defined once. The border is what actually separates a white
+   card from a near-white page; the shadow only lifts it. */
+@layer components {
+  .surface {
+    @apply rounded-xl border border-steel-200 bg-white shadow-ticket;
+  }
+
+  /* A card header: title, optional subtitle, optional action on the right. */
+  .surface-header {
+    @apply flex items-start justify-between gap-4 border-b border-steel-100 px-5 py-4;
+  }
+
+  .surface-body {
+    @apply flex-1 px-5 py-5;
+  }
+
+  /* The label above a group of cards. The dashboard was one flat run of
+     eighteen panels with nothing saying where the money stops and the
+     operations begin. */
+  .section-label {
+    @apply mb-3 mt-8 text-xs font-bold uppercase tracking-wider text-steel-500 first:mt-0;
+  }
+}
+
 @layer components {
   /* Tables share one row rhythm so lists feel like one system */
   .data-row {
@@ -348,6 +382,12 @@
   }
   .pad-safe-bottom {
     padding-bottom: max(0.75rem, env(safe-area-inset-bottom));
+  }
+
+  /* Same idea, tighter floor — for a pinned action bar, where every pixel is
+     taken from the form above it for the whole time the form is open. */
+  .pad-safe-bar {
+    padding-bottom: max(0.5rem, env(safe-area-inset-bottom));
   }
   .pad-safe-x {
     padding-left: max(1rem, env(safe-area-inset-left));

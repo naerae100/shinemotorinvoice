@@ -8,22 +8,90 @@ import TimeSeriesChart from '../components/charts/TimeSeriesChart';
 import ActivityHeatmap from '../components/charts/ActivityHeatmap';
 import BarList, { materialItem, clientItem } from '../components/charts/BarList';
 import StatTile from '../components/charts/StatTile';
-import { SERIES } from '../components/charts/palette';
+import { SERIES, currencyColor } from '../components/charts/palette';
 
 function Card({ title, subtitle, action, children, className = '' }) {
   return (
-    <section
-      className={`flex flex-col overflow-hidden rounded-2xl bg-white shadow-[0_2px_12px_rgba(0,0,0,0.04),0_8px_24px_rgba(0,0,0,0.02)] ${className}`}
-    >
-      <header className="flex items-start justify-between gap-4 border-b border-steel-50 px-6 py-4">
-        <div>
-          <h2 className="font-display text-[15px] font-semibold tracking-tight text-steel-900">{title}</h2>
+    <section className={`surface flex flex-col overflow-hidden ${className}`}>
+      <header className="surface-header">
+        <div className="min-w-0">
+          <h2 className="font-display text-[15px] font-semibold tracking-tight text-steel-900">
+            {title}
+          </h2>
           {subtitle && <p className="mt-0.5 text-xs text-steel-500">{subtitle}</p>}
         </div>
         {action}
       </header>
-      <div className="flex-1 px-6 py-5">{children}</div>
+      <div className="surface-body">{children}</div>
     </section>
+  );
+}
+
+/** The heading above a group of cards. */
+function SectionLabel({ children }) {
+  return <h2 className="section-label">{children}</h2>;
+}
+
+/**
+ * One line of the pipeline, and a way into it.
+ *
+ * These were three static numbers. "9 dockets not issued" is only useful if
+ * the next question — which nine — can be answered by pressing it, so each row
+ * is a link to the list already filtered to exactly what it counted. A count
+ * of zero is not a link: there is nothing behind it, and a row that looks
+ * pressable and then shows an empty list is worse than one that does not.
+ */
+function PipelineRow({ to, label, hint, count, tone = 'neutral', last = false }) {
+  const n = Number(count) || 0;
+  const border = last ? '' : 'border-b border-steel-50';
+
+  const chip =
+    n === 0
+      ? 'bg-steel-50 text-steel-400'
+      : tone === 'amber'
+        ? 'bg-working-amberDim text-working-amber'
+        : 'bg-steel-100 text-steel-900';
+
+  const body = (
+    <>
+      <span className="min-w-0">
+        <span className="block truncate text-sm font-semibold text-steel-800">{label}</span>
+        <span className="block truncate text-xs text-steel-500">{hint}</span>
+      </span>
+      <span className="ml-auto flex items-center gap-2">
+        <span className={`num rounded px-2 py-0.5 text-xs font-bold ${chip}`}>{n}</span>
+        {n > 0 && (
+          <svg
+            viewBox="0 0 20 20"
+            className="h-4 w-4 text-steel-300 transition-transform group-hover:translate-x-0.5 group-hover:text-copper-600"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            aria-hidden="true"
+          >
+            <path d="M7 4l6 6-6 6" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        )}
+      </span>
+    </>
+  );
+
+  if (n === 0) {
+    return (
+      <div className={`flex items-center gap-3 px-2 py-3 ${border}`}>
+        {body}
+        <span className="sr-only">nothing waiting</span>
+      </div>
+    );
+  }
+
+  return (
+    <Link
+      to={to}
+      className={`group flex items-center gap-3 rounded-lg px-2 py-3 transition-colors hover:bg-paper ${border}`}
+    >
+      {body}
+    </Link>
   );
 }
 
@@ -66,12 +134,19 @@ export default function DashboardPage() {
 
   // Sparklines read straight off the series, so they follow the chosen filter
   // rather than showing a fixed window.
+  // One per series the chart draws, keyed the same way, so a USD tile gets
+  // the same sparkline its AUD neighbour has instead of a blank panel.
   const sparks = useMemo(() => {
     if (!data) return { purchases: [], sales: [] };
-    return {
+    const out = {
       purchases: data.series.map((d) => d.purchases),
       sales: data.series.map((d) => d.sales),
     };
+    for (const c of data.seriesCurrencies ?? []) {
+      if (c === 'AUD') continue;
+      out[`sales_${c}`] = data.series.map((d) => d[`sales_${c}`] ?? 0);
+    }
+    return out;
   }, [data]);
 
   const recent = useMemo(() => {
@@ -140,7 +215,7 @@ export default function DashboardPage() {
         </div>
       </header>
 
-      <div className="mb-6 rounded-xl border border-steel-200 bg-white p-3 shadow-ticket">
+      <div className="surface mb-6 p-3">
         <DateRangePicker {...range} onChange={setRange} />
       </div>
 
@@ -170,6 +245,7 @@ export default function DashboardPage() {
               both three and four tiles, which is the realistic range — the old
               three-then-five arrangement stranded a tile on its own row at
               most widths once the count changed. */}
+          <SectionLabel>Position</SectionLabel>
           <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
             <StatTile
               label="Scrap bought"
@@ -204,7 +280,9 @@ export default function DashboardPage() {
                   key={c.currency}
                   label={`Scrap sold (${c.currency})`}
                   value={formatMoney(c.total, c.currency)}
-                  sub={`${c.count} ${c.count === 1 ? 'invoice' : 'invoices'} · not included in AUD figures`}
+                  sub={`${c.count} ${c.count === 1 ? 'invoice' : 'invoices'} · not in the AUD figures`}
+                  spark={sparks[`sales_${c.currency}`]}
+                  sparkColor={currencyColor(c.currency)}
                   to={`/export-invoices?from=${range.from}&to=${range.to}`}
                   linkLabel="See these invoices"
                 />
@@ -218,6 +296,7 @@ export default function DashboardPage() {
             />
           </div>
 
+          <SectionLabel>Over time</SectionLabel>
           <div className="mb-6">
             <Card
               title="Buying and selling over time"
@@ -236,21 +315,30 @@ export default function DashboardPage() {
             </Card>
           </div>
 
+          <SectionLabel>What needs doing</SectionLabel>
           <div className="mb-6 grid grid-cols-1 gap-6 lg:grid-cols-3">
-            <Card title="Pipeline" subtitle="Documents awaiting action">
-              <div className="space-y-4">
-                <div className="flex justify-between items-center border-b border-steel-50 pb-3">
-                  <span className="text-sm font-medium text-steel-700">Dockets (not issued)</span>
-                  <span className="num font-semibold text-steel-900 bg-steel-100 px-2 py-0.5 rounded text-xs">{data.pipeline.unissuedDockets}</span>
-                </div>
-                <div className="flex justify-between items-center border-b border-steel-50 pb-3">
-                  <span className="text-sm font-medium text-steel-700">Slips (awaiting pricing)</span>
-                  <span className="num font-semibold text-steel-900 bg-working-amber/20 text-working-amber px-2 py-0.5 rounded text-xs">{data.pipeline.unpricedSlips}</span>
-                </div>
-                <div className="flex justify-between items-center">
-                  <span className="text-sm font-medium text-steel-700">Invoices (not issued)</span>
-                  <span className="num font-semibold text-steel-900 bg-steel-100 px-2 py-0.5 rounded text-xs">{data.pipeline.unissuedInvoices}</span>
-                </div>
+            <Card title="Pipeline" subtitle="Documents awaiting action — open any row">
+              <div className="-mx-2 flex flex-col">
+                <PipelineRow
+                  to="/purchases?issued=no"
+                  label="Dockets"
+                  hint="saved, not yet issued"
+                  count={data.pipeline.unissuedDockets}
+                />
+                <PipelineRow
+                  to="/packing-slips?slipFilter=PACKING_SLIP"
+                  label="Packing slips"
+                  hint="awaiting pricing"
+                  count={data.pipeline.unpricedSlips}
+                  tone="amber"
+                />
+                <PipelineRow
+                  to="/export-invoices?issued=no"
+                  label="Invoices"
+                  hint="raised, not yet issued"
+                  count={data.pipeline.unissuedInvoices}
+                  last
+                />
               </div>
             </Card>
             
@@ -259,40 +347,53 @@ export default function DashboardPage() {
                 <span className="num text-2xl font-semibold tracking-tight text-steel-900">{formatAud(data.payables.total)}</span>
                 <span className="text-sm text-steel-500">{data.payables.count} dockets</span>
               </div>
+              {/* The amount column was w-16 — about 64px — holding figures
+                  like "AUD 1,180.000", so every row wrapped onto two lines and
+                  the bar beside it no longer lined up with its own label. The
+                  figure gets the width it needs and never wraps; the bar takes
+                  what is left. */}
               <div className="space-y-2.5">
-                {data.payables.buckets.map(b => (
-                  <div key={b.bucket} className="flex justify-between items-center text-xs">
-                    <span className="text-steel-600 w-10">{b.bucket}d</span>
-                    <div className="flex-1 mx-3 h-2 bg-steel-50 rounded-full overflow-hidden">
-                      <div className="h-full bg-working-red transition-all" style={{ width: `${Math.max(2, (b.count / Math.max(1, data.payables.count)) * 100)}%` }} />
+                {data.payables.buckets.map((b) => (
+                  <div key={b.bucket} className="flex items-center gap-3 text-xs">
+                    <span className="w-12 shrink-0 font-medium text-steel-600">{b.bucket}d</span>
+                    <div className="h-2 flex-1 overflow-hidden rounded-full bg-steel-100">
+                      <div
+                        className="h-full rounded-full bg-working-red transition-all"
+                        style={{
+                          width: `${Math.max(2, (b.count / Math.max(1, data.payables.count)) * 100)}%`,
+                        }}
+                      />
                     </div>
-                    <span className="num text-steel-900 font-medium w-16 text-right">{formatAud(b.total)}</span>
+                    <span className="num shrink-0 whitespace-nowrap text-right font-semibold text-steel-900">
+                      {formatAud(b.total)}
+                    </span>
                   </div>
                 ))}
               </div>
             </Card>
 
-            <Card title="Weight Flow" subtitle="In the selected period">
+            <Card title="Weight flow" subtitle="In the selected period">
                <div className="flex flex-col justify-around h-full">
                  <div>
-                   <div className="text-xs font-semibold uppercase tracking-wider text-steel-500 mb-1">Scrap Bought</div>
+                   <div className="text-xs font-semibold uppercase tracking-wider text-steel-500 mb-1">Scrap bought</div>
                    <div className="num text-2xl font-semibold tracking-tight text-steel-900">{formatNumber(data.weightFlow.kgBought, 0)} <span className="text-sm font-medium text-steel-500">kg</span></div>
                  </div>
                  <div className="h-px w-full bg-steel-100 my-4" />
                  <div>
-                   <div className="text-xs font-semibold uppercase tracking-wider text-steel-500 mb-1">Scrap Sold</div>
+                   <div className="text-xs font-semibold uppercase tracking-wider text-steel-500 mb-1">Scrap sold</div>
                    <div className="num text-2xl font-semibold tracking-tight text-copper-600">{formatNumber(data.weightFlow.mtSold, 2)} <span className="text-sm font-medium text-copper-400">MT</span></div>
                  </div>
                </div>
             </Card>
           </div>
 
+          <SectionLabel>How the yard is running</SectionLabel>
           <div className="mb-6 grid grid-cols-1 gap-6 lg:grid-cols-3">
-            <Card title="Activity Heatmap" subtitle="Dockets by time of day">
+            <Card title="Activity by hour" subtitle="Dockets by time of day">
               <ActivityHeatmap data={data.heatmap} />
             </Card>
 
-            <Card title="Operator Activity" subtitle="Dockets created">
+            <Card title="Who wrote them" subtitle="Dockets created">
               {data.operatorActivity.length === 0 ? (
                 <EmptyState>No activity.</EmptyState>
               ) : (
@@ -304,25 +405,26 @@ export default function DashboardPage() {
               )}
             </Card>
 
-            <Card title="BAS Quarter-to-date" subtitle={data.bas.quarter}>
+            <Card title="BAS quarter to date" subtitle={data.bas.quarter}>
                <div className="flex flex-col justify-around h-full">
                  <div className="flex items-center justify-between">
-                   <div className="text-sm text-steel-600">GST Collected</div>
+                   <div className="text-sm text-steel-600">GST collected</div>
                    <div className="num font-semibold text-steel-900">{formatAud(data.bas.collected)}</div>
                  </div>
                  <div className="flex items-center justify-between">
-                   <div className="text-sm text-steel-600">GST Paid</div>
+                   <div className="text-sm text-steel-600">GST paid</div>
                    <div className="num font-semibold text-steel-900">{formatAud(data.bas.paid)}</div>
                  </div>
                  <div className="h-px w-full bg-steel-100 my-4" />
                  <div className="flex items-center justify-between">
-                   <div className="text-sm font-medium text-steel-800">Net {data.bas.collected - data.bas.paid >= 0 ? 'Payable' : 'Refundable'}</div>
+                   <div className="text-sm font-semibold text-steel-800">Net {data.bas.collected - data.bas.paid >= 0 ? 'payable' : 'refundable'}</div>
                    <div className="num font-bold text-steel-900">{formatAud(Math.abs(data.bas.collected - data.bas.paid))}</div>
                  </div>
                </div>
             </Card>
           </div>
 
+          <SectionLabel>What and who</SectionLabel>
           <div className="mb-6 grid grid-cols-1 gap-6 lg:grid-cols-2">
             <Card title="Most bought materials" subtitle="By value in the selected period">
               {data.topMaterialsBought.length === 0 ? (
@@ -404,6 +506,7 @@ export default function DashboardPage() {
             </Card>
           </div>
 
+          <SectionLabel>Latest</SectionLabel>
           <Card
             title="Recent activity"
             subtitle="Latest documents, regardless of the filter above"

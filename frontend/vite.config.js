@@ -43,7 +43,7 @@ export default defineConfig({
     !forAppShell &&
       VitePWA({
         registerType: 'autoUpdate',
-      includeAssets: ['favicon.svg', 'favicon-32.png', 'apple-touch-icon.png'],
+      includeAssets: ['favicon-32.png', 'apple-touch-icon.png'],
 
       manifest: {
         name: 'Shine Motor — Dockets & Invoices',
