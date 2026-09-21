@@ -55,7 +55,7 @@ export default function DocketDocument({ docket, settings }) {
   const taxMode = docket.taxMode ?? (isTaxInvoice ? 'EXCLUSIVE' : 'NO_TAX');
 
   return (
-    <div className="print-sheet relative mx-auto flex min-h-[297mm] flex-col rounded-2xl border border-ink-200 bg-white p-5 shadow-ticket sm:p-8 lg:p-10">
+    <div className="print-sheet docket-sheet relative mx-auto flex min-h-[297mm] flex-col rounded-2xl border border-ink-200 bg-white p-5 shadow-ticket sm:p-8 lg:p-10">
       {docket.status === 'VOID' && <VoidStamp reason={docket.voidReason} />}
       <Masthead settings={settings} />
 

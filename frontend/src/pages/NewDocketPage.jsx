@@ -2,7 +2,6 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { api } from '../lib/api';
 import { formatAud as formatCurrency } from '../lib/format';
-import DiscountField from '../components/DiscountField';
 import { applyDiscount } from '../lib/money';
 import MaterialField from '../components/MaterialField';
 import { apiErrorMessage } from '../lib/apiError';
@@ -89,6 +88,22 @@ function supplierQualifier(s) {
   return [s?.suburb, s?.licenceNo].filter(Boolean).join(' — ');
 }
 
+/**
+ * A purchase docket is never discounted.
+ *
+ * The yard pays a rate per kilo for what crosses the weighbridge; there is
+ * nothing to take off it, and the field only ever offered a way to get the
+ * figure wrong in front of the supplier. Sales invoices keep their discount —
+ * that is a negotiated price on a container, which is a different thing.
+ *
+ * Sent explicitly rather than omitted so a docket says what it is, instead of
+ * the server having to infer it from an absent field. The column stays in the
+ * database: no docket has ever carried a discount (checked in production and
+ * locally before this was removed), and the printed documents still render one
+ * if they are ever handed a record that has one.
+ */
+const NO_DISCOUNT = { discountType: 'NONE', discountValue: 0 };
+
 export default function NewDocketPage({ defaultType = 'PURCHASE_DOCKET' }) {
   // A purchase docket is quoted to the supplier with GST already in the price —
   // that is the number said at the weighbridge. A tax invoice is the opposite:
@@ -136,7 +151,6 @@ export default function NewDocketPage({ defaultType = 'PURCHASE_DOCKET' }) {
   const [vehicle, setVehicle] = useState({ reg: '', model: '', vin: '' });
   const [showVehicle, setShowVehicle] = useState(false);
 
-  const [discount, setDiscount] = useState({ discountType: 'NONE', discountValue: 0 });
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(null);
@@ -171,10 +185,6 @@ export default function NewDocketPage({ defaultType = 'PURCHASE_DOCKET' }) {
             price: String(li.price),
           }))
         );
-        setDiscount({
-          discountType: d.discountType || 'NONE',
-          discountValue: Number(d.discountValue) || 0,
-        });
         if (d.vehicleModel || d.vehicleReg || d.vehicleVin) {
           setShowVehicle(true);
           setVehicle({ reg: d.vehicleReg || '', model: d.vehicleModel || '', vin: d.vehicleVin || '' });
@@ -211,11 +221,11 @@ export default function NewDocketPage({ defaultType = 'PURCHASE_DOCKET' }) {
       }, 0),
     [lines]
   );
-  const { discountAmount, taxable, gst, total } = applyDiscount(
-    subtotal,
-    discount,
-    taxMode
-  );
+  // A purchase docket has no discount. It is still put through applyDiscount
+  // with NONE rather than doing the arithmetic separately, so the docket and
+  // the invoice keep one rounding and GST path between them — the totals here
+  // have to match what the server recomputes on save, to the third decimal.
+  const { taxable, gst, total } = applyDiscount(subtotal, NO_DISCOUNT, taxMode);
 
   function updateLine(idx, field, value) {
     setLines((prev) => {
@@ -347,7 +357,7 @@ export default function NewDocketPage({ defaultType = 'PURCHASE_DOCKET' }) {
         supplierId,
         paygStatement,
         paymentStatus: payLater ? 'UNPAID' : 'PAID',
-        ...discount,
+        ...NO_DISCOUNT,
         lineItems: validLines.map((l) => ({
           materialId: l.materialId || null,
           description: l.description?.trim() || null,
@@ -403,7 +413,7 @@ export default function NewDocketPage({ defaultType = 'PURCHASE_DOCKET' }) {
   }
 
   return (
-    <div className="mx-auto max-w-6xl px-4 py-6 pb-28 sm:px-6 lg:px-8 lg:py-8 lg:pb-28">
+    <div className="docket-form mx-auto max-w-6xl px-4 py-6 pb-28 sm:px-6 lg:px-8 lg:py-8 lg:pb-28">
       <h1 className="mb-6 font-display text-2xl font-semibold text-steel-900">
         {isEdit
           ? `Edit ${type === 'TAX_INVOICE' ? 'tax invoice' : 'docket'}`
@@ -414,15 +424,19 @@ export default function NewDocketPage({ defaultType = 'PURCHASE_DOCKET' }) {
 
       <form onSubmit={handleSubmit}>
         <div className="overflow-hidden rounded-xl border border-steel-200 bg-white shadow-ticket">
-          <div className="flex items-center justify-between bg-steel-900 px-6 py-4">
-            <div>
+          {/* Stacks below sm. Side by side, "Purchase docket" and "Docket #
+              assigned on save" were each wrapping to three lines on a phone to
+              make room for the tax selector beside them — two columns in about
+              340px. Above sm there is room and nothing changes. */}
+          <div className="flex flex-col gap-3 bg-steel-900 px-6 py-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="min-w-0">
               <div className="font-semibold text-paper">
                 {type === 'TAX_INVOICE' ? 'Tax invoice' : 'Purchase docket'}
               </div>
               {!editId && <div className="text-xs text-steel-400">Docket # assigned on save</div>}
             </div>
             <div className="flex items-center gap-3">
-              <label className="text-xs font-semibold text-steel-300">Amounts are</label>
+              <label className="shrink-0 text-xs font-semibold text-steel-300">Amounts are</label>
               <select
                 value={taxMode}
                 onChange={(e) => setTaxMode(e.target.value)}
@@ -797,10 +811,6 @@ export default function NewDocketPage({ defaultType = 'PURCHASE_DOCKET' }) {
             </label>
           </div>
 
-          <div className="border-t border-steel-100 px-6 py-5">
-            <DiscountField value={discount} onChange={setDiscount} subtotal={subtotal} />
-          </div>
-
           {/* Figures on the dark plate are near-white. They were a mid grey with
               the total in the accent colour, which measured 4.2:1 and 3.0:1 on
               this ground — the total, the one number the operator reads back to
@@ -811,15 +821,6 @@ export default function NewDocketPage({ defaultType = 'PURCHASE_DOCKET' }) {
                 <span className="text-steel-300">Subtotal</span>
                 <span className="num font-semibold text-white">{formatCurrency(subtotal)}</span>
               </div>
-              {discountAmount > 0 && (
-                <div className="flex justify-between text-sm">
-                  <span className="text-steel-300">
-                    Discount
-                    {discount.discountType === 'PERCENT' ? ` (${discount.discountValue}%)` : ''}
-                  </span>
-                  <span className="num font-semibold text-white">− {formatCurrency(discountAmount)}</span>
-                </div>
-              )}
               {/* Only when GST is being ADDED. On an inclusive docket the tax is
                   already inside the total, so the line states a number that is
                   not part of the sum — it invited adding it on again, and the

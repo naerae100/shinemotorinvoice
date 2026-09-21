@@ -204,6 +204,118 @@
    Semibold, and a colour with real contrast. Defined once because the same
    string was repeated in five files, which is how the two variants that
    already existed came about. */
+/* ---------------------------------------------------------------------------
+   The purchase docket runs one size up
+   ---------------------------------------------------------------------------
+   This is the screen the yard actually works on: outdoors, at arm's length, on
+   a 8.7" tablet in a stand, often by someone who is also watching a truck. It
+   was set at the same 13/14.5px as an office list screen while sitting in a
+   card with room to spare, so the text was the constraint rather than the
+   space.
+
+   Everything moves up exactly one step on the existing scale — xs becomes sm,
+   sm becomes base — so the proportions between label, value and heading are
+   unchanged. Nothing is re-laid-out, no padding grows, no column moves; the
+   same design is simply set larger.
+
+   Done as a scoped override rather than by editing forty class strings so the
+   whole page steps together and cannot drift apart later. The 16px on inputs
+   is a second win: below 16px, mobile Safari zooms the page when a field takes
+   focus, which on a form this long is genuinely disorienting.
+
+   Deliberately excluded: .print-sheet and .receipt-sheet. Those reproduce
+   paper at fixed metrics and must not be touched by a screen preference. */
+@layer components {
+  /* The steps are written out rather than @applied: Tailwind refuses to
+     @apply text-sm inside a rule whose selector is .text-xs, and the literal
+     values make the one-step shift visible at a glance. They are the same
+     tokens from tailwind.config.js — xs 13px, sm 14.5px, base 16px. */
+  .docket-form .text-xs:not(.print-sheet *):not(.receipt-sheet *) {
+    font-size: 0.90625rem; /* sm */
+    line-height: 1.35rem;
+  }
+
+  .docket-form .text-sm:not(.print-sheet *):not(.receipt-sheet *) {
+    font-size: 1rem; /* base */
+    line-height: 1.55rem;
+  }
+
+  .docket-form .text-\[10px\]:not(.print-sheet *):not(.receipt-sheet *) {
+    font-size: 0.8125rem; /* xs */
+    line-height: 1.15rem;
+  }
+
+  /* Controls carry their size as an attribute of the control, not always as a
+     utility class, so they are set directly too. */
+  .docket-form input:not(.print-sheet *),
+  .docket-form select:not(.print-sheet *),
+  .docket-form textarea:not(.print-sheet *) {
+    font-size: 1rem; /* base */
+    line-height: 1.55rem;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   The printed purchase docket, set larger
+   ---------------------------------------------------------------------------
+   The A4 docket was typeset for a page that is mostly full, and it is not: a
+   real docket has one to three material lines, so content stopped 41% of the
+   way down and the remaining 416px of the sheet was blank — while the table,
+   the PAYG statement the supplier has to read before signing, and the seller's
+   details were set at 9.5 to 11px. Small type and an empty page at the same
+   time.
+
+   Every size moves up roughly a quarter. The steps stay distinct and in the
+   same order, so the hierarchy is unchanged — this is the same document set
+   larger, not a redesign. The display sizes (the PURCHASE DOCKET title and the
+   total, 24 and 26px) are deliberately left alone: they were never the problem,
+   and holding them still keeps the contrast against the body text.
+
+   Line heights throughout are unitless (leading-none/tight/snug/relaxed), so
+   they follow the font size on their own and nothing had to be restated.
+
+   Scoped to .docket-sheet rather than .print-sheet because the export invoice
+   uses the same shared parts and is a denser document — it was not asked for
+   and a container invoice can genuinely fill a page.
+
+   The constraint is one page. Verified after the change at one line and at
+   fifteen; see the commit. */
+@layer components {
+  .docket-sheet .text-\[9px\] {
+    font-size: 11.5px;
+  }
+  .docket-sheet .text-\[9\.5px\] {
+    font-size: 12px;
+  }
+  .docket-sheet .text-\[10px\] {
+    font-size: 12.5px;
+  }
+  .docket-sheet .text-\[10\.5px\] {
+    font-size: 13px;
+  }
+  .docket-sheet .text-\[11px\] {
+    font-size: 13.5px;
+  }
+  .docket-sheet .text-\[11\.5px\] {
+    font-size: 14px;
+  }
+  .docket-sheet .text-\[12px\] {
+    font-size: 14.5px;
+  }
+  .docket-sheet .text-\[12\.5px\] {
+    font-size: 15px;
+  }
+  .docket-sheet .text-\[13px\] {
+    font-size: 15.5px;
+  }
+  .docket-sheet .text-\[15px\] {
+    font-size: 17px;
+  }
+  .docket-sheet .text-\[16px\] {
+    font-size: 18px;
+  }
+}
+
 @layer components {
   .field-label {
     @apply mb-1.5 block text-xs font-semibold tracking-wide text-steel-700;
