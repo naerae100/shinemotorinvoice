@@ -7,6 +7,11 @@ import { useAuth } from '../context/AuthContext';
 import { apiErrorMessage } from '../lib/apiError';
 import ConfirmDialog from '../components/ConfirmDialog';
 import PhotoStrip from '../components/PhotoStrip';
+import RecordHistory from '../components/RecordHistory';
+import CollectionDocument from '../components/documents/CollectionDocument';
+import DownloadDocument from '../components/DownloadDocument';
+import { printAs } from '../lib/printDocument';
+import { getSettings } from '../lib/settings';
 import { subscribe, progressFor, clear } from '../lib/photoQueue';
 
 const round3 = (n) => Math.round((n + Number.EPSILON) * 1000) / 1000;
@@ -50,6 +55,17 @@ export default function CollectionDetailPage() {
    * look like they had been lost.
    */
   const [upload, setUpload] = useState(() => progressFor(id));
+
+  // Null is fine. A contractor cannot read /api/settings — it is not on
+  // their allowlist — and the printed sheet falls back to the company name
+  // in code rather than refusing to render. They still need to hand a seller
+  // a copy of what was weighed.
+  const [settings, setSettings] = useState(null);
+  useEffect(() => {
+    getSettings()
+      .then(setSettings)
+      .catch(() => setSettings(null));
+  }, []);
 
   const load = useCallback(
     () =>
@@ -137,6 +153,8 @@ export default function CollectionDetailPage() {
       }
     : null;
 
+  const docName = `Collection-${collection.collectionNumber}_${collection.localSupplier.name}`;
+
   const pickupPhotos = collection.photos.length;
   const gradePhotos = collection.lines.reduce((a, l) => a + l.photos.length, 0);
 
@@ -153,7 +171,8 @@ export default function CollectionDetailPage() {
   const canAddHere = Boolean(notice) && !isVoid;
 
   return (
-    <div className="mx-auto max-w-4xl px-4 py-5 sm:px-6 lg:px-8 lg:py-7">
+    <div className="mx-auto max-w-4xl px-4 py-5 print:max-w-none print:p-0 sm:px-6 lg:px-8 lg:py-7">
+      <div className="print:hidden">
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <Link to="/collections" className="text-sm font-medium text-copper-600">
           ← All collections
@@ -183,6 +202,14 @@ export default function CollectionDetailPage() {
               Restore
             </button>
           )}
+          <button
+            type="button"
+            onClick={() => printAs(docName)}
+            className="btn-secondary btn-sm"
+          >
+            Print
+          </button>
+          <DownloadDocument filename={docName} className="btn-secondary btn-sm" />
         </div>
       </div>
 
@@ -407,6 +434,28 @@ export default function CollectionDetailPage() {
               : 'No photos. Add them from Edit.'}
           </p>
         )}
+      </div>
+
+      {/* Admin only, like the trail behind it. "Last edited by X" above
+          answers who; this answers what, which is the question that makes
+          letting a contractor correct their own weights safe rather than
+          merely convenient. */}
+      {isAdmin && (
+        <>
+          <h2 className="section-label">History</h2>
+          <div className="surface px-5 py-4">
+            <RecordHistory entity="Collection" entityId={collection.id} />
+          </div>
+        </>
+      )}
+
+      </div>
+
+      {/* The printable sheet. Hidden on screen and the only thing printed —
+          the page above it is a working view with buttons and a history, and
+          none of that belongs on something handed to a seller. */}
+      <div className="hidden print:block">
+        <CollectionDocument collection={collection} settings={settings} />
       </div>
 
       <ConfirmDialog

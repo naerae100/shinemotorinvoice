@@ -30,7 +30,15 @@ router.get(
     };
 
     const [events, totalCount] = await Promise.all([
-      prisma.auditEvent.findMany({ where, orderBy: { at: 'desc' }, take, skip }),
+      prisma.auditEvent.findMany({
+        where,
+        orderBy: { at: 'desc' },
+        take,
+        skip,
+        // The name, not just the email the row denormalises. "Last edited by
+        // field@shinemotor.com.au" is a login; "Field contractor" is a person.
+        include: { actor: { select: { name: true } } },
+      }),
       prisma.auditEvent.count({ where }),
     ]);
 

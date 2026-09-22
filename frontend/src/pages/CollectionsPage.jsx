@@ -103,12 +103,12 @@ export default function CollectionsPage() {
         </div>
       )}
 
-      <div className="surface mb-4 flex flex-wrap items-center gap-3 p-3">
+      <div className="surface mb-4 grid grid-cols-2 gap-2 p-3 sm:flex sm:flex-wrap sm:items-center sm:gap-3">
         <input
           value={filters.search}
           onChange={(e) => setFilters({ search: e.target.value })}
           placeholder="Search a name, suburb, note or collection number…"
-          className="min-w-[16rem] flex-1 rounded-md border border-steel-200 bg-white px-3 py-2.5 text-sm"
+          className="col-span-2 w-full rounded-md border border-steel-200 bg-white px-3 py-2.5 text-sm sm:w-auto sm:min-w-[16rem] sm:flex-1"
         />
         <input
           type="date"
@@ -143,7 +143,73 @@ export default function CollectionsPage() {
         <Figure label="Gross weight" value={`${formatNumber(totals.grossWeight, 3)} kg`} />
       </div>
 
-      <div className="surface overflow-hidden">
+      {/* Cards on a phone, a table from lg up.
+          
+          A six-column table at 390px meant the net weight and every action
+          were off the right-hand edge behind a horizontal scroll nobody
+          thinks to try on a list — so the two things you open this page for,
+          the weight and the way in, were the two you could not see. */}
+      <div className="space-y-3 lg:hidden">
+        {loading && collections.length === 0 && (
+          <div className="surface px-5 py-10 text-center text-sm text-steel-500">Loading…</div>
+        )}
+        {!loading && collections.length === 0 && (
+          <div className="surface px-5 py-10 text-center text-sm text-steel-500">
+            Nothing collected yet.{' '}
+            <Link to="/collections/new" className="font-medium text-copper-600">
+              Record a collection →
+            </Link>
+          </div>
+        )}
+        {collections.map((c) => {
+          const isVoid = c.status === 'VOID';
+          const net = c.lines.reduce((a, l) => a + Number(l.netWeight), 0);
+          const photos =
+            (c.photos?.length ?? 0) + c.lines.reduce((a, l) => a + (l.photos?.length ?? 0), 0);
+          return (
+            <Link
+              key={c.id}
+              to={`/collections/${c.id}`}
+              className={`surface block px-4 py-3 ${isVoid ? 'opacity-60' : ''}`}
+            >
+              <div className="flex items-baseline justify-between gap-3">
+                <span className={`num font-bold text-steel-900 ${isVoid ? 'line-through' : ''}`}>
+                  #{c.collectionNumber}
+                </span>
+                <span className="num text-base font-bold text-steel-900">
+                  {formatNumber(net, 3)}
+                  <span className="ml-0.5 text-[11px] font-semibold text-steel-500">kg</span>
+                </span>
+              </div>
+              <div className="mt-0.5 truncate font-semibold text-steel-800">
+                {c.localSupplier?.name}
+              </div>
+              <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-steel-500">
+                <span>{format(new Date(c.date), 'd MMM yyyy')}</span>
+                <span aria-hidden="true">·</span>
+                <span>
+                  {c.lines.length} {c.lines.length === 1 ? 'grade' : 'grades'}
+                </span>
+                {photos > 0 && (
+                  <>
+                    <span aria-hidden="true">·</span>
+                    <span>
+                      {photos} {photos === 1 ? 'photo' : 'photos'}
+                    </span>
+                  </>
+                )}
+                {isVoid && (
+                  <span className="rounded bg-working-redDim px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-working-red">
+                    Voided
+                  </span>
+                )}
+              </div>
+            </Link>
+          );
+        })}
+      </div>
+
+      <div className="surface hidden overflow-hidden lg:block">
         <div className="overflow-x-auto">
           <table className="w-full min-w-[640px] text-sm">
             <thead>
