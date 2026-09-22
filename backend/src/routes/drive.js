@@ -1,6 +1,6 @@
 import { Router } from 'express';
-import crypto from 'node:crypto';
 import { requireAuth, requireRole } from '../middleware/auth.js';
+import { signState, verifyState } from '../lib/oauthState.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { isConfigured, verifyCredentials } from '../lib/photoStorage.js';
 import { config } from '../config/env.js';
@@ -42,46 +42,6 @@ const redirectUri = () =>
   process.env.GOOGLE_REDIRECT_URI ||
   `${config.siteOrigins[0].replace(/\/$/, '')}/api/drive/callback`;
 
-/**
- * Google hands the browser back to the callback with no session — it is a
- * plain redirect — so the callback cannot be behind requireAuth. The state
- * parameter carries the proof instead: signed with JWT_SECRET, good for ten
- * minutes, so only somebody who was an admin a moment ago can start a flow
- * that this server will finish.
- */
-/**
- * Thirty minutes, not ten.
- *
- * This is a one-time setup that runs alongside configuring the Google Cloud
- * console — registering a redirect URI, publishing a consent screen — and
- * ten minutes ran out mid-way through that more than once. The state is
- * CSRF protection for a flow only an admin can start, so a longer window
- * costs little; a window too short to finish the task costs the task.
- */
-const STATE_TTL_SECONDS = 30 * 60;
-
-const signState = () => {
-  const expires = Math.floor(Date.now() / 1000) + STATE_TTL_SECONDS;
-  const mac = crypto
-    .createHmac('sha256', process.env.JWT_SECRET)
-    .update(`drive:${expires}`)
-    .digest('base64url');
-  return `${expires}.${mac}`;
-};
-
-const verifyState = (state) => {
-  const [expires, mac] = String(state ?? '').split('.');
-  if (!expires || !mac) return false;
-  if (Number(expires) < Math.floor(Date.now() / 1000)) return false;
-  const expected = crypto
-    .createHmac('sha256', process.env.JWT_SECRET)
-    .update(`drive:${expires}`)
-    .digest('base64url');
-  const a = Buffer.from(mac);
-  const b = Buffer.from(expected);
-  return a.length === b.length && crypto.timingSafeEqual(a, b);
-};
-
 const page = (title, body) => `<!doctype html>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>${title}</title>
@@ -119,7 +79,7 @@ router.get(
         access_type: 'offline',
         prompt: 'consent',
         include_granted_scopes: 'true',
-        state: signState(),
+        state: signState('drive'),
       });
     res.json({ url, redirectUri: redirectUri() });
   })
@@ -128,7 +88,7 @@ router.get(
 router.get(
   '/callback',
   asyncHandler(async (req, res) => {
-    if (!verifyState(req.query.state)) {
+    if (!verifyState('drive', req.query.state)) {
       return res.status(403).send(
         page(
           'That link has expired',

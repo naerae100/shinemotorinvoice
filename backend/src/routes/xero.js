@@ -1,7 +1,8 @@
 import { Router } from 'express';
 import { XeroClient } from 'xero-node';
 import { prisma } from '../config/prisma.js';
-import { requireAuth } from '../middleware/auth.js';
+import { signState, verifyState } from '../lib/oauthState.js';
+import { requireAuth, requireRole } from '../middleware/auth.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 
 const router = Router();
@@ -26,6 +27,7 @@ const getXeroClient = () => {
 router.get(
   '/status',
   requireAuth,
+  requireRole('ADMIN'),
   asyncHandler(async (req, res) => {
     const settings = await prisma.companySettings.findUnique({
       where: { id: 'singleton' },
@@ -43,22 +45,42 @@ router.get(
 router.get(
   '/connect',
   requireAuth,
+  requireRole('ADMIN'),
   asyncHandler(async (req, res) => {
     const xero = getXeroClient();
     if (!xero.clientId) {
       return res.status(400).send('Xero Client ID is not configured on the server.');
     }
 
-    const consentUrl = await xero.buildConsentUrl();
-    res.redirect(consentUrl);
+    // Signed state, carried through Xero and checked on the way back. See
+    // lib/oauthState.js for why the callback cannot be authenticated and
+    // what this replaces it with.
+    const consentUrl = new URL(await xero.buildConsentUrl());
+    consentUrl.searchParams.set('state', signState('xero'));
+    res.redirect(consentUrl.toString());
   })
 );
 
-// GET /api/xero/callback
-// Note: This is an unauthenticated callback route because Xero redirects the user's browser here.
+/**
+ * GET /api/xero/callback — unauthenticated, because Xero redirects the
+ * operator's browser straight here with no session attached.
+ *
+ * Which is exactly why the state check below is not optional. This endpoint
+ * writes xeroTenantId and the access and refresh tokens into company
+ * settings. Without state, anybody could complete Xero's consent flow
+ * against their own organisation and post the resulting code here, and this
+ * yard's invoices would start syncing into their books. The signed state
+ * proves the flow was started by an admin on this server.
+ */
 router.get(
   '/callback',
   asyncHandler(async (req, res) => {
+    if (!verifyState('xero', req.query.state)) {
+      return res
+        .status(400)
+        .send('This Xero link is not valid or has expired. Start again from Settings.');
+    }
+
     const { code } = req.query;
     if (!code) {
       return res.status(400).send('No code returned from Xero.');

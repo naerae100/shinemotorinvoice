@@ -45,7 +45,12 @@ router.get(
     const users = await prisma.user.findMany({
       select: {
         ...SAFE_FIELDS,
-        _count: { select: { docketsCreated: true, invoicesCreated: true } },
+        // Collections count too. A contractor writes nothing else, so
+        // without this every contractor showed "0 documents" no matter how
+        // much work they had done.
+        _count: {
+          select: { docketsCreated: true, invoicesCreated: true, collectionsCreated: true },
+        },
       },
       orderBy: [{ active: 'desc' }, { name: 'asc' }],
     });
