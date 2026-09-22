@@ -91,9 +91,10 @@ export default function CollectionsPage() {
             Scrap weighed in the field. No prices — these are picked up, not bought.
           </p>
         </div>
-        <Link to="/collections/new" className="btn-primary">
-          New collection
-        </Link>
+        {/* No button here. The top bar carries "New collection" on every
+            screen already, and two of the same action a centimetre apart is
+            not twice as useful. The empty-state link below stays — that one
+            appears only when there is nothing else on the page to press. */}
       </header>
 
       {error && (

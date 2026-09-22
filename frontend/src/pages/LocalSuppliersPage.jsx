@@ -45,9 +45,7 @@ export default function LocalSuppliersPage() {
             Sellers visited in the field. Added as you go — there is no form to fill in first.
           </p>
         </div>
-        <Link to="/collections/new" className="btn-primary">
-          New collection
-        </Link>
+        {/* Same as the collections list: the top bar already has it. */}
       </header>
 
       {error && (

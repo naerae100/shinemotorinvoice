@@ -5,6 +5,7 @@ import { formatNumber } from '../lib/format';
 import { apiErrorMessage } from '../lib/apiError';
 import MaterialField from '../components/MaterialField';
 import PhotoPicker from '../components/PhotoPicker';
+import { enqueue } from '../lib/photoQueue';
 
 const BLANK_LINE = {
   // Carried on an existing line so an edit updates the row rather than
@@ -255,14 +256,17 @@ export default function NewCollectionPage() {
       const saved = res.data.collection;
 
       /**
-       * Photographs go up afterwards, and their failure is never the
-       * collection's failure.
+       * Photographs are handed to the queue and the form leaves immediately.
        *
-       * The weights are the record; a photo is supporting evidence. Somebody
-       * standing beside a truck on one bar of signal must not lose what they
-       * typed because an upload timed out, so the collection is already
-       * saved by the time any of this runs and a failure here becomes a note
-       * on the next screen rather than a lost form.
+       * They used to be uploaded here, one after another, before navigating
+       * — so saving four grades with photos meant ten or fifteen seconds
+       * watching a spinner, when the collection itself had been written a
+       * moment in. The wait was the attachments, not the record.
+       *
+       * The queue lives outside React and survives this screen unmounting,
+       * so the detail page picks up the progress and shows it landing. The
+       * ordering still holds: nothing uploads until the collection exists,
+       * and a failed photo can never cost somebody their weights.
        */
       const pending = [
         ...collectionPhotos.map((file) => ({ file, lineId: null })),
@@ -272,26 +276,9 @@ export default function NewCollectionPage() {
           (l.photos ?? []).map((file) => ({ file, lineId: saved.lines[i]?.id ?? null }))
         ),
       ];
+      enqueue(saved.id, pending);
 
-      let failed = 0;
-      for (const { file, lineId } of pending) {
-        try {
-          const form = new FormData();
-          form.append('photo', file);
-          if (lineId) form.append('lineId', lineId);
-          await api.post(`/collections/${saved.id}/photos`, form);
-        } catch {
-          failed += 1;
-        }
-      }
-
-      navigate(`/collections/${saved.id}`, {
-        state: failed
-          ? {
-              notice: `Saved, but ${failed} ${failed === 1 ? 'photo' : 'photos'} did not upload. You can add them here.`,
-            }
-          : undefined,
-      });
+      navigate(`/collections/${saved.id}`);
     } catch (err) {
       setError(apiErrorMessage(err, 'Could not save this collection.'));
     } finally {

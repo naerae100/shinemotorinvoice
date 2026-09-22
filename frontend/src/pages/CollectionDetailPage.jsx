@@ -7,6 +7,7 @@ import { useAuth } from '../context/AuthContext';
 import { apiErrorMessage } from '../lib/apiError';
 import ConfirmDialog from '../components/ConfirmDialog';
 import PhotoStrip from '../components/PhotoStrip';
+import { subscribe, progressFor, clear } from '../lib/photoQueue';
 
 const round3 = (n) => Math.round((n + Number.EPSILON) * 1000) / 1000;
 
@@ -35,10 +36,20 @@ export default function CollectionDetailPage() {
   const [dialog, setDialog] = useState(null);
   const [busy, setBusy] = useState(false);
 
-  // Set when the form saved but a photo did not upload. The weights are
-  // safe; this says what is still outstanding — see the save in
-  // NewCollectionPage, which deliberately never lets a photo fail the form.
+  // Set when a photo failed to upload. The weights are safe; this says
+  // what is still outstanding — see the queue, which deliberately never
+  // lets a photo fail the form.
   const [notice, setNotice] = useState(location.state?.notice ?? '');
+
+  /**
+   * Uploads still in flight from the form.
+   *
+   * The form navigates the moment the collection is written and leaves the
+   * photographs to a queue outside React, so this page opens while they are
+   * still going up. Without this it would show an empty photo section and
+   * look like they had been lost.
+   */
+  const [upload, setUpload] = useState(() => progressFor(id));
 
   const load = useCallback(
     () =>
@@ -57,6 +68,35 @@ export default function CollectionDetailPage() {
     setLoading(true);
     load();
   }, [load]);
+
+  useEffect(() => {
+    let last = progressFor(id);
+    setUpload(last);
+    return subscribe(() => {
+      const now = progressFor(id);
+      // `last` is advanced BEFORE anything below runs, and this is not a
+      // tidiness point. clear() emits, and emitting from inside a listener
+      // re-enters this function synchronously — with the old `last` still in
+      // place, so the same two branches fired again, and again. Measured at
+      // 3,800 GETs of one collection in nine seconds before the browser
+      // started refusing connections.
+      const prev = last;
+      last = now;
+
+      setUpload(now);
+      // Refresh as each one lands, so photographs appear as they arrive
+      // rather than all at once when the batch ends.
+      if (now.done !== prev.done) load();
+      if (!now.running && prev.running) {
+        if (now.failed) {
+          setNotice(
+            `${now.failed} ${now.failed === 1 ? 'photo' : 'photos'} did not upload. Open Edit to add ${now.failed === 1 ? 'it' : 'them'} again.`
+          );
+        }
+        clear(id);
+      }
+    });
+  }, [id, load]);
 
   async function runAction(path, body) {
     setBusy(true);
@@ -97,8 +137,20 @@ export default function CollectionDetailPage() {
       }
     : null;
 
-  const photoCount =
-    collection.photos.length + collection.lines.reduce((a, l) => a + l.photos.length, 0);
+  const pickupPhotos = collection.photos.length;
+  const gradePhotos = collection.lines.reduce((a, l) => a + l.photos.length, 0);
+
+  /**
+   * Whether this page offers to add a photo.
+   *
+   * It did, always, which meant a pickup with no photographs still showed a
+   * camera tile — so the section looked like it held something when it held
+   * nothing, and the page stopped being a record and became a half-form.
+   * Adding belongs in Edit. The exception is a photo that failed to upload
+   * on save: that is the one case where the record is right and the photos
+   * are not, and sending somebody to Edit to fix it would be obtuse.
+   */
+  const canAddHere = Boolean(notice) && !isVoid;
 
   return (
     <div className="mx-auto max-w-4xl px-4 py-5 sm:px-6 lg:px-8 lg:py-7">
@@ -133,6 +185,15 @@ export default function CollectionDetailPage() {
           )}
         </div>
       </div>
+
+      {upload.running && (
+        <div className="mb-4 flex items-center gap-3 rounded-lg border border-steel-200 bg-white px-4 py-3 text-sm text-steel-600">
+          <span className="h-3 w-3 shrink-0 animate-pulse rounded-full bg-copper-500" />
+          <span>
+            Uploading photos — {upload.done} of {upload.total} done. You can leave this page.
+          </span>
+        </div>
+      )}
 
       {notice && (
         <div className="mb-4 flex items-start justify-between gap-3 rounded-lg border border-working-amber/30 bg-working-amberDim px-4 py-3 text-sm text-working-amber">
@@ -262,14 +323,14 @@ export default function CollectionDetailPage() {
                   <Row label="Net" ours={l.netWeight} theirs={l.supplierNetWeight} strong />
                 </div>
 
-                {(l.photos.length > 0 || !isVoid) && (
+                {(l.photos.length > 0 || canAddHere) && (
                   <div className="mt-4 border-t border-steel-100 pt-3">
                     <PhotoStrip
                       compact
                       collectionId={collection.id}
                       lineId={l.id}
                       photos={l.photos}
-                      canAdd={!isVoid}
+                      canAdd={canAddHere}
                       canDelete={isAdmin}
                       onChanged={load}
                     />
@@ -317,22 +378,35 @@ export default function CollectionDetailPage() {
             </p>
           </div>
         )}
-        <div className="field-label">
-          Photos
-          {photoCount > 0 && (
-            <span className="ml-1 font-medium text-steel-400">
-              {photoCount} on this collection
-            </span>
-          )}
-        </div>
-        <PhotoStrip
-          collectionId={collection.id}
-          photos={collection.photos}
-          canAdd={!isVoid}
-          canDelete={isAdmin}
-          onChanged={load}
-          emptyHint="No photos."
-        />
+        {/* Counted separately. It said "2 on this collection" under a
+            heading about the pickup while both photos belonged to a grade,
+            so the number described one thing and sat under another. */}
+        {(pickupPhotos > 0 || canAddHere) && (
+          <>
+            <div className="field-label">
+              Photos of the pickup
+              {gradePhotos > 0 && (
+                <span className="ml-1 font-medium text-steel-400">
+                  {gradePhotos} more on the grades above
+                </span>
+              )}
+            </div>
+            <PhotoStrip
+              collectionId={collection.id}
+              photos={collection.photos}
+              canAdd={canAddHere}
+              canDelete={isAdmin}
+              onChanged={load}
+            />
+          </>
+        )}
+        {pickupPhotos === 0 && !canAddHere && (
+          <p className="text-xs text-steel-400">
+            {gradePhotos > 0
+              ? `No photos of the pickup itself — ${gradePhotos} on the grades above.`
+              : 'No photos. Add them from Edit.'}
+          </p>
+        )}
       </div>
 
       <ConfirmDialog
