@@ -63,7 +63,11 @@ describe('share links — the token is the credential', () => {
     const original = process.env.JWT_SECRET;
     try {
       // Rotating JWT_SECRET is the blanket revocation for every live link.
-      process.env.JWT_SECRET = 'a-completely-different-secret';
+      // Kept short and obviously fake: the CI credential scan matches on
+      // JWT_SECRET followed by 24-odd characters of secret-shaped text, and
+      // a convincing dummy in a test file trips it exactly as a real one
+      // would. That check is worth more than a pretty fixture.
+      process.env.JWT_SECRET = 'other-key';
       assert.equal(readShareToken(token), null);
     } finally {
       process.env.JWT_SECRET = original;
