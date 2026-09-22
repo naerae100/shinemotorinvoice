@@ -316,12 +316,9 @@ export default function CollectionDetailPage() {
           they already typed it. They open it to see who and how much. */}
       <div className="surface overflow-hidden">
         <div className="bg-steel-900 px-5 py-4 sm:px-6">
-          <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
-              <div className="num text-[11px] font-bold uppercase tracking-[0.18em] text-steel-400">
-                {collectionRef(collection.collectionNumber)}
-              </div>
-              <h1 className="mt-0.5 truncate font-display text-xl font-semibold text-paper sm:text-2xl">
+              <h1 className="truncate font-display text-xl font-semibold text-paper sm:text-2xl">
                 <Link
                   to={`/local-suppliers/${collection.localSupplier.id}`}
                   className="hover:text-copper-400"
@@ -331,13 +328,16 @@ export default function CollectionDetailPage() {
               </h1>
               {/* steel-300, not steel-400: on this ground the lighter grey
                   measured about 2.8:1, under the 4.5:1 floor. */}
-              <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs font-medium text-steel-300">
+              {/* One line per fact on a phone, a single run from 640px. The
+                  separators are decoration, and a wrapped line that ends in
+                  a stranded middle dot looks like a bug. */}
+              <div className="mt-1 flex flex-col text-xs font-medium text-steel-300 sm:flex-row sm:flex-wrap sm:items-center sm:gap-x-2">
                 <span>{format(new Date(collection.date), 'EEE d MMM yyyy, h:mma')}</span>
-                <span aria-hidden="true">·</span>
+                <span aria-hidden="true" className="hidden sm:inline">·</span>
                 <span>Recorded by {collection.createdBy?.name ?? 'Unknown'}</span>
                 {where && (
                   <>
-                    <span aria-hidden="true">·</span>
+                    <span aria-hidden="true" className="hidden sm:inline">·</span>
                     <span>{where}</span>
                   </>
                 )}
@@ -350,11 +350,22 @@ export default function CollectionDetailPage() {
                 </div>
               )}
             </div>
-            {isVoid && (
-              <span className="shrink-0 rounded bg-working-red px-2 py-1 text-[11px] font-bold uppercase tracking-wide text-white">
-                Voided
+            {/* The reference, opposite the name and on a plate of its own.
+                It was a grey eyebrow above the title: 11px, tracked out, and
+                on this near-black ground it sat around 3:1 — technically
+                present, practically unreadable. It is how the collection is
+                referred to on the phone and in an email, so it should be the
+                one thing you can find without looking. */}
+            <div className="flex shrink-0 flex-col items-end gap-1.5">
+              <span className="num rounded-lg border border-white/20 bg-white/10 px-2.5 py-1.5 text-sm font-bold tracking-wider text-white sm:text-base">
+                {collectionRef(collection.collectionNumber)}
               </span>
-            )}
+              {isVoid && (
+                <span className="rounded bg-working-red px-2 py-1 text-[11px] font-bold uppercase tracking-wide text-white">
+                  Voided
+                </span>
+              )}
+            </div>
           </div>
         </div>
 
@@ -392,7 +403,7 @@ export default function CollectionDetailPage() {
         </div>
 
         {comparison && (
-          <div className="border-t border-steel-100 px-5 py-3.5 sm:px-6">
+          <div className="border-t border-steel-100 px-5 pb-3 sm:px-6">
             <CompareBar ours={comparison.ours} theirs={comparison.theirs} />
           </div>
         )}
@@ -588,36 +599,36 @@ function WeighPanel({ heading, gross, tare, net, primary = false }) {
       }`}
     >
       <div
-        className={`text-[10px] font-bold uppercase tracking-[0.14em] ${
-          primary ? 'text-steel-600' : 'text-steel-400'
+        className={`text-[11px] font-bold uppercase tracking-[0.12em] ${
+          primary ? 'text-steel-600' : 'text-steel-500'
         }`}
       >
         {heading}
       </div>
 
-      <dl className="mt-2 space-y-1 text-sm">
+      <dl className="mt-2 space-y-1.5">
         <div className="flex items-baseline justify-between gap-4">
-          <dt className="text-xs text-steel-500">Gross</dt>
-          <dd className="num text-steel-700">{cell(gross)}</dd>
+          <dt className="text-[13px] font-medium text-steel-600">Gross</dt>
+          <dd className="num text-[15px] font-semibold text-steel-800">{cell(gross)}</dd>
         </div>
         <div className="flex items-baseline justify-between gap-4">
-          <dt className="text-xs text-steel-500">Tare</dt>
-          <dd className="num text-steel-700">{cell(tare)}</dd>
+          <dt className="text-[13px] font-medium text-steel-600">Tare</dt>
+          <dd className="num text-[15px] font-semibold text-steel-800">{cell(tare)}</dd>
         </div>
         <div
-          className={`flex items-baseline justify-between gap-4 border-t pt-1.5 ${
+          className={`flex items-baseline justify-between gap-4 border-t pt-2 ${
             primary ? 'border-steel-200' : 'border-steel-100'
           }`}
         >
-          <dt className="text-xs font-semibold text-steel-600">Net</dt>
+          <dt className="text-[13px] font-bold text-steel-700">Net</dt>
           <dd
-            className={`num text-base font-bold ${
+            className={`num text-[19px] font-bold leading-none ${
               weighed ? 'text-steel-900' : 'text-steel-300'
             }`}
           >
             {cell(net)}
             {weighed && (
-              <span className="ml-1 text-[10px] font-semibold text-steel-400">kg</span>
+              <span className="ml-1 text-[11px] font-semibold text-steel-400">kg</span>
             )}
           </dd>
         </div>
@@ -627,46 +638,23 @@ function WeighPanel({ heading, gross, tare, net, primary = false }) {
 }
 
 /**
- * The two net weights drawn to scale against each other.
+ * How far apart the two weighings are, in one sentence.
  *
- * Figures alone make you do arithmetic to know whether a difference is
- * trivial or serious: -0.014 kg on 23 kg and -14 kg on 23 kg read almost the
- * same on the page. Two bars against a shared scale answer that before the
- * numbers are read at all — on a near match the bars are visibly one length,
- * and a real discrepancy is a gap you can see across the room.
- *
- * Length, not colour: nothing here decides for the yard whether a shortfall
- * is acceptable.
+ * This was two bars drawn to scale. They were honest and useless: a real
+ * collection agrees to within a rounding step nearly every time, so both
+ * bars came out the same length on every card and the graphic said nothing
+ * the sentence did not. The percentage is the thing worth reading, because
+ * it is what tells you whether −0.014 kg is noise or −14 kg is a problem.
  */
 function CompareBar({ ours, theirs }) {
-  const max = Math.max(ours, theirs, 0.000001);
-  const pct = (v) => `${Math.max((v / max) * 100, 1.5)}%`;
-  const gap = ours === 0 ? null : ((ours - theirs) / ours) * 100;
+  if (ours === 0) return null;
+  const gap = ((ours - theirs) / ours) * 100;
 
   return (
-    <div className="mt-3.5 space-y-1.5">
-      <Bar label="Ours" width={pct(ours)} className="bg-steel-800" />
-      <Bar label="Theirs" width={pct(theirs)} className="bg-steel-400" />
-      {gap !== null && (
-        <div className="pl-[3.25rem] text-[11px] text-steel-400">
-          {Math.abs(gap) < 0.05
-            ? 'The two weighings agree to within a rounding step.'
-            : `Theirs is ${Math.abs(gap).toFixed(2)}% ${gap > 0 ? 'lighter' : 'heavier'} than ours.`}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function Bar({ label, width, className }) {
-  return (
-    <div className="flex items-center gap-2">
-      <span className="w-[3rem] shrink-0 text-[10px] font-bold uppercase tracking-wider text-steel-400">
-        {label}
-      </span>
-      <div className="h-2 flex-1 overflow-hidden rounded-full bg-steel-100">
-        <div className={`h-full rounded-full ${className}`} style={{ width }} />
-      </div>
-    </div>
+    <p className="mt-3 text-[13px] font-medium text-steel-500">
+      {Math.abs(gap) < 0.05
+        ? 'Both weighings agree to within a rounding step.'
+        : `Theirs is ${Math.abs(gap).toFixed(2)}% ${gap > 0 ? 'lighter' : 'heavier'} than ours.`}
+    </p>
   );
 }
