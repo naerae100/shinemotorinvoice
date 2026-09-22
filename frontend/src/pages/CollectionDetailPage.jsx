@@ -157,6 +157,9 @@ export default function CollectionDetailPage() {
       }
     : null;
 
+  const where =
+    [collection.localSupplier.suburb, collection.localSupplier.state].filter(Boolean).join(', ');
+
   const docName = `${collectionRef(collection.collectionNumber)}_${collection.localSupplier.name}`;
 
   const pickupPhotos = collection.photos.length;
@@ -306,25 +309,53 @@ export default function CollectionDetailPage() {
         </div>
       )}
 
-      {/* ── Header and the three headline figures ──────────────────── */}
+      {/* ── Who it came from, and the three figures ─────────────────── */}
+      {/* The reference used to be the headline and the supplier a labelled
+          field below it, which put the smallest word on the page in the
+          biggest type. Nobody opens a collection to find out its number —
+          they already typed it. They open it to see who and how much. */}
       <div className="surface overflow-hidden">
-        <div className="flex flex-col gap-3 bg-steel-900 px-5 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6">
-          <div className="min-w-0">
-            <h1 className="font-display text-lg font-semibold text-paper">
-              {collectionRef(collection.collectionNumber)}
-            </h1>
-            {/* steel-300, not steel-400: on this ground the lighter grey
-                measured about 2.8:1, under the 4.5:1 floor, and the date was
-                genuinely hard to read. */}
-            <div className="text-xs font-medium text-steel-300">
-              {format(new Date(collection.date), 'EEEE d MMMM yyyy, h:mma')}
+        <div className="bg-steel-900 px-5 py-4 sm:px-6">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="min-w-0">
+              <div className="num text-[11px] font-bold uppercase tracking-[0.18em] text-steel-400">
+                {collectionRef(collection.collectionNumber)}
+              </div>
+              <h1 className="mt-0.5 truncate font-display text-xl font-semibold text-paper sm:text-2xl">
+                <Link
+                  to={`/local-suppliers/${collection.localSupplier.id}`}
+                  className="hover:text-copper-400"
+                >
+                  {collection.localSupplier.name}
+                </Link>
+              </h1>
+              {/* steel-300, not steel-400: on this ground the lighter grey
+                  measured about 2.8:1, under the 4.5:1 floor. */}
+              <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs font-medium text-steel-300">
+                <span>{format(new Date(collection.date), 'EEE d MMM yyyy, h:mma')}</span>
+                <span aria-hidden="true">·</span>
+                <span>Recorded by {collection.createdBy?.name ?? 'Unknown'}</span>
+                {where && (
+                  <>
+                    <span aria-hidden="true">·</span>
+                    <span>{where}</span>
+                  </>
+                )}
+              </div>
+              {collection.editedBy && (
+                <div className="mt-0.5 text-[11px] text-steel-400">
+                  Last edited by {collection.editedBy.name}
+                  {collection.editedAt &&
+                    ` on ${format(new Date(collection.editedAt), 'd MMM, h:mma')}`}
+                </div>
+              )}
             </div>
+            {isVoid && (
+              <span className="shrink-0 rounded bg-working-red px-2 py-1 text-[11px] font-bold uppercase tracking-wide text-white">
+                Voided
+              </span>
+            )}
           </div>
-          {isVoid && (
-            <span className="self-start rounded bg-working-red px-2 py-1 text-[11px] font-bold uppercase tracking-wide text-white">
-              Voided
-            </span>
-          )}
         </div>
 
         {isVoid && collection.voidReason && (
@@ -332,34 +363,6 @@ export default function CollectionDetailPage() {
             {collection.voidReason}
           </div>
         )}
-
-        <div className="grid grid-cols-1 gap-x-8 gap-y-4 border-b border-steel-100 px-5 py-4 sm:grid-cols-2 sm:px-6">
-          <Field label="Collected from">
-            <Link
-              to={`/local-suppliers/${collection.localSupplier.id}`}
-              className="font-semibold text-steel-900 hover:text-copper-600"
-            >
-              {collection.localSupplier.name}
-            </Link>
-            <div className="mt-0.5 text-xs text-steel-500">
-              {[collection.localSupplier.suburb, collection.localSupplier.state]
-                .filter(Boolean)
-                .join(', ') || 'No address on file'}
-            </div>
-          </Field>
-          <Field label="Recorded by">
-            <div className="font-semibold text-steel-900">
-              {collection.createdBy?.name ?? 'Unknown'}
-            </div>
-            {collection.editedBy && (
-              <div className="mt-0.5 text-xs text-steel-500">
-                Last edited by {collection.editedBy.name}
-                {collection.editedAt &&
-                  ` on ${format(new Date(collection.editedAt), 'd MMM, h:mma')}`}
-              </div>
-            )}
-          </Field>
-        </div>
 
         {/* The three numbers somebody opens this page to see. */}
         <div className="grid grid-cols-2 sm:grid-cols-3 sm:divide-x sm:divide-steel-100">
@@ -387,6 +390,12 @@ export default function CollectionDetailPage() {
             className="col-span-2 border-t border-steel-100 sm:col-span-1 sm:border-t-0"
           />
         </div>
+
+        {comparison && (
+          <div className="border-t border-steel-100 px-5 py-3.5 sm:px-6">
+            <CompareBar ours={comparison.ours} theirs={comparison.theirs} />
+          </div>
+        )}
       </div>
 
       {/* ── A card per grade ───────────────────────────────────────── */}
@@ -397,8 +406,12 @@ export default function CollectionDetailPage() {
           const diff = theirs === null ? null : round3(Number(l.netWeight) - theirs);
           return (
             <div key={l.id} className="surface overflow-hidden">
-              <div className="px-5 py-4">
-                <div className="font-semibold text-steel-900">
+              {/* Name and the answer on one line. The difference used to be
+                  a full-width black bar at the foot of every card, which
+                  made a page of four grades four black bars — emphasis
+                  everywhere is emphasis nowhere. */}
+              <div className="flex flex-wrap items-center justify-between gap-3 border-b border-steel-100 px-5 py-3.5">
+                <div className="min-w-0 font-semibold text-steel-900">
                   {l.material?.description ?? l.description}
                   {!l.material && (
                     <span className="ml-2 text-xs font-normal text-steel-400">
@@ -406,28 +419,53 @@ export default function CollectionDetailPage() {
                     </span>
                   )}
                 </div>
+                {diff === null ? (
+                  <span className="shrink-0 text-xs font-medium text-steel-400">
+                    they did not weigh
+                  </span>
+                ) : (
+                  <span className="num shrink-0 rounded-md bg-steel-900 px-2.5 py-1 text-sm font-bold text-white">
+                    {diff > 0 ? '+' : ''}
+                    {formatNumber(diff, 3)}
+                    <span className="ml-1 text-[10px] font-semibold text-steel-300">kg</span>
+                  </span>
+                )}
+              </div>
 
-                <div className="mt-3 grid grid-cols-[3.5rem_1fr_1fr] items-center gap-x-3 gap-y-1.5 text-sm">
-                  <div />
-                  <div className="text-center text-[11px] font-bold uppercase tracking-wider text-steel-500">
-                    Ours
-                  </div>
-                  <div className="text-center text-[11px] font-bold uppercase tracking-wider text-steel-400">
-                    Theirs
-                  </div>
-                  <Row label="Gross" ours={l.grossWeight} theirs={l.supplierGrossWeight} />
-                  <Row label="Tare" ours={l.tareWeight} theirs={l.supplierTareWeight} />
-                  <Row label="Net" ours={l.netWeight} theirs={l.supplierNetWeight} strong />
+              <div className="px-5 py-4">
+                {/* Two panels rather than one wide grid. Across a 900px card
+                    the old layout put "Gross" at the far left and its number
+                    at the far right, and the eye cannot hold a label that
+                    far from its value. Each panel is capped, so the label
+                    and the number it belongs to stay together. */}
+                <div className="grid gap-3 sm:grid-cols-2 sm:gap-4">
+                  <WeighPanel
+                    heading="Our weighbridge"
+                    gross={l.grossWeight}
+                    tare={l.tareWeight}
+                    net={l.netWeight}
+                    primary
+                  />
+                  <WeighPanel
+                    heading="Supplier's"
+                    gross={l.supplierGrossWeight}
+                    tare={l.supplierTareWeight}
+                    net={l.supplierNetWeight}
+                  />
                 </div>
 
+                {theirs !== null && (
+                  <CompareBar ours={Number(l.netWeight)} theirs={theirs} />
+                )}
+
                 {l.notes && (
-                  <p className="mt-3 border-t border-steel-100 pt-3 text-sm leading-relaxed text-steel-700">
+                  <p className="mt-4 border-t border-steel-100 pt-3 text-sm leading-relaxed text-steel-700">
                     {l.notes}
                   </p>
                 )}
 
                 {(l.photos.length > 0 || canAddHere) && (
-                  <div className="mt-3 border-t border-steel-100 pt-3">
+                  <div className="mt-4 border-t border-steel-100 pt-3">
                     <PhotoStrip
                       compact
                       collectionId={collection.id}
@@ -438,31 +476,6 @@ export default function CollectionDetailPage() {
                       onChanged={load}
                     />
                   </div>
-                )}
-              </div>
-
-              {/* The answer, on its own plate — the same treatment the form
-                  gives it, so the number looks the same in both places. */}
-              <div
-                className={`flex items-center justify-between px-5 py-2.5 ${
-                  diff === null ? 'bg-steel-100' : 'bg-steel-900'
-                }`}
-              >
-                <span
-                  className={`text-[11px] font-bold uppercase tracking-wider ${
-                    diff === null ? 'text-steel-500' : 'text-steel-300'
-                  }`}
-                >
-                  Difference
-                </span>
-                {diff === null ? (
-                  <span className="text-xs font-medium text-steel-500">they did not weigh</span>
-                ) : (
-                  <span className="num text-lg font-bold leading-none text-white">
-                    {diff > 0 ? '+' : ''}
-                    {formatNumber(diff, 3)}
-                    <span className="ml-1 text-xs font-semibold text-steel-300">kg</span>
-                  </span>
                 )}
               </div>
             </div>
@@ -539,15 +552,6 @@ export default function CollectionDetailPage() {
   );
 }
 
-function Field({ label, children }) {
-  return (
-    <div>
-      <div className="field-label">{label}</div>
-      {children}
-    </div>
-  );
-}
-
 function Stat({ label, value, plate = false, muted = false, className = '' }) {
   return (
     <div className={`px-5 py-4 sm:px-6 ${className}`}>
@@ -565,25 +569,104 @@ function Stat({ label, value, plate = false, muted = false, className = '' }) {
   );
 }
 
-/** One weight, ours and theirs, on a single row. */
-function Row({ label, ours, theirs, strong = false }) {
-  const cell = (v, bold) =>
-    v == null ? (
-      <span className="text-steel-300">—</span>
-    ) : (
-      <span className={bold ? 'font-bold text-steel-900' : 'text-steel-700'}>
-        {formatNumber(v, 3)}
-      </span>
-    );
+/**
+ * One side's three weights, kept narrow on purpose.
+ *
+ * The number sits directly beside its label. That is the whole point: a
+ * value 800px from the word that names it is a number nobody can read
+ * without moving their head.
+ */
+function WeighPanel({ heading, gross, tare, net, primary = false }) {
+  const weighed = net != null;
+  const cell = (v) =>
+    v == null ? <span className="text-steel-300">—</span> : formatNumber(v, 3);
+
   return (
-    <>
-      <div className="text-xs font-semibold text-steel-600">{label}</div>
-      <div className={`num rounded-md px-2 py-1.5 text-right ${strong ? 'bg-steel-100' : ''}`}>
-        {cell(ours, strong)}
+    <div
+      className={`rounded-lg border px-3.5 py-3 ${
+        primary ? 'border-steel-200 bg-white' : 'border-steel-100 bg-paper'
+      }`}
+    >
+      <div
+        className={`text-[10px] font-bold uppercase tracking-[0.14em] ${
+          primary ? 'text-steel-600' : 'text-steel-400'
+        }`}
+      >
+        {heading}
       </div>
-      <div className={`num rounded-md px-2 py-1.5 text-right ${strong ? 'bg-paper' : ''}`}>
-        {cell(theirs, strong)}
+
+      <dl className="mt-2 space-y-1 text-sm">
+        <div className="flex items-baseline justify-between gap-4">
+          <dt className="text-xs text-steel-500">Gross</dt>
+          <dd className="num text-steel-700">{cell(gross)}</dd>
+        </div>
+        <div className="flex items-baseline justify-between gap-4">
+          <dt className="text-xs text-steel-500">Tare</dt>
+          <dd className="num text-steel-700">{cell(tare)}</dd>
+        </div>
+        <div
+          className={`flex items-baseline justify-between gap-4 border-t pt-1.5 ${
+            primary ? 'border-steel-200' : 'border-steel-100'
+          }`}
+        >
+          <dt className="text-xs font-semibold text-steel-600">Net</dt>
+          <dd
+            className={`num text-base font-bold ${
+              weighed ? 'text-steel-900' : 'text-steel-300'
+            }`}
+          >
+            {cell(net)}
+            {weighed && (
+              <span className="ml-1 text-[10px] font-semibold text-steel-400">kg</span>
+            )}
+          </dd>
+        </div>
+      </dl>
+    </div>
+  );
+}
+
+/**
+ * The two net weights drawn to scale against each other.
+ *
+ * Figures alone make you do arithmetic to know whether a difference is
+ * trivial or serious: -0.014 kg on 23 kg and -14 kg on 23 kg read almost the
+ * same on the page. Two bars against a shared scale answer that before the
+ * numbers are read at all — on a near match the bars are visibly one length,
+ * and a real discrepancy is a gap you can see across the room.
+ *
+ * Length, not colour: nothing here decides for the yard whether a shortfall
+ * is acceptable.
+ */
+function CompareBar({ ours, theirs }) {
+  const max = Math.max(ours, theirs, 0.000001);
+  const pct = (v) => `${Math.max((v / max) * 100, 1.5)}%`;
+  const gap = ours === 0 ? null : ((ours - theirs) / ours) * 100;
+
+  return (
+    <div className="mt-3.5 space-y-1.5">
+      <Bar label="Ours" width={pct(ours)} className="bg-steel-800" />
+      <Bar label="Theirs" width={pct(theirs)} className="bg-steel-400" />
+      {gap !== null && (
+        <div className="pl-[3.25rem] text-[11px] text-steel-400">
+          {Math.abs(gap) < 0.05
+            ? 'The two weighings agree to within a rounding step.'
+            : `Theirs is ${Math.abs(gap).toFixed(2)}% ${gap > 0 ? 'lighter' : 'heavier'} than ours.`}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function Bar({ label, width, className }) {
+  return (
+    <div className="flex items-center gap-2">
+      <span className="w-[3rem] shrink-0 text-[10px] font-bold uppercase tracking-wider text-steel-400">
+        {label}
+      </span>
+      <div className="h-2 flex-1 overflow-hidden rounded-full bg-steel-100">
+        <div className={`h-full rounded-full ${className}`} style={{ width }} />
       </div>
-    </>
+    </div>
   );
 }
