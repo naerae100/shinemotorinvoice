@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { getPublicBranding } from '../lib/settings';
+import { contractorMayVisit } from '../lib/access';
 
 /** The wave from the logo, reused as a large watermark on the brand panel. */
 function WaveMark({ className }) {
@@ -43,6 +44,7 @@ export default function LoginPage() {
   const [company, setCompany] = useState(null);
   const { login } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
 
   useEffect(() => {
     getPublicBranding().then(setCompany);
@@ -53,8 +55,25 @@ export default function LoginPage() {
     setError('');
     setLoading(true);
     try {
-      await login(email, password);
-      navigate('/');
+      const signedIn = await login(email, password);
+
+      /**
+       * Back to the page they were on, not to the dashboard.
+       *
+       * A session that ends mid-task used to drop you on the dashboard with
+       * no sign of where you had been — which on a half-written docket is
+       * the difference between signing in again and starting again.
+       * ProtectedRoute puts the path in history state on its way out.
+       *
+       * `replace`, so the login screen does not sit in history between the
+       * two, and a contractor is never sent somewhere they cannot open.
+       */
+      const from = location.state?.from;
+      const target =
+        from && from !== '/login' && (signedIn.role !== 'CONTRACTOR' || contractorMayVisit(from))
+          ? from
+          : '/';
+      navigate(target, { replace: true });
     } catch (err) {
       // Report what actually went wrong. A bare catch here used to call every
       // failure "wrong password", including the server being unreachable, which

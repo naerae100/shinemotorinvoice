@@ -14,7 +14,11 @@ export default function ProtectedRoute({ children, adminOnly = false }) {
     );
   }
 
-  if (!user) return <Navigate to="/login" replace />;
+  // `replace`, and carrying where they were: the entry being left is a page
+  // they can no longer open, so it should be overwritten rather than stacked
+  // on — and after signing in they belong back where they were, not on the
+  // dashboard.
+  if (!user) return <Navigate to="/login" replace state={{ from: location.pathname + location.search }} />;
   if (adminOnly && !isAdmin) return <Navigate to="/" replace />;
 
   // A contractor typing another screen's address into the bar got that

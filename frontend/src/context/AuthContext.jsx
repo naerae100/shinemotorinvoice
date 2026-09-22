@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useState } from 'react';
-import { api } from '../lib/api';
+import { api, onSessionEnded } from '../lib/api';
 
 const AuthContext = createContext(null);
 
@@ -19,6 +19,10 @@ export function AuthProvider({ children }) {
       .catch(() => localStorage.removeItem('shine_token'))
       .finally(() => setLoading(false));
   }, []);
+
+  // When the server refuses a token, drop the user here rather than letting
+  // the interceptor drive the browser. ProtectedRoute does the rest.
+  useEffect(() => onSessionEnded(() => setUser(null)), []);
 
   async function login(email, password) {
     const res = await api.post('/auth/login', { email, password });
