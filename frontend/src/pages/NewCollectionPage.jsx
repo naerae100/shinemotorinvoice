@@ -19,6 +19,11 @@ const BLANK_LINE = {
   supplierTareWeight: '',
   // Chosen now, uploaded after the collection exists — see the save below.
   photos: [],
+  // About this grade in particular. Hidden until asked for: most lines are
+  // a weight and nothing else, and a textarea on every card would make the
+  // form look like it wants filling in.
+  notes: '',
+  noteOpen: false,
 };
 // A name, and a suburb if they give one. Phone and street address were here
 // and are not: a contractor is standing in a driveway with a load to weigh,
@@ -128,6 +133,8 @@ export default function NewCollectionPage() {
               l.supplierGrossWeight == null ? '' : String(l.supplierGrossWeight),
             supplierTareWeight:
               l.supplierTareWeight == null ? '' : String(l.supplierTareWeight),
+            notes: l.notes || '',
+            noteOpen: Boolean(l.notes),
           }))
         );
       })
@@ -246,6 +253,7 @@ export default function NewCollectionPage() {
             l.supplierGrossWeight === '' ? null : parseFloat(l.supplierGrossWeight),
           supplierTareWeight:
             l.supplierGrossWeight === '' ? null : parseFloat(l.supplierTareWeight) || 0,
+          notes: l.notes?.trim() || null,
         })),
         ...(isEdit && expectedUpdatedAt ? { expectedUpdatedAt } : {}),
       };
@@ -422,6 +430,7 @@ export default function NewCollectionPage() {
                 const mine = ourNet(line);
                 const yours = theirNet(line);
                 const diff = difference(line);
+                const hasPhotos = (line.photos ?? []).length > 0;
                 const ourTareBad =
                   mine !== null && (parseFloat(line.tareWeight) || 0) > parseFloat(line.grossWeight);
                 const theirTareBad =
@@ -538,19 +547,53 @@ export default function NewCollectionPage() {
                       </div>
                     </div>
 
-                    {photoStorageReady && (
-                      <div className="mt-3 border-t border-steel-100 pt-3">
+                    {/* The optional extras, on one row and out of the way.
+                        A photograph and a note are occasional; the weights
+                        are the job. Neither takes any height until it is
+                        asked for. */}
+                    <div className="mt-3 border-t border-steel-100 pt-3">
+                      {photoStorageReady ? (
                         <PhotoPicker
                           compact
+                          minimal
                           files={line.photos ?? []}
                           onChange={(photos) =>
                             setLines((prev) =>
                               prev.map((l, idx) => (idx === i ? { ...l, photos } : l))
                             )
                           }
+                          trailing={!line.noteOpen && <NoteButton onClick={() => updateLine(i, 'noteOpen', true)} tile={hasPhotos} />}
                         />
-                      </div>
-                    )}
+                      ) : (
+                        !line.noteOpen && <NoteButton onClick={() => updateLine(i, 'noteOpen', true)} />
+                      )}
+
+                      {line.noteOpen && (
+                        <div className="mt-2">
+                          <textarea
+                            rows={2}
+                            autoFocus
+                            value={line.notes}
+                            onChange={(e) => updateLine(i, 'notes', e.target.value)}
+                            placeholder="Anything about this grade — why the weights differ, what state it was in…"
+                            className="w-full rounded-md border border-steel-200 bg-white px-3 py-2 text-sm"
+                          />
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setLines((prev) =>
+                                prev.map((l, idx) =>
+                                  idx === i ? { ...l, notes: '', noteOpen: false } : l
+                                )
+                              )
+                            }
+                            className="mt-1 text-[11px] font-medium text-steel-400 hover:text-working-red"
+                          >
+                            Remove note
+                          </button>
+                        </div>
+                      )}
+                    </div>
 
                     {/* The answer, on its own plate.
                         
@@ -694,5 +737,44 @@ export default function NewCollectionPage() {
         </div>
       </form>
     </div>
+  );
+}
+
+/**
+ * "Add a note", at whichever size the row it sits in has become.
+ *
+ * A slim line while the extras row is empty — which is most of the time,
+ * because most grades are just a weight — and a tile beside the thumbnails
+ * once a photograph has made the row tall regardless.
+ */
+function NoteButton({ onClick, tile = false }) {
+  const icon = (
+    <svg viewBox="0 0 24 24" className={tile ? 'h-5 w-5' : 'h-4 w-4'} fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
+      <path d="M4 6h16M4 11h16M4 16h9" strokeLinecap="round" />
+    </svg>
+  );
+
+  if (tile) {
+    return (
+      <button
+        type="button"
+        onClick={onClick}
+        className="flex h-16 w-16 flex-col items-center justify-center gap-0.5 rounded-lg border border-dashed border-steel-300 bg-paper text-steel-500 transition-colors hover:border-copper-400 hover:text-copper-600"
+      >
+        {icon}
+        <span className="text-[10px] font-semibold">Note</span>
+      </button>
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="inline-flex items-center gap-1.5 text-xs font-semibold text-steel-500 transition-colors hover:text-copper-600"
+    >
+      {icon}
+      Note
+    </button>
   );
 }

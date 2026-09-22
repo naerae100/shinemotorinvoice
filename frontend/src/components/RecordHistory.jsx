@@ -26,6 +26,7 @@ const ACTION_LABEL = {
 const FIELD_LABEL = {
   localSupplier: 'Collected from',
   notes: 'Notes',
+  gradeNotes: 'Note on a grade',
   weights: 'Weights',
   photoAdded: 'Photo added',
   photo: 'Photo removed',

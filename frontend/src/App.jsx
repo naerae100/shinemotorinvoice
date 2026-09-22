@@ -14,6 +14,7 @@ const DashboardPage = lazy(() => import('./pages/DashboardPage'));
 const CollectionsPage = lazy(() => import('./pages/CollectionsPage'));
 const NewCollectionPage = lazy(() => import('./pages/NewCollectionPage'));
 const CollectionDetailPage = lazy(() => import('./pages/CollectionDetailPage'));
+const SharedCollectionPage = lazy(() => import('./pages/SharedCollectionPage'));
 const LocalSuppliersPage = lazy(() => import('./pages/LocalSuppliersPage'));
 const LocalSupplierDetailPage = lazy(() => import('./pages/LocalSupplierDetailPage'));
 const NewDocketPage = lazy(() => import('./pages/NewDocketPage'));
@@ -59,6 +60,9 @@ export default function App() {
         <AuthProvider>
           <Routes>
             <Route path="/login" element={<LoginPage />} />
+            {/* Outside ProtectedRoute on purpose: the seller has no account,
+                and the signed token in the path is the whole credential. */}
+            <Route path="/shared/collection/:token" element={<SharedCollectionPage />} />
             <Route
               path="/"
               element={

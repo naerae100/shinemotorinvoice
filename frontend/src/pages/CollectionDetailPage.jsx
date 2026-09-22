@@ -11,7 +11,7 @@ import RecordHistory from '../components/RecordHistory';
 import CollectionDocument from '../components/documents/CollectionDocument';
 import DownloadDocument from '../components/DownloadDocument';
 import { printAs } from '../lib/printDocument';
-import { getSettings } from '../lib/settings';
+import { getSettings, getPublicBranding } from '../lib/settings';
 import { subscribe, progressFor, clear } from '../lib/photoQueue';
 
 const round3 = (n) => Math.round((n + Number.EPSILON) * 1000) / 1000;
@@ -56,15 +56,19 @@ export default function CollectionDetailPage() {
    */
   const [upload, setUpload] = useState(() => progressFor(id));
 
-  // Null is fine. A contractor cannot read /api/settings — it is not on
-  // their allowlist — and the printed sheet falls back to the company name
-  // in code rather than refusing to render. They still need to hand a seller
-  // a copy of what was weighed.
+  // A contractor cannot read /api/settings — it is not on their allowlist —
+  // but they are the person most likely to be handing a seller a printed
+  // copy, and a sheet with no letterhead on it is not much of a record. So
+  // fall back to the public branding: trading name, ABN, address, phone.
+  // No logo, because that endpoint deliberately does not carry one.
   const [settings, setSettings] = useState(null);
+  const [sharing, setSharing] = useState(false);
+  const [shared, setShared] = useState('');
+  const [shareUrl, setShareUrl] = useState('');
   useEffect(() => {
     getSettings()
       .then(setSettings)
-      .catch(() => setSettings(null));
+      .catch(() => getPublicBranding().then(setSettings));
   }, []);
 
   const load = useCallback(
@@ -170,6 +174,51 @@ export default function CollectionDetailPage() {
    */
   const canAddHere = Boolean(notice) && !isVoid;
 
+  /**
+   * Hand the seller a link rather than a file.
+   *
+   * A PDF in an email is a copy: correct a weight tomorrow and they are
+   * holding yesterday's numbers with no way to know it. The link points at
+   * the record.
+   *
+   * On a phone this opens the share sheet, so it goes straight into whatever
+   * they message people with. Everywhere else it lands on the clipboard —
+   * and if the clipboard is blocked, which it is on an insecure origin, the
+   * URL is shown so it can still be copied by hand.
+   */
+  async function share() {
+    setSharing(true);
+    try {
+      const { data } = await api.post(`/collections/${id}/share`);
+      // Show the URL input straight away, before the share sheet opens.
+      // If somebody dismisses the sheet (AbortError) the link is still
+      // visible so they can copy it by hand.
+      setShareUrl(data.url);
+      const text = `Field collection #${collection.collectionNumber} — ${collection.localSupplier.name}`;
+      if (navigator.share) {
+        try {
+          await navigator.share({ title: text, url: data.url });
+        } catch (shareErr) {
+          // AbortError is just the person closing the share sheet.
+          if (shareErr?.name !== 'AbortError') throw shareErr;
+        }
+      } else {
+        try {
+          await navigator.clipboard.writeText(data.url);
+          setShared('copied');
+          setTimeout(() => setShared(''), 4000);
+        } catch {
+          // Clipboard blocked (insecure origin). The URL input is already
+          // showing, so they can select and copy from there.
+        }
+      }
+    } catch (err) {
+      setError('Could not make a share link.');
+    } finally {
+      setSharing(false);
+    }
+  }
+
   return (
     <div className="mx-auto max-w-4xl px-4 py-5 print:max-w-none print:p-0 sm:px-6 lg:px-8 lg:py-7">
       <div className="print:hidden">
@@ -202,6 +251,11 @@ export default function CollectionDetailPage() {
               Restore
             </button>
           )}
+          {!isVoid && (
+            <button type="button" onClick={share} disabled={sharing} className="btn-secondary btn-sm">
+              {sharing ? 'Making link…' : shared === 'copied' ? 'Link copied' : 'Share'}
+            </button>
+          )}
           <button
             type="button"
             onClick={() => printAs(docName)}
@@ -212,6 +266,23 @@ export default function CollectionDetailPage() {
           <DownloadDocument filename={docName} className="btn-secondary btn-sm" />
         </div>
       </div>
+
+      {shareUrl && (
+        <div className="mb-4 rounded-lg border border-steel-200 bg-white px-4 py-3 print:hidden">
+          <div className="field-label">Share link · opens without a login, expires in 90 days</div>
+          <div className="flex flex-wrap items-center gap-2">
+            <input
+              readOnly
+              value={shareUrl}
+              onFocus={(e) => e.target.select()}
+              className="min-w-0 flex-1 rounded-md border border-steel-200 bg-paper px-3 py-2 text-xs text-steel-700"
+            />
+            <a href={shareUrl} target="_blank" rel="noreferrer" className="btn-ghost btn-sm">
+              Open
+            </a>
+          </div>
+        </div>
+      )}
 
       {upload.running && (
         <div className="mb-4 flex items-center gap-3 rounded-lg border border-steel-200 bg-white px-4 py-3 text-sm text-steel-600">
@@ -350,8 +421,14 @@ export default function CollectionDetailPage() {
                   <Row label="Net" ours={l.netWeight} theirs={l.supplierNetWeight} strong />
                 </div>
 
+                {l.notes && (
+                  <p className="mt-3 border-t border-steel-100 pt-3 text-sm leading-relaxed text-steel-700">
+                    {l.notes}
+                  </p>
+                )}
+
                 {(l.photos.length > 0 || canAddHere) && (
-                  <div className="mt-4 border-t border-steel-100 pt-3">
+                  <div className="mt-3 border-t border-steel-100 pt-3">
                     <PhotoStrip
                       compact
                       collectionId={collection.id}
@@ -395,46 +472,36 @@ export default function CollectionDetailPage() {
       </div>
 
       {/* ── The pickup as a whole ──────────────────────────────────── */}
-      <h2 className="section-label">The pickup</h2>
-      <div className="surface px-5 py-4">
-        {collection.notes && (
-          <div className="mb-4">
-            <div className="field-label">Notes</div>
-            <p className="whitespace-pre-line text-sm leading-relaxed text-steel-700">
-              {collection.notes}
-            </p>
+      {/* Gone entirely when there is nothing in it. A heading over the words
+          "No photos of the pickup itself" is a section whose only content is
+          an apology for having none. */}
+      {(collection.notes || pickupPhotos > 0 || canAddHere) && (
+        <>
+          <h2 className="section-label">The pickup</h2>
+          <div className="surface px-5 py-4">
+            {collection.notes && (
+              <div className={pickupPhotos > 0 || canAddHere ? 'mb-4' : ''}>
+                <div className="field-label">Notes</div>
+                <p className="whitespace-pre-line text-sm leading-relaxed text-steel-700">
+                  {collection.notes}
+                </p>
+              </div>
+            )}
+            {(pickupPhotos > 0 || canAddHere) && (
+              <>
+                <div className="field-label">Photos of the pickup</div>
+                <PhotoStrip
+                  collectionId={collection.id}
+                  photos={collection.photos}
+                  canAdd={canAddHere}
+                  canDelete={isAdmin}
+                  onChanged={load}
+                />
+              </>
+            )}
           </div>
-        )}
-        {/* Counted separately. It said "2 on this collection" under a
-            heading about the pickup while both photos belonged to a grade,
-            so the number described one thing and sat under another. */}
-        {(pickupPhotos > 0 || canAddHere) && (
-          <>
-            <div className="field-label">
-              Photos of the pickup
-              {gradePhotos > 0 && (
-                <span className="ml-1 font-medium text-steel-400">
-                  {gradePhotos} more on the grades above
-                </span>
-              )}
-            </div>
-            <PhotoStrip
-              collectionId={collection.id}
-              photos={collection.photos}
-              canAdd={canAddHere}
-              canDelete={isAdmin}
-              onChanged={load}
-            />
-          </>
-        )}
-        {pickupPhotos === 0 && !canAddHere && (
-          <p className="text-xs text-steel-400">
-            {gradePhotos > 0
-              ? `No photos of the pickup itself — ${gradePhotos} on the grades above.`
-              : 'No photos. Add them from Edit.'}
-          </p>
-        )}
-      </div>
+        </>
+      )}
 
       {/* Admin only, like the trail behind it. "Last edited by X" above
           answers who; this answers what, which is the question that makes

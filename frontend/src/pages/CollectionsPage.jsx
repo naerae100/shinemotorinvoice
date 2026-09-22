@@ -28,7 +28,7 @@ const DEFAULTS = {
  * on the roadside.
  */
 export default function CollectionsPage() {
-  const { isAdmin } = useAuth();
+  const { isAdmin, isContractor } = useAuth();
   const navigate = useNavigate();
   const { filters, setFilters } = useUrlFilters(DEFAULTS);
 
@@ -91,10 +91,16 @@ export default function CollectionsPage() {
             Scrap weighed in the field. No prices — these are picked up, not bought.
           </p>
         </div>
-        {/* No button here. The top bar carries "New collection" on every
-            screen already, and two of the same action a centimetre apart is
-            not twice as useful. The empty-state link below stays — that one
-            appears only when there is nothing else on the page to press. */}
+        {/* The top bar's button goes by role, not by page: a contractor gets
+            "New collection", everyone else gets "New purchase". So for an
+            admin standing here there was no way to start one at all. The
+            action belongs to the page; it steps aside only for the
+            contractor, whose bar is already offering exactly this. */}
+        {!isContractor && (
+          <Link to="/collections/new" className="btn-primary">
+            <span aria-hidden="true">+</span> New collection
+          </Link>
+        )}
       </header>
 
       {error && (

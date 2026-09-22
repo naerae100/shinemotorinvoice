@@ -650,6 +650,12 @@ model CollectionLine {
   supplierTareWeight  Decimal?
   supplierNetWeight   Decimal?
 
+  /// Anything about this grade in particular — why the weights disagree,
+  /// what state it was in, what the seller said. Separate from the
+  /// collection's own note, because "the copper was wet" belongs to the
+  /// copper and not to the trip.
+  notes String?
+
   photos CollectionPhoto[]
 
   @@index([collectionId])

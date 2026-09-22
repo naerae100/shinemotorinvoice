@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { prisma } from '../config/prisma.js';
+import { config } from '../config/env.js';
 import { requireAuth, requireRole } from '../middleware/auth.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { contains } from '../lib/search.js';
@@ -11,6 +12,7 @@ import { versionSchema, guardedWhere, isStaleWrite } from '../lib/concurrency.js
 import multer from 'multer';
 import * as photoStorage from '../lib/photoStorage.js';
 import { signPhotoUrl, verifyPhotoSignature } from '../lib/signedUrl.js';
+import { signShareToken, readShareToken } from '../lib/shareLink.js';
 
 const router = Router();
 
@@ -39,6 +41,8 @@ const lineSchema = z
     // The supplier's own weighing. Optional: plenty of sellers do not weigh.
     supplierGrossWeight: z.coerce.number().nonnegative().nullish(),
     supplierTareWeight: z.coerce.number().nonnegative().nullish(),
+    // About this grade in particular, not the trip.
+    notes: z.string().trim().max(2000).optional().nullable(),
   })
   .refine((l) => l.materialId || l.description?.trim(), {
     message: 'Choose a grade or type what it is',
@@ -121,6 +125,7 @@ const withNet = (l) => {
   return {
     materialId: l.materialId || null,
     description: l.description?.trim() || null,
+    notes: l.notes?.trim() || null,
     grossWeight: toWeight(l.grossWeight),
     tareWeight: toWeight(l.tareWeight ?? 0),
     netWeight: toWeight(l.grossWeight - (l.tareWeight ?? 0)),
@@ -389,6 +394,68 @@ router.get(
   })
 );
 
+/**
+ * GET /api/collections/shared/:token — no authentication, deliberately.
+ *
+ * The seller is not a user and never will be. The token is the credential:
+ * signed, time limited, and good for exactly one collection. See
+ * lib/shareLink.js for why it is signed rather than stored.
+ *
+ * A void collection is closed off. Somebody holding a link to a record that
+ * has since been cancelled should be told it was cancelled, not shown the
+ * numbers as though they still stand.
+ */
+router.get(
+  '/shared/:token',
+  asyncHandler(async (req, res) => {
+    const id = readShareToken(req.params.token);
+    if (!id) return res.status(404).json({ error: 'That link is not valid or has expired' });
+
+    const collection = await prisma.collection.findUnique({
+      where: { id },
+      include: DETAIL_INCLUDE,
+    });
+    if (!collection) return res.status(404).json({ error: 'Not found' });
+    if (collection.status === 'VOID') {
+      return res.status(410).json({ error: 'This collection has been cancelled' });
+    }
+
+    // The letterhead travels with it. /api/settings/public withholds the
+    // logo, which is right for the sign-in screen but leaves a document sent
+    // to a seller looking like a spreadsheet. Nothing here is private —
+    // every one of these fields is printed on every invoice already.
+    const branding = await prisma.companySettings.findUnique({
+      where: { id: 'singleton' },
+      select: { companyName: true, address: true, abn: true, phone: true, logoUrl: true },
+    });
+
+    // No cache: the link points at the record, not a copy, and the whole
+    // point is that a correction reaches whoever holds the link.
+    res.setHeader('Cache-Control', 'no-store');
+    res.json({ collection: withPhotoUrls(collection), branding });
+  })
+);
+
+/** POST /api/collections/:id/share — mint a link to hand to the seller. */
+router.post(
+  '/:id/share',
+  requireAuth,
+  asyncHandler(async (req, res) => {
+    const collection = await prisma.collection.findUnique({
+      where: { id: req.params.id },
+      select: { id: true, status: true },
+    });
+    if (!collection) return res.status(404).json({ error: 'Not found' });
+    if (collection.status === 'VOID') {
+      return res.status(409).json({ error: 'A void collection cannot be shared' });
+    }
+
+    const { token, expiresAt } = signShareToken(collection.id);
+    const origin = config.siteOrigins[0].replace(/\/$/, '');
+    res.json({ url: `${origin}/shared/collection/${token}`, expiresAt });
+  })
+);
+
 router.get(
   '/:id',
   requireAuth,
@@ -520,11 +587,16 @@ router.patch(
               (l.supplierNetWeight != null ? ` (theirs ${l.supplierNetWeight})` : '')
           )
           .join(', '),
+        gradeNotes: c.lines
+          .filter((l) => l.notes)
+          .map((l) => `${l.material?.description ?? l.description}: ${l.notes}`)
+          .join(' · '),
       });
       const changed = diff(summarise(before), summarise(collection), [
         'localSupplier',
         'notes',
         'weights',
+        'gradeNotes',
       ]);
       if (changed) {
         await audit({

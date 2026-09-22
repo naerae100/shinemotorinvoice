@@ -16,7 +16,26 @@ import { compressImage, readableSize } from '../lib/imageCompress';
  * A laptop ignores it and opens a file picker, which is what a laptop should
  * do.
  */
-export default function PhotoPicker({ files, onChange, label = 'Add photos', compact = false }) {
+export default function PhotoPicker({
+  files,
+  onChange,
+  label = 'Add photos',
+  compact = false,
+  /**
+   * Rendered in the same row as the tiles. The grade card is already five
+   * blocks deep and a note was going to make it six, so the two optional
+   * extras share one line instead of stacking.
+   */
+  trailing = null,
+  /**
+   * Shrink to a single line of text until there is a photo to show.
+   *
+   * On a grade card the common case is no photograph at all, and a 64px
+   * dashed square is a lot of furniture to stand there saying so. It earns
+   * its size once it is holding something.
+   */
+  minimal = false,
+}) {
   const inputRef = useRef(null);
   const [busy, setBusy] = useState(false);
   const [previews, setPreviews] = useState([]);
@@ -47,6 +66,35 @@ export default function PhotoPicker({ files, onChange, label = 'Add photos', com
   }
 
   const tile = compact ? 'h-16 w-16' : 'h-20 w-20';
+
+  if (minimal && files.length === 0) {
+    return (
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+        <button
+          type="button"
+          onClick={() => inputRef.current?.click()}
+          disabled={busy}
+          className="inline-flex items-center gap-1.5 text-xs font-semibold text-steel-500 transition-colors hover:text-copper-600 disabled:opacity-50"
+        >
+          <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
+            <path d="M3 8.5A1.5 1.5 0 014.5 7h2L8 5h8l1.5 2h2A1.5 1.5 0 0121 8.5v9A1.5 1.5 0 0119.5 19h-15A1.5 1.5 0 013 17.5v-9z" strokeLinejoin="round" />
+            <circle cx="12" cy="12.5" r="3.2" />
+          </svg>
+          {busy ? 'Working…' : 'Photo'}
+        </button>
+        {trailing}
+        <input
+          ref={inputRef}
+          type="file"
+          accept="image/*"
+          capture="environment"
+          multiple
+          onChange={add}
+          className="hidden"
+        />
+      </div>
+    );
+  }
 
   return (
     <div>
@@ -83,6 +131,8 @@ export default function PhotoPicker({ files, onChange, label = 'Add photos', com
             </>
           )}
         </button>
+
+        {trailing}
       </div>
 
       {files.length > 0 && (
