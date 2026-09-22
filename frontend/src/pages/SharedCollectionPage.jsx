@@ -3,7 +3,7 @@ import { useParams } from 'react-router-dom';
 import axios from 'axios';
 import CollectionDocument from '../components/documents/CollectionDocument';
 import { getPublicBranding } from '../lib/settings';
-import DownloadDocument from '../components/DownloadDocument';
+import { collectionRef } from '../lib/collectionRef';
 
 /**
  * The page a seller opens from a link, with no account.
@@ -65,8 +65,6 @@ export default function SharedCollectionPage() {
     );
   }
 
-  const name = `Collection-${collection.collectionNumber}_${collection.localSupplier.name}`;
-
   return (
     <div className="min-h-screen bg-steel-100 print:bg-white">
       {/* The bar is not part of the document, so it does not print. */}
@@ -77,14 +75,13 @@ export default function SharedCollectionPage() {
               Field collection
             </div>
             <div className="truncate font-display text-lg font-semibold text-steel-900">
-              #{collection.collectionNumber} · {collection.localSupplier.name}
+              {collectionRef(collection.collectionNumber)} · {collection.localSupplier.name}
             </div>
           </div>
           <div className="flex shrink-0 items-center gap-2">
             <button type="button" onClick={() => window.print()} className="btn-secondary btn-sm">
               Print
             </button>
-            <DownloadDocument filename={name} className="btn-secondary btn-sm" />
           </div>
         </div>
       </div>

@@ -3,6 +3,7 @@ import { Link, useParams } from 'react-router-dom';
 import { format } from 'date-fns';
 import { api } from '../lib/api';
 import { formatNumber } from '../lib/format';
+import { collectionRef } from '../lib/collectionRef';
 
 /**
  * Everything one local seller has brought in.
@@ -137,7 +138,7 @@ export default function LocalSupplierDetailPage() {
                       to={`/collections/${c.id}`}
                       className="num font-semibold text-steel-900 hover:text-copper-600"
                     >
-                      #{c.collectionNumber}
+                      {collectionRef(c.collectionNumber)}
                     </Link>
                   </td>
                   <td className="whitespace-nowrap px-5 py-3 text-steel-600">

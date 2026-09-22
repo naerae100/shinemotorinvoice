@@ -7,6 +7,7 @@ import { useAuth } from '../context/AuthContext';
 import { useUrlFilters } from '../lib/useUrlFilters';
 import ConfirmDialog from '../components/ConfirmDialog';
 import { apiErrorMessage } from '../lib/apiError';
+import { collectionRef } from '../lib/collectionRef';
 
 const PAGE_SIZE = 25;
 
@@ -16,8 +17,16 @@ const DEFAULTS = {
   to: '',
   localSupplierId: '',
   status: 'ACTIVE',
+  sort: 'newest',
   page: '1',
 };
+
+const SORTS = [
+  ['newest', 'Newest first'],
+  ['oldest', 'Oldest first'],
+  ['number', 'By number'],
+  ['supplier', 'By supplier'],
+];
 
 /**
  * What the contractor brought back.
@@ -41,6 +50,10 @@ export default function CollectionsPage() {
   const [busy, setBusy] = useState(false);
 
   const page = Number(filters.page) || 1;
+  const narrowed =
+    Boolean(filters.search || filters.from || filters.to || filters.localSupplierId) ||
+    filters.status !== DEFAULTS.status ||
+    filters.sort !== DEFAULTS.sort;
 
   const load = useCallback(() => {
     setLoading(true);
@@ -109,44 +122,112 @@ export default function CollectionsPage() {
         </div>
       )}
 
-      <div className="surface mb-4 grid grid-cols-2 gap-2 p-3 sm:flex sm:flex-wrap sm:items-center sm:gap-3">
-        <input
-          value={filters.search}
-          onChange={(e) => setFilters({ search: e.target.value })}
-          placeholder="Search a name, suburb, note or collection number…"
-          className="col-span-2 w-full rounded-md border border-steel-200 bg-white px-3 py-2.5 text-sm sm:w-auto sm:min-w-[16rem] sm:flex-1"
-        />
-        <input
-          type="date"
-          value={filters.from}
-          onChange={(e) => setFilters({ from: e.target.value })}
-          className="rounded-md border border-steel-200 bg-white px-3 py-2.5 text-sm"
-          aria-label="From"
-        />
-        <input
-          type="date"
-          value={filters.to}
-          onChange={(e) => setFilters({ to: e.target.value })}
-          className="rounded-md border border-steel-200 bg-white px-3 py-2.5 text-sm"
-          aria-label="To"
-        />
-        {isAdmin && (
+      {/* Search gets its own line at every width. It is the control people
+          actually use, and sharing a row with two date pickers made it a
+          third of the width on the screen where it matters most. */}
+      <div className="surface mb-3 p-3">
+        <div className="relative">
+          <svg
+            viewBox="0 0 24 24"
+            className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-steel-400"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            aria-hidden="true"
+          >
+            <circle cx="11" cy="11" r="7" />
+            <path d="M20 20l-3.5-3.5" strokeLinecap="round" />
+          </svg>
+          <input
+            value={filters.search}
+            onChange={(e) => setFilters({ search: e.target.value, page: '1' })}
+            placeholder="SHINE01, a supplier, a grade or a note…"
+            className="w-full rounded-md border border-steel-200 bg-white py-2.5 pl-9 pr-9 text-sm"
+          />
+          {filters.search && (
+            <button
+              type="button"
+              onClick={() => setFilters({ search: '', page: '1' })}
+              aria-label="Clear search"
+              className="absolute right-2 top-1/2 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-full text-steel-400 hover:bg-steel-100 hover:text-steel-700"
+            >
+              ×
+            </button>
+          )}
+        </div>
+
+        <div className="mt-2 grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-center">
           <select
-            value={filters.status}
-            onChange={(e) => setFilters({ status: e.target.value })}
+            value={filters.sort}
+            onChange={(e) => setFilters({ sort: e.target.value, page: '1' })}
+            aria-label="Sort"
             className="rounded-md border border-steel-200 bg-white px-3 py-2.5 text-sm"
           >
-            <option value="ACTIVE">Active only</option>
-            <option value="ALL">Include voided</option>
-            <option value="VOID">Voided only</option>
+            {SORTS.map(([value, label]) => (
+              <option key={value} value={value}>
+                {label}
+              </option>
+            ))}
           </select>
-        )}
+          {isAdmin && (
+            <select
+              value={filters.status}
+              onChange={(e) => setFilters({ status: e.target.value, page: '1' })}
+              aria-label="Status"
+              className="rounded-md border border-steel-200 bg-white px-3 py-2.5 text-sm"
+            >
+              <option value="ACTIVE">Active only</option>
+              <option value="ALL">Include voided</option>
+              <option value="VOID">Voided only</option>
+            </select>
+          )}
+          <input
+            type="date"
+            value={filters.from}
+            onChange={(e) => setFilters({ from: e.target.value, page: '1' })}
+            className="rounded-md border border-steel-200 bg-white px-3 py-2.5 text-sm"
+            aria-label="From"
+          />
+          <input
+            type="date"
+            value={filters.to}
+            onChange={(e) => setFilters({ to: e.target.value, page: '1' })}
+            className="rounded-md border border-steel-200 bg-white px-3 py-2.5 text-sm"
+            aria-label="To"
+          />
+          {narrowed && (
+            <button
+              type="button"
+              onClick={() => setFilters(DEFAULTS)}
+              className="col-span-2 text-xs font-semibold text-copper-600 hover:text-copper-700 sm:col-span-1 sm:ml-1"
+            >
+              Clear filters
+            </button>
+          )}
+        </div>
       </div>
 
-      <div className="surface mb-4 flex flex-wrap gap-x-8 gap-y-3 px-5 py-3">
-        <Figure label="Collections" value={formatNumber(totalCount, 0)} />
-        <Figure label="Net weight" value={`${formatNumber(totals.netWeight, 3)} kg`} accent />
-        <Figure label="Gross weight" value={`${formatNumber(totals.grossWeight, 3)} kg`} />
+      {/* Tiles rather than three figures crowded onto one line, and not
+          three across on a phone: a third of 390px cannot hold
+          "5,042.986 kg" and it came out as "5,042.98…". Net weight is the
+          number this page exists to give, so it gets the full width and the
+          other two share the row underneath. */}
+      <div className="mb-4 grid grid-cols-2 gap-2 sm:grid-cols-3 sm:gap-3">
+        <Figure
+          className="col-span-2 sm:col-span-1 sm:order-2"
+          label="Net weight"
+          value={formatNumber(totals.netWeight, 3)}
+          unit="kg"
+          accent
+          big
+        />
+        <Figure className="sm:order-1" label="Collections" value={formatNumber(totalCount, 0)} />
+        <Figure
+          className="sm:order-3"
+          label="Gross weight"
+          value={formatNumber(totals.grossWeight, 3)}
+          unit="kg"
+        />
       </div>
 
       {/* Cards on a phone, a table from lg up.
@@ -180,7 +261,7 @@ export default function CollectionsPage() {
             >
               <div className="flex items-baseline justify-between gap-3">
                 <span className={`num font-bold text-steel-900 ${isVoid ? 'line-through' : ''}`}>
-                  #{c.collectionNumber}
+                  {collectionRef(c.collectionNumber)}
                 </span>
                 <span className="num text-base font-bold text-steel-900">
                   {formatNumber(net, 3)}
@@ -258,7 +339,7 @@ export default function CollectionsPage() {
                           isVoid ? 'line-through' : ''
                         }`}
                       >
-                        #{c.collectionNumber}
+                        {collectionRef(c.collectionNumber)}
                       </Link>
                     </td>
                     <td className="px-5 py-3">
@@ -293,7 +374,7 @@ export default function CollectionsPage() {
                         {isAdmin && !isVoid && (
                           <button
                             type="button"
-                            onClick={() => setDialog({ id: c.id, number: c.collectionNumber })}
+                            onClick={() => setDialog({ id: c.id, ref: collectionRef(c.collectionNumber) })}
                             className="btn-secondary btn-sm"
                           >
                             Void…
@@ -336,7 +417,7 @@ export default function CollectionsPage() {
       {dialog && (
         <ConfirmDialog
           open
-          title={`Void collection #${dialog.number}?`}
+          title={`Void ${dialog.ref}?`}
           body="It keeps its number and stays in the history, but is left out of every total."
           confirmLabel="Void it"
           tone="danger"
@@ -350,14 +431,26 @@ export default function CollectionsPage() {
   );
 }
 
-function Figure({ label, value, accent = false }) {
+/**
+ * One figure on its own tile.
+ *
+ * The unit is a separate, smaller span: "3,362.000 kg" set at one size is
+ * eleven characters of the same weight, and the eye has to read all of it
+ * before finding the number.
+ */
+function Figure({ label, value, unit, accent = false, big = false, className = '' }) {
   return (
-    <div>
-      <div className="text-[11px] font-semibold uppercase tracking-wider text-steel-500">
+    <div className={`surface px-3 py-2.5 sm:px-4 sm:py-3 ${className}`}>
+      <div className="text-[10px] font-semibold uppercase tracking-wider text-steel-500 sm:text-[11px]">
         {label}
       </div>
-      <div className={`num text-lg font-semibold ${accent ? 'text-copper-600' : 'text-steel-900'}`}>
+      <div
+        className={`num mt-0.5 truncate font-bold ${big ? 'text-xl' : 'text-[15px]'} sm:text-lg ${
+          accent ? 'text-copper-600' : 'text-steel-900'
+        }`}
+      >
         {value}
+        {unit && <span className="ml-0.5 text-[10px] font-semibold text-steel-400">{unit}</span>}
       </div>
     </div>
   );

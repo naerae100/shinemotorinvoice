@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import * as v from '../lib/validators.js';
 import { prisma } from '../config/prisma.js';
-import { requireAuth } from '../middleware/auth.js';
+import { requireAuth, requireRole } from '../middleware/auth.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { contains } from '../lib/search.js';
 import { audit, diff } from '../lib/audit.js';
@@ -145,6 +145,50 @@ router.patch(
       });
     }
     res.json({ localSupplier });
+  })
+);
+
+/**
+ * DELETE /api/local-suppliers/:id — admin only.
+ *
+ * Refused while the supplier has collections against them. A local supplier
+ * is not much of a record on its own; the reason to keep one is the pickups
+ * hanging off it, and deleting the name out from under four collections
+ * leaves four records that cannot say who they came from. The message says
+ * how many, so the admin can decide whether to void those first.
+ *
+ * Hard delete rather than a flag: these rows carry no history of their own,
+ * and a list of deactivated names the contractor has to scroll past is the
+ * thing this page exists to avoid.
+ */
+router.delete(
+  '/:id',
+  requireAuth,
+  requireRole('ADMIN'),
+  asyncHandler(async (req, res) => {
+    const localSupplier = await prisma.localSupplier.findUnique({
+      where: { id: req.params.id },
+      include: { _count: { select: { collections: true } } },
+    });
+    if (!localSupplier) return res.status(404).json({ error: 'Not found' });
+
+    const n = localSupplier._count.collections;
+    if (n > 0) {
+      return res.status(409).json({
+        error: `${localSupplier.name} has ${n} ${n === 1 ? 'collection' : 'collections'}. Void or delete those first.`,
+      });
+    }
+
+    await prisma.localSupplier.delete({ where: { id: localSupplier.id } });
+    await audit({
+      req,
+      action: 'DELETE',
+      entity: 'LocalSupplier',
+      entityId: localSupplier.id,
+      label: localSupplier.name,
+      before: localSupplier,
+    });
+    res.json({ ok: true });
   })
 );
 

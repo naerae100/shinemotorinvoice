@@ -13,6 +13,7 @@ import multer from 'multer';
 import * as photoStorage from '../lib/photoStorage.js';
 import { signPhotoUrl, verifyPhotoSignature } from '../lib/signedUrl.js';
 import { signShareToken, readShareToken } from '../lib/shareLink.js';
+import { collectionRef, parseCollectionRef } from '../lib/collectionRef.js';
 
 const router = Router();
 
@@ -180,7 +181,7 @@ function withPhotoUrls(collection) {
 /** The Drive path a photo belongs in: supplier, then collection. */
 const foldersFor = (collection) => [
   collection.localSupplier?.name || 'Unknown supplier',
-  `Collection ${collection.collectionNumber}`,
+  collectionRef(collection.collectionNumber),
 ];
 
 /** POST /api/collections/:id/photos — one photo, optionally against a line. */
@@ -231,7 +232,7 @@ router.post(
       action: 'UPDATE',
       entity: 'Collection',
       entityId: collection.id,
-      label: `Collection #${collection.collectionNumber}`,
+      label: collectionRef(collection.collectionNumber),
       after: { photoAdded: photo.filename, grade: lineId ? 'line' : 'collection' },
     });
 
@@ -293,7 +294,7 @@ router.delete(
       action: 'UPDATE',
       entity: 'Collection',
       entityId: photo.collectionId,
-      label: `Collection #${photo.collection.collectionNumber}`,
+      label: collectionRef(photo.collection.collectionNumber),
       before: { photo: photo.filename },
     });
     res.json({ ok: true });
@@ -335,12 +336,32 @@ router.get(
   })
 );
 
-/** GET /api/collections?search=&from=&to=&localSupplierId=&status=&page= */
+/**
+ * How the list can be ordered.
+ *
+ * An allowlist rather than passing the query string to Prisma: `orderBy`
+ * takes a field name, and a field name from the internet is how a caller
+ * orders by something they were never meant to read.
+ *
+ * No sort by weight. A collection's weight is the sum of its lines and is
+ * not stored on the row, so ordering by it means aggregating before paging —
+ * and sorting just the page that came back would put the list in an order
+ * that changes meaning on page two. Better to leave it out than to ship one
+ * that lies.
+ */
+const SORTS = {
+  newest: { date: 'desc' },
+  oldest: { date: 'asc' },
+  number: { collectionNumber: 'desc' },
+  supplier: { localSupplier: { name: 'asc' } },
+};
+
+/** GET /api/collections?search=&from=&to=&localSupplierId=&status=&sort=&page= */
 router.get(
   '/',
   requireAuth,
   asyncHandler(async (req, res) => {
-    const { search, from, to, localSupplierId, status, page, pageSize } = req.query;
+    const { search, from, to, localSupplierId, status, sort, page, pageSize } = req.query;
 
     const where = {
       ...(status === 'ALL' ? {} : { status: status ? String(status) : 'ACTIVE' }),
@@ -350,10 +371,13 @@ router.get(
         ? {
             OR: [
               { localSupplier: { name: contains(String(search)) } },
-              { localSupplier: { suburb: contains(String(search)) } },
               { notes: contains(String(search)) },
-              ...(Number.isFinite(Number(search))
-                ? [{ collectionNumber: Number(search) }]
+              { lines: { some: { notes: contains(String(search)) } } },
+              { lines: { some: { description: contains(String(search)) } } },
+              { lines: { some: { material: { description: contains(String(search)) } } } },
+              // "SHINE01", "shine1" and "1" are all the same collection.
+              ...(parseCollectionRef(search) !== null
+                ? [{ collectionNumber: parseCollectionRef(search) }]
                 : []),
             ],
           }
@@ -366,7 +390,7 @@ router.get(
       prisma.collection.findMany({
         where,
         include: DETAIL_INCLUDE,
-        orderBy: { date: 'desc' },
+        orderBy: SORTS[String(sort)] ?? SORTS.newest,
         take,
         skip,
       }),
@@ -507,7 +531,7 @@ router.post(
       action: 'CREATE',
       entity: 'Collection',
       entityId: collection.id,
-      label: `Collection #${collection.collectionNumber}`,
+      label: collectionRef(collection.collectionNumber),
       after: { localSupplier: collection.localSupplier.name, lines: collection.lines.length },
     });
 
@@ -604,7 +628,7 @@ router.patch(
           action: 'UPDATE',
           entity: 'Collection',
           entityId: collection.id,
-          label: `Collection #${collection.collectionNumber}`,
+          label: collectionRef(collection.collectionNumber),
           ...changed,
         });
       }
@@ -649,7 +673,7 @@ router.post(
       action: 'VOID',
       entity: 'Collection',
       entityId: collection.id,
-      label: `Collection #${collection.collectionNumber}`,
+      label: collectionRef(collection.collectionNumber),
       after: { reason: reason || null },
     });
     res.json({ collection: withPhotoUrls(collection) });
@@ -671,7 +695,7 @@ router.post(
       action: 'RESTORE',
       entity: 'Collection',
       entityId: collection.id,
-      label: `Collection #${collection.collectionNumber}`,
+      label: collectionRef(collection.collectionNumber),
     });
     res.json({ collection: withPhotoUrls(collection) });
   })

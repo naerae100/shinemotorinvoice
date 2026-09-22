@@ -1,6 +1,7 @@
 import { Fragment } from 'react';
 import { format } from 'date-fns';
 import { formatNumber } from '../../lib/format';
+import { collectionRef } from '../../lib/collectionRef';
 
 /**
  * The shareable field collection.
@@ -74,7 +75,7 @@ export default function CollectionDocument({ collection, settings }) {
             Field collection
           </div>
           <div className="num font-display text-[26px] font-bold leading-none">
-            #{collection.collectionNumber}
+            {collectionRef(collection.collectionNumber)}
           </div>
           {collection.status === 'VOID' && (
             <div className="mt-1 inline-block rounded bg-ink-900 px-2 py-0.5 text-[9px] font-bold uppercase tracking-widest text-white">
@@ -309,7 +310,7 @@ export default function CollectionDocument({ collection, settings }) {
 
       <footer className="mt-auto flex items-end justify-between gap-4 border-t border-ink-200 pt-3 text-[8.5px] text-ink-400">
         <span>
-          Field Collection #{collection.collectionNumber} · {company} · weights in kilograms
+          Field collection {collectionRef(collection.collectionNumber)} · {company} · weights in kilograms
         </span>
         <span className="num">{format(new Date(), 'd MMM yyyy')}</span>
       </footer>

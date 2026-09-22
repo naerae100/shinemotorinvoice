@@ -9,10 +9,10 @@ import ConfirmDialog from '../components/ConfirmDialog';
 import PhotoStrip from '../components/PhotoStrip';
 import RecordHistory from '../components/RecordHistory';
 import CollectionDocument from '../components/documents/CollectionDocument';
-import DownloadDocument from '../components/DownloadDocument';
 import { printAs } from '../lib/printDocument';
 import { getSettings, getPublicBranding } from '../lib/settings';
 import { subscribe, progressFor, clear } from '../lib/photoQueue';
+import { collectionRef } from '../lib/collectionRef';
 
 const round3 = (n) => Math.round((n + Number.EPSILON) * 1000) / 1000;
 
@@ -157,7 +157,7 @@ export default function CollectionDetailPage() {
       }
     : null;
 
-  const docName = `Collection-${collection.collectionNumber}_${collection.localSupplier.name}`;
+  const docName = `${collectionRef(collection.collectionNumber)}_${collection.localSupplier.name}`;
 
   const pickupPhotos = collection.photos.length;
   const gradePhotos = collection.lines.reduce((a, l) => a + l.photos.length, 0);
@@ -194,7 +194,7 @@ export default function CollectionDetailPage() {
       // If somebody dismisses the sheet (AbortError) the link is still
       // visible so they can copy it by hand.
       setShareUrl(data.url);
-      const text = `Field collection #${collection.collectionNumber} — ${collection.localSupplier.name}`;
+      const text = `Field collection ${collectionRef(collection.collectionNumber)} — ${collection.localSupplier.name}`;
       if (navigator.share) {
         try {
           await navigator.share({ title: text, url: data.url });
@@ -263,7 +263,6 @@ export default function CollectionDetailPage() {
           >
             Print
           </button>
-          <DownloadDocument filename={docName} className="btn-secondary btn-sm" />
         </div>
       </div>
 
@@ -312,7 +311,7 @@ export default function CollectionDetailPage() {
         <div className="flex flex-col gap-3 bg-steel-900 px-5 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6">
           <div className="min-w-0">
             <h1 className="font-display text-lg font-semibold text-paper">
-              Collection #{collection.collectionNumber}
+              {collectionRef(collection.collectionNumber)}
             </h1>
             {/* steel-300, not steel-400: on this ground the lighter grey
                 measured about 2.8:1, under the 4.5:1 floor, and the date was
@@ -435,7 +434,7 @@ export default function CollectionDetailPage() {
                       lineId={l.id}
                       photos={l.photos}
                       canAdd={canAddHere}
-                      canDelete={isAdmin}
+                      canDelete={false}
                       onChanged={load}
                     />
                   </div>
@@ -494,7 +493,7 @@ export default function CollectionDetailPage() {
                   collectionId={collection.id}
                   photos={collection.photos}
                   canAdd={canAddHere}
-                  canDelete={isAdmin}
+                  canDelete={false}
                   onChanged={load}
                 />
               </>
@@ -527,7 +526,7 @@ export default function CollectionDetailPage() {
 
       <ConfirmDialog
         open={dialog === 'void'}
-        title={`Void collection #${collection.collectionNumber}?`}
+        title={`Void ${collectionRef(collection.collectionNumber)}?`}
         body="It keeps its number and stays in the history, but is left out of every total."
         confirmLabel="Void it"
         tone="danger"

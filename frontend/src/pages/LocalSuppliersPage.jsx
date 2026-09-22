@@ -3,6 +3,8 @@ import { Link } from 'react-router-dom';
 import { api } from '../lib/api';
 import { formatNumber } from '../lib/format';
 import { apiErrorMessage } from '../lib/apiError';
+import { useAuth } from '../context/AuthContext';
+import ConfirmDialog from '../components/ConfirmDialog';
 
 /**
  * The people the contractor buys off in the field.
@@ -18,6 +20,8 @@ export default function LocalSuppliersPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [adding, setAdding] = useState(false);
+  const [doomed, setDoomed] = useState(null);
+  const { isAdmin } = useAuth();
 
   const load = useCallback(() => {
     setLoading(true);
@@ -87,21 +91,21 @@ export default function LocalSuppliersPage() {
             <thead>
               <tr className="border-b border-steel-100 bg-paper text-left text-[11px] uppercase tracking-wider text-steel-500">
                 <th className="px-5 py-3 font-semibold">Name</th>
-                <th className="px-5 py-3 font-semibold">Where</th>
                 <th className="px-5 py-3 text-right font-semibold">Collections</th>
+                {isAdmin && <th className="px-5 py-3 text-right font-semibold">Actions</th>}
               </tr>
             </thead>
             <tbody>
               {loading && rows.length === 0 && (
                 <tr>
-                  <td colSpan={3} className="px-5 py-10 text-center text-sm text-steel-500">
+                  <td colSpan={isAdmin ? 3 : 2} className="px-5 py-10 text-center text-sm text-steel-500">
                     Loading…
                   </td>
                 </tr>
               )}
               {!loading && rows.length === 0 && (
                 <tr>
-                  <td colSpan={3} className="px-5 py-10 text-center text-sm text-steel-500">
+                  <td colSpan={isAdmin ? 3 : 2} className="px-5 py-10 text-center text-sm text-steel-500">
                     {search
                       ? 'Nobody by that name.'
                       : 'No local suppliers yet — add one here, or let the first collection create it.'}
@@ -118,52 +122,74 @@ export default function LocalSuppliersPage() {
                       {s.name}
                     </Link>
                   </td>
-                  <td className="px-5 py-3 text-steel-600">
-                    {[s.suburb, s.state].filter(Boolean).join(', ') || '—'}
-                  </td>
                   <td className="num px-5 py-3 text-right font-semibold text-steel-900">
                     {formatNumber(s._count?.collections ?? 0, 0)}
                   </td>
+                  {isAdmin && (
+                    <td className="px-5 py-3 text-right">
+                      <button
+                        type="button"
+                        onClick={() => setDoomed(s)}
+                        className="btn-ghost btn-sm text-steel-400 hover:bg-working-redDim hover:text-working-red"
+                      >
+                        Delete
+                      </button>
+                    </td>
+                  )}
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
       </div>
+
+      {doomed && (
+        <ConfirmDialog
+          open
+          title={`Delete ${doomed.name}?`}
+          body="This removes the supplier from the book. It cannot be undone."
+          confirmLabel="Delete"
+          onCancel={() => setDoomed(null)}
+          onConfirm={async () => {
+            try {
+              await api.delete(`/local-suppliers/${doomed.id}`);
+              setDoomed(null);
+              setError('');
+              load();
+            } catch (err) {
+              // The usual refusal is "they have collections", and that
+              // sentence is the whole answer — show it rather than a generic
+              // failure the admin then has to go and investigate.
+              setDoomed(null);
+              setError(apiErrorMessage(err, 'Could not delete that supplier.'));
+            }
+          }}
+        />
+      )}
     </div>
   );
 }
 
-const BLANK = { name: '', phone: '', address: '', suburb: '', state: '', postcode: '' };
-
 /**
- * Add somebody to the book without leaving for the collection form.
+ * Add somebody to the book. A name, and nothing else.
  *
- * Name is the only thing required, on purpose. The rest of what the yard
- * knows about a seller tends to arrive over three visits, and a form that
- * insists on all of it up front just gets filled with rubbish.
+ * The rest of what the yard learns about a seller — where they are, a phone
+ * number — arrives over three visits, and a form that asks for it up front
+ * gets filled with guesses. The record can be opened and filled in later;
+ * this is the fastest possible way to get a name on file.
  */
 function NewLocalSupplier({ onCancel, onSaved }) {
-  const [form, setForm] = useState(BLANK);
+  const [name, setName] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
-  const set = (field) => (e) => setForm((f) => ({ ...f, [field]: e.target.value }));
-
   async function submit(e) {
     e.preventDefault();
-    if (!form.name.trim()) return setError('A name is required.');
+    if (!name.trim()) return setError('A name is required.');
     setSaving(true);
     setError('');
     try {
-      await api.post('/local-suppliers', {
-        name: form.name.trim(),
-        phone: form.phone.trim() || null,
-        address: form.address.trim() || null,
-        suburb: form.suburb.trim() || null,
-        state: form.state.trim() || null,
-        postcode: form.postcode.trim() || null,
-      });
+      await api.post('/local-suppliers', { name: name.trim() });
       onSaved();
     } catch (err) {
       setError(apiErrorMessage(err, 'Could not save that supplier.'));
@@ -174,86 +200,28 @@ function NewLocalSupplier({ onCancel, onSaved }) {
 
   return (
     <form onSubmit={submit} className="surface mb-4 p-4">
-      <div className="section-label mb-3">New local supplier</div>
-
-      {error && (
-        <div className="mb-3 rounded-lg bg-working-redDim px-3 py-2 text-sm text-working-red">
-          {error}
-        </div>
-      )}
-
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        <div className="sm:col-span-2">
-          <label className="field-label" htmlFor="ls-name">Name</label>
-          <input
-            id="ls-name"
-            autoFocus
-            value={form.name}
-            onChange={set('name')}
-            placeholder="Business or person"
-            className="w-full rounded-md border border-steel-200 bg-white px-3 py-2.5 text-sm"
-          />
-        </div>
-        <div>
-          <label className="field-label" htmlFor="ls-phone">Phone</label>
-          <input
-            id="ls-phone"
-            inputMode="tel"
-            value={form.phone}
-            onChange={set('phone')}
-            className="w-full rounded-md border border-steel-200 bg-white px-3 py-2.5 text-sm"
-          />
-        </div>
-        <div>
-          <label className="field-label" htmlFor="ls-address">Address</label>
-          <input
-            id="ls-address"
-            value={form.address}
-            onChange={set('address')}
-            className="w-full rounded-md border border-steel-200 bg-white px-3 py-2.5 text-sm"
-          />
-        </div>
-        <div>
-          <label className="field-label" htmlFor="ls-suburb">Suburb</label>
-          <input
-            id="ls-suburb"
-            value={form.suburb}
-            onChange={set('suburb')}
-            className="w-full rounded-md border border-steel-200 bg-white px-3 py-2.5 text-sm"
-          />
-        </div>
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label className="field-label" htmlFor="ls-state">State</label>
-            <input
-              id="ls-state"
-              value={form.state}
-              onChange={set('state')}
-              placeholder="NSW"
-              className="w-full rounded-md border border-steel-200 bg-white px-3 py-2.5 text-sm"
-            />
-          </div>
-          <div>
-            <label className="field-label" htmlFor="ls-postcode">Postcode</label>
-            <input
-              id="ls-postcode"
-              inputMode="numeric"
-              value={form.postcode}
-              onChange={set('postcode')}
-              className="num w-full rounded-md border border-steel-200 bg-white px-3 py-2.5 text-sm"
-            />
-          </div>
+      <label className="field-label" htmlFor="ls-name">
+        New local supplier
+      </label>
+      <div className="flex flex-col gap-2 sm:flex-row">
+        <input
+          id="ls-name"
+          autoFocus
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          placeholder="Business or person"
+          className="w-full rounded-md border border-steel-200 bg-white px-3 py-2.5 text-sm sm:flex-1"
+        />
+        <div className="flex gap-2">
+          <button type="button" onClick={onCancel} className="btn-ghost btn-sm flex-1 sm:flex-none">
+            Cancel
+          </button>
+          <button type="submit" disabled={saving} className="btn-primary btn-sm flex-1 sm:flex-none">
+            {saving ? 'Saving…' : 'Save'}
+          </button>
         </div>
       </div>
-
-      <div className="mt-4 flex justify-end gap-2">
-        <button type="button" onClick={onCancel} className="btn-ghost btn-sm">
-          Cancel
-        </button>
-        <button type="submit" disabled={saving} className="btn-primary btn-sm">
-          {saving ? 'Saving…' : 'Save supplier'}
-        </button>
-      </div>
+      {error && <p className="mt-2 text-sm text-working-red">{error}</p>}
     </form>
   );
 }

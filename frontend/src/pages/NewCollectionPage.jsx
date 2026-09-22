@@ -6,6 +6,7 @@ import { apiErrorMessage } from '../lib/apiError';
 import MaterialField from '../components/MaterialField';
 import PhotoPicker from '../components/PhotoPicker';
 import { enqueue } from '../lib/photoQueue';
+import { useAuth } from '../context/AuthContext';
 
 const BLANK_LINE = {
   // Carried on an existing line so an edit updates the row rather than
@@ -69,6 +70,7 @@ function difference(l) {
  * Built to be used one-handed on a tablet, outdoors, next to a ute.
  */
 export default function NewCollectionPage() {
+  const { isAdmin } = useAuth();
   const { id } = useParams();
   const isEdit = Boolean(id);
   const navigate = useNavigate();
@@ -82,6 +84,7 @@ export default function NewCollectionPage() {
   const [materials, setMaterials] = useState([]);
   const [lines, setLines] = useState([{ ...BLANK_LINE }, { ...BLANK_LINE }, { ...BLANK_LINE }]);
   const [notes, setNotes] = useState('');
+  const [existingPickupPhotos, setExistingPickupPhotos] = useState([]);
   const [collectionPhotos, setCollectionPhotos] = useState([]);
   const [photoStorageReady, setPhotoStorageReady] = useState(true);
   const [photoWarning, setPhotoWarning] = useState('');
@@ -135,8 +138,15 @@ export default function NewCollectionPage() {
               l.supplierTareWeight == null ? '' : String(l.supplierTareWeight),
             notes: l.notes || '',
             noteOpen: Boolean(l.notes),
+            photos: [],
+            // What is already on the record. Without these the edit screen
+            // showed an empty picker, so anybody editing a collection
+            // believed their photographs had been lost — and the natural
+            // response is to take them again.
+            existingPhotos: l.photos ?? [],
           }))
         );
+        setExistingPickupPhotos(c.photos ?? []);
       })
       .catch(() => setError('Could not load that collection.'))
       .finally(() => setLoading(false));
@@ -553,6 +563,25 @@ export default function NewCollectionPage() {
                         asked for. */}
                     <div className="mt-3 border-t border-steel-100 pt-3">
                       {photoStorageReady ? (
+                        <>
+                        <ExistingPhotos
+                          photos={line.existingPhotos}
+                          canDelete={isAdmin}
+                          onDeleted={(photoId) =>
+                            setLines((prev) =>
+                              prev.map((l, idx) =>
+                                idx === i
+                                  ? {
+                                      ...l,
+                                      existingPhotos: l.existingPhotos.filter(
+                                        (ph) => ph.id !== photoId
+                                      ),
+                                    }
+                                  : l
+                              )
+                            )
+                          }
+                        />
                         <PhotoPicker
                           compact
                           minimal
@@ -564,6 +593,7 @@ export default function NewCollectionPage() {
                           }
                           trailing={!line.noteOpen && <NoteButton onClick={() => updateLine(i, 'noteOpen', true)} tile={hasPhotos} />}
                         />
+                        </>
                       ) : (
                         !line.noteOpen && <NoteButton onClick={() => updateLine(i, 'noteOpen', true)} />
                       )}
@@ -661,6 +691,13 @@ export default function NewCollectionPage() {
                 <label className="field-label">
                   Photos of the pickup <span className="field-hint">optional</span>
                 </label>
+                <ExistingPhotos
+                  photos={existingPickupPhotos}
+                  canDelete={isAdmin}
+                  onDeleted={(photoId) =>
+                    setExistingPickupPhotos((prev) => prev.filter((ph) => ph.id !== photoId))
+                  }
+                />
                 <PhotoPicker
                   files={collectionPhotos}
                   onChange={setCollectionPhotos}
@@ -776,5 +813,57 @@ function NoteButton({ onClick, tile = false }) {
       {icon}
       Note
     </button>
+  );
+}
+
+/**
+ * Photographs already on the record, shown while editing.
+ *
+ * They are real rows with ids, not files waiting to be sent, so removing one
+ * is a delete against the server rather than a change to be saved with the
+ * rest of the form. That is also why the cross is admin-only: the API says
+ * so, and offering a button that always answers 403 is worse than not
+ * offering it.
+ */
+function ExistingPhotos({ photos, canDelete, onDeleted }) {
+  const [busy, setBusy] = useState('');
+
+  if (!photos?.length) return null;
+
+  async function remove(photo) {
+    if (busy) return;
+    setBusy(photo.id);
+    try {
+      await api.delete(`/collections/photos/${photo.id}`);
+      onDeleted(photo.id);
+    } catch {
+      // Left in place on failure: a thumbnail that vanishes from the screen
+      // but not from the record is the worse of the two wrong answers.
+      setBusy('');
+    }
+  }
+
+  return (
+    <div className="mb-2 flex flex-wrap items-center gap-2">
+      {photos.map((photo) => (
+        <div
+          key={photo.id}
+          className="group relative h-16 w-16 overflow-hidden rounded-lg border border-steel-200"
+        >
+          <img src={photo.url} alt="" className="h-full w-full object-cover" />
+          {canDelete && (
+            <button
+              type="button"
+              onClick={() => remove(photo)}
+              disabled={busy === photo.id}
+              aria-label="Remove this photo"
+              className="absolute right-0.5 top-0.5 flex h-6 w-6 items-center justify-center rounded-full bg-steel-900/80 text-xs font-bold text-white disabled:opacity-40"
+            >
+              ×
+            </button>
+          )}
+        </div>
+      ))}
+    </div>
   );
 }
