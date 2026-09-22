@@ -26,7 +26,9 @@
     "demo": "node prisma/demo.js",
     "demo:clear": "node prisma/demo.js --clear",
     "test": "node --test \"tests/**/*.test.js\"",
-    "postinstall": "prisma generate"
+    "postinstall": "prisma generate",
+    "backup:drive": "node -r dotenv/config scripts/backup-to-drive.mjs",
+    "backup:now": "npm run backup:prod && node -r dotenv/config scripts/backup-to-drive.mjs \"$(ls -t backups/*.sql.gz | head -1)\""
   },
   "dependencies": {
     "@prisma/client": "^5.20.0",

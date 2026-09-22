@@ -1,0 +1,150 @@
+# A backup that runs whether anyone remembers or not.
+#
+# Supabase's free tier has no point-in-time recovery, so until that changes
+# this job is the only way back from a bad migration, a mistaken delete, or a
+# lost project. It runs on GitHub's machines, not on anyone's laptop, and the
+# dumps land in the yard's own Google Drive — reachable with nothing but a
+# Google login, by someone who has never heard of Supabase.
+#
+# It restores every dump before filing it. A backup that has never been
+# restored is a file, not a backup, and the failure it hides — a truncated
+# dump, a version mismatch, a schema that no longer loads — is invisible
+# until the day it matters.
+name: Database backup
+
+on:
+  schedule:
+    # 09:00 UTC is 7pm in Sydney through winter and 8pm through summer:
+    # after the yard has shut either way, so the dump holds a whole day.
+    - cron: '0 9 * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: database-backup
+  cancel-in-progress: false
+
+jobs:
+  backup:
+    name: Dump, verify by restoring, upload to Drive
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    services:
+      # Same major version as production, so the restore check is a real
+      # rehearsal rather than an approximation.
+      verify:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: verify
+        ports: ['5433:5432']
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    defaults:
+      run:
+        working-directory: backend
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+
+      # Ubuntu ships pg_dump 16. The server is 17, and pg_dump refuses to read
+      # a newer server — which is exactly how a backup job goes green while
+      # producing nothing. Same trap the local script documents.
+      - name: Install PostgreSQL 17 client
+        run: |
+          sudo install -d /usr/share/postgresql-common/pgdg
+          sudo curl -fsSL -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc \
+            https://www.postgresql.org/media/keys/ACCC4CF8.asc
+          echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] \
+            https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" \
+            | sudo tee /etc/apt/sources.list.d/pgdg.list > /dev/null
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq postgresql-client-17
+          pg_dump --version
+
+      - name: Dump production
+        env:
+          BACKUP_DATABASE_URL: ${{ secrets.BACKUP_DATABASE_URL }}
+        run: |
+          set -euo pipefail
+          if [ -z "${BACKUP_DATABASE_URL:-}" ]; then
+            echo "::error::BACKUP_DATABASE_URL is not set. Add it as a repository secret."
+            exit 1
+          fi
+          mkdir -p backups
+          STAMP="$(TZ=Australia/Sydney date +%Y%m%d-%H%M%S)"
+          OUT="backups/prod-${STAMP}.sql.gz"
+          echo "OUT=$OUT" >> "$GITHUB_ENV"
+          # --no-owner/--no-acl so the dump restores into any database,
+          # including the throwaway one two steps down.
+          pg_dump --no-owner --no-acl "$BACKUP_DATABASE_URL" | gzip -9 > "$OUT"
+          ls -lh "$OUT"
+
+      - name: Restore it into an empty database
+        run: |
+          set -euo pipefail
+          export PGPASSWORD=verify
+          psql -h localhost -p 5433 -U postgres -c 'CREATE DATABASE verify_restore;'
+          gunzip -c "$OUT" | psql -q -v ON_ERROR_STOP=1 \
+            -h localhost -p 5433 -U postgres -d verify_restore
+
+      - name: Check the restored copy has the tables and the rows
+        run: |
+          set -euo pipefail
+          export PGPASSWORD=verify
+          q() { psql -tAq -h localhost -p 5433 -U postgres -d verify_restore -c "$1"; }
+
+          TABLES=$(q "select count(*) from pg_tables where schemaname='public'")
+          echo "tables restored: $TABLES"
+          # Sixteen models plus _prisma_migrations. A dump that loads but
+          # brings back three tables is the failure this is looking for.
+          if [ "$TABLES" -lt 15 ]; then
+            echo "::error::Only $TABLES tables came back. This dump is not a usable backup."
+            exit 1
+          fi
+
+          # The tables the business could not be reconstructed without. Empty
+          # is legitimate for a new yard, so this asserts they exist and can
+          # be read, not that they are populated.
+          for t in Docket DocketLineItem ExportInvoice Supplier Material User CompanySettings Collection; do
+            n=$(q "select count(*) from \"$t\"")
+            echo "  $t: $n rows"
+          done
+
+          # Settings is the one row that must be there — it carries the ABN,
+          # the letterhead and the bank details every document is built from.
+          SETTINGS=$(q "select count(*) from \"CompanySettings\"")
+          if [ "$SETTINGS" -lt 1 ]; then
+            echo "::error::CompanySettings is empty in the restored copy."
+            exit 1
+          fi
+
+      - run: npm ci
+
+      - name: Upload to Google Drive
+        env:
+          GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
+          GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+          GOOGLE_REFRESH_TOKEN: ${{ secrets.GOOGLE_REFRESH_TOKEN }}
+        run: node scripts/backup-to-drive.mjs "$OUT"
+
+      # A second copy, kept by GitHub, in case the Drive upload is the thing
+      # that breaks. Ninety days is GitHub's own retention; Drive is the copy
+      # meant to outlive that.
+      - name: Keep a copy on this run
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: database-backup
+          path: backend/backups/*.sql.gz
+          retention-days: 90
+          if-no-files-found: error
