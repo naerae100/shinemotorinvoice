@@ -46,6 +46,50 @@ model User {
   collectionsCreated    Collection[]      @relation("CollectionCreatedBy")
   collectionsEdited     Collection[]      @relation("CollectionEditedBy")
   collectionsVoided     Collection[]      @relation("CollectionVoidedBy")
+
+  sessions        Session[] @relation("SessionUser")
+  sessionsRevoked Session[] @relation("SessionRevokedBy")
+}
+
+/// One sign-in, on one device, still live.
+///
+/// tokenVersion can end every session a person has at once, which is the right
+/// answer when a password is changed and the wrong one when a phone is left in
+/// a driveway: it signs the office out too, and nobody can see what was lost
+/// in the first place. A row per sign-in makes each device a thing that can be
+/// looked at and ended on its own.
+///
+/// The JWT carries this row's id. A token whose session is missing or revoked
+/// is refused, so ending a session takes effect on the device's next request
+/// rather than whenever the token happens to expire.
+model Session {
+  id String @id @default(cuid())
+
+  userId String
+  user   User   @relation("SessionUser", fields: [userId], references: [id], onDelete: Cascade)
+
+  /// What the device told us it was. Stored raw and parsed for display, because
+  /// a User-Agent string is the only identification a browser offers and
+  /// tomorrow's phones will not be in today's parser.
+  userAgent String?
+  /// For "that sign-in was not me". Approximate, and from a header a proxy
+  /// sets — enough to notice a login from somewhere the yard has never been.
+  ip        String?
+
+  createdAt  DateTime @default(now())
+  /// Written at most every few minutes, not on every request: this is a
+  /// database write on the hot path of every single API call otherwise.
+  lastSeenAt DateTime @default(now())
+  /// When the token itself lapses. Rows past this are dead weight and are
+  /// cleared out on the next sign-in.
+  expiresAt  DateTime
+
+  revokedAt   DateTime?
+  revokedById String?
+  revokedBy   User?     @relation("SessionRevokedBy", fields: [revokedById], references: [id])
+
+  @@index([userId, revokedAt])
+  @@index([expiresAt])
 }
 
 // ─────────────────────────────────────────────

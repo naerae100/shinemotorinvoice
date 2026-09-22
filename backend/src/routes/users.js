@@ -4,6 +4,7 @@ import jwt from 'jsonwebtoken';
 import { config } from '../config/env.js';
 import { z } from 'zod';
 import { prisma } from '../config/prisma.js';
+import { listSessions, revokeSession } from './auth.js';
 import { requireAuth, requireRole } from '../middleware/auth.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { forgetUser } from '../middleware/auth.js';
@@ -203,6 +204,15 @@ router.post(
       select: { id: true, name: true, email: true, role: true, tokenVersion: true },
     });
     forgetUser(updated.id);
+
+    // Every other device is now signed out, so their rows should say so —
+    // and this device's row must survive, because the token handed back
+    // below still names it.
+    await prisma.session.updateMany({
+      where: { userId: updated.id, revokedAt: null, id: { not: req.user.sid } },
+      data: { revokedAt: new Date(), revokedById: updated.id },
+    });
+
     await audit({
       req,
       action: 'PASSWORD_CHANGE',
@@ -221,11 +231,59 @@ router.post(
         name: updated.name,
         email: updated.email,
         tokenVersion: updated.tokenVersion,
+        // Still this device. Without the session id the replacement token is
+        // refused on its first use, and changing your password would sign you
+        // out of the device you changed it on — the exact thing the fresh
+        // token exists to prevent.
+        sid: req.user.sid,
       },
       config.jwtSecret,
       { expiresIn: config.jwtExpiresIn }
     );
     res.json({ changed: true, token });
+  })
+);
+
+/**
+ * GET /api/users/:id/sessions — which devices this person is signed in on.
+ *
+ * Admin only, and the reason it exists: a contractor rings up to say the
+ * phone is gone. Without this the only lever is "sign out everywhere" on
+ * their account, which is fine, or a password change, which is not — and
+ * neither tells anybody what was actually signed in.
+ */
+router.get(
+  '/:id/sessions',
+  requireAuth,
+  requireRole('ADMIN'),
+  asyncHandler(async (req, res) => {
+    const user = await prisma.user.findUnique({
+      where: { id: req.params.id },
+      select: { id: true },
+    });
+    if (!user) return res.status(404).json({ error: 'Not found' });
+
+    // An admin looking at somebody else's list has no "this device" in it;
+    // looking at their own, they should.
+    res.json({ sessions: await listSessions(user.id, req.user.sid) });
+  })
+);
+
+/** DELETE /api/users/:id/sessions/:sessionId — end one device. */
+router.delete(
+  '/:id/sessions/:sessionId',
+  requireAuth,
+  requireRole('ADMIN'),
+  asyncHandler(async (req, res) => {
+    const session = await prisma.session.findUnique({
+      where: { id: req.params.sessionId },
+      select: { id: true, userId: true, revokedAt: true, userAgent: true },
+    });
+    if (!session || session.userId !== req.params.id) {
+      return res.status(404).json({ error: 'Not found' });
+    }
+    await revokeSession(req, session);
+    res.json({ signedOut: true });
   })
 );
 

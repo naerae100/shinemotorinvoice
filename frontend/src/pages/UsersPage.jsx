@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useState } from 'react';
+import { Fragment, useCallback, useEffect, useState } from 'react';
 import { format } from 'date-fns';
 import { api } from '../lib/api';
 import { useAuth } from '../context/AuthContext';
+import SessionList from '../components/SessionList';
 
 const BLANK = { name: '', email: '', password: '', role: 'STAFF' };
 
@@ -12,6 +13,7 @@ export default function UsersPage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
+  const [devicesFor, setDevicesFor] = useState(null);
 
   const load = useCallback(
     () =>
@@ -196,7 +198,7 @@ export default function UsersPage() {
                 </>
               )}
             </div>
-            <div className="mt-3 flex gap-2">
+            <div className="mt-3 flex flex-wrap gap-2">
               <button
                 type="button"
                 onClick={() => setForm({ ...u, password: '' })}
@@ -211,7 +213,23 @@ export default function UsersPage() {
               >
                 {u.active ? 'Deactivate' : 'Reactivate'}
               </button>
+              <button
+                type="button"
+                onClick={() => setDevicesFor(devicesFor === u.id ? null : u.id)}
+                className="btn-secondary btn-sm w-full"
+              >
+                {devicesFor === u.id ? 'Hide devices' : 'Devices'}
+              </button>
             </div>
+
+            {devicesFor === u.id && (
+              <div className="mt-3 border-t border-steel-100 pt-3">
+                <SessionList
+                  basePath={`/users/${u.id}/sessions`}
+                  emptyHint={`${u.name} is not signed in anywhere.`}
+                />
+              </div>
+            )}
           </div>
         ))}
       </div>
@@ -229,8 +247,8 @@ export default function UsersPage() {
           </thead>
           <tbody>
             {users.map((u) => (
+              <Fragment key={u.id}>
               <tr
-                key={u.id}
                 className={`border-b border-steel-100 last:border-0 ${u.active ? '' : 'opacity-60'}`}
               >
                 <td className="px-5 py-3">
@@ -266,9 +284,28 @@ export default function UsersPage() {
                     >
                       {u.active ? 'Deactivate' : 'Reactivate'}
                     </button>
+                    <button
+                      type="button"
+                      onClick={() => setDevicesFor(devicesFor === u.id ? null : u.id)}
+                      className="btn-secondary btn-sm"
+                    >
+                      {devicesFor === u.id ? 'Hide devices' : 'Devices'}
+                    </button>
                   </div>
                 </td>
               </tr>
+              {devicesFor === u.id && (
+                <tr className="border-b border-steel-100 bg-paper last:border-0">
+                  <td colSpan={5} className="px-5 py-4">
+                    <div className="field-label">Signed in on</div>
+                    <SessionList
+                      basePath={`/users/${u.id}/sessions`}
+                      emptyHint={`${u.name} is not signed in anywhere.`}
+                    />
+                  </td>
+                </tr>
+              )}
+              </Fragment>
             ))}
           </tbody>
         </table>
@@ -276,8 +313,18 @@ export default function UsersPage() {
 
       <p className="mt-3 text-xs leading-relaxed text-steel-500">
         Staff are never deleted — documents reference them, so history stays intact. Deactivating
-        blocks sign-in while keeping their name on past records.
+        blocks sign-in while keeping their name on past records. <strong>Devices</strong> shows
+        where someone is currently signed in; signing one out takes effect within about half a
+        minute, and does not disturb their other devices.
       </p>
+
+      {/* Your own devices, without going hunting for your own row. The fastest
+          way anyone notices a sign-in that is not theirs is seeing the list
+          without having to ask for it. */}
+      <h2 className="section-label mt-8">Your devices</h2>
+      <div className="surface p-4">
+        <SessionList basePath="/auth/sessions" />
+      </div>
     </div>
   );
 }

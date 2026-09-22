@@ -15,6 +15,7 @@ const CollectionsPage = lazy(() => import('./pages/CollectionsPage'));
 const NewCollectionPage = lazy(() => import('./pages/NewCollectionPage'));
 const CollectionDetailPage = lazy(() => import('./pages/CollectionDetailPage'));
 const SharedCollectionPage = lazy(() => import('./pages/SharedCollectionPage'));
+const AccountPage = lazy(() => import('./pages/AccountPage'));
 const LocalSuppliersPage = lazy(() => import('./pages/LocalSuppliersPage'));
 const LocalSupplierDetailPage = lazy(() => import('./pages/LocalSupplierDetailPage'));
 const NewDocketPage = lazy(() => import('./pages/NewDocketPage'));
@@ -79,6 +80,8 @@ export default function App() {
               <Route index element={<HomeForRole />} />
 
               {/* ── Field collections ──────────────────────────────── */}
+              {/* Open to every role — a contractor cannot reach Staff & logins. */}
+              <Route path="account" element={<AccountPage />} />
               <Route path="collections" element={<CollectionsPage />} />
               <Route path="collections/new" element={<NewCollectionPage key="new-collection" />} />
               <Route path="collections/:id" element={<CollectionDetailPage />} />

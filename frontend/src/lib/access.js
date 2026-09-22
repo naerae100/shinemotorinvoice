@@ -22,6 +22,9 @@ const CONTRACTOR_PATHS = [
   /^\/$/,
   /^\/collections(\/|$)/,
   /^\/local-suppliers(\/|$)/,
+  // Their own account and devices. Everyone needs to be able to see where
+  // they are signed in, including the role that cannot open Staff & logins.
+  /^\/account$/,
 ];
 
 /** True if a contractor may open this path. */

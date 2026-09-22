@@ -270,14 +270,19 @@ function SidebarContent({
         }`}
       >
         {!collapsed && (
-          <div className="mb-2 px-1">
+          /* The name was already here; making it the way in to your own
+             account costs no room in a sidebar that has none to give. */
+          <NavLink
+            to="/account"
+            className="mb-2 block rounded-md px-1 py-1 transition-colors hover:bg-steel-700/40"
+          >
             <div className="truncate text-sm font-semibold text-paper">{user?.name}</div>
             <div className="text-xs text-steel-300">
               {/* A contractor was being labelled "Staff", which is both wrong
                   and the opposite of reassuring on a shared tablet. */}
               {{ ADMIN: 'Administrator', CONTRACTOR: 'Field contractor' }[user?.role] ?? 'Staff'}
             </div>
-          </div>
+          </NavLink>
         )}
         <button
           type="button"

@@ -20,6 +20,10 @@ const userCache = new Map();
 
 export function forgetUser(userId) {
   userCache.delete(userId);
+  // A session cached for this person may have just been revoked with them.
+  for (const [sid, hit] of sessionCache) {
+    if (hit.session?.userId === userId) sessionCache.delete(sid);
+  }
 }
 
 async function currentUser(id) {
@@ -32,6 +36,61 @@ async function currentUser(id) {
   });
   userCache.set(id, { user, expires: Date.now() + CACHE_TTL_MS });
   return user;
+}
+
+/**
+ * The session a token belongs to.
+ *
+ * Cached on the same terms as the user above, and for the same reason: this
+ * is a database read on the hot path of every request. The cost is that a
+ * device signed out elsewhere can keep working for up to CACHE_TTL_MS on an
+ * instance that has not seen the revocation — thirty seconds, against a
+ * fourteen-day token. Revocation through this process is immediate, because
+ * revoking evicts the entry.
+ */
+const sessionCache = new Map();
+
+export function forgetSession(sessionId) {
+  sessionCache.delete(sessionId);
+}
+
+async function currentSession(id) {
+  const hit = sessionCache.get(id);
+  if (hit && Date.now() < hit.expires) return hit.session;
+
+  const session = await prisma.session.findUnique({
+    where: { id },
+    select: { id: true, userId: true, revokedAt: true, expiresAt: true, lastSeenAt: true },
+  });
+  sessionCache.set(id, { session, expires: Date.now() + CACHE_TTL_MS });
+  return session;
+}
+
+/**
+ * How stale "last used" is allowed to be.
+ *
+ * Writing it on every request would put a database write in front of every
+ * single API call to save a column nobody reads to the second. Five minutes
+ * is close enough to answer "is this device still in use?" and costs at most
+ * one write per device per five minutes.
+ */
+const LAST_SEEN_INTERVAL_MS = 5 * 60 * 1000;
+
+function touchSession(session) {
+  if (Date.now() - new Date(session.lastSeenAt).getTime() < LAST_SEEN_INTERVAL_MS) return;
+
+  const now = new Date();
+  // Not awaited: the request does not depend on it, and a slow write here
+  // would slow down every call the yard makes.
+  prisma.session
+    .update({ where: { id: session.id }, data: { lastSeenAt: now } })
+    .then(() => {
+      const hit = sessionCache.get(session.id);
+      if (hit?.session) hit.session.lastSeenAt = now;
+    })
+    .catch(() => {
+      // A missed timestamp is not worth failing a request over.
+    });
 }
 
 /**
@@ -102,6 +161,31 @@ export async function requireAuth(req, res, next) {
     if ((payload.tokenVersion ?? 0) !== user.tokenVersion) {
       return res.status(401).json({ error: 'This session has been signed out' });
     }
+
+    /**
+     * Every token must name a session.
+     *
+     * Tokens minted before this existed carry no `sid`, and they are refused
+     * rather than waved through. A device list that quietly omits the live
+     * tokens it cannot see is worse than useless — it is reassuring and
+     * wrong. The cost is that everyone signs in once after this ships.
+     */
+    if (!payload.sid) {
+      return res.status(401).json({ error: 'Please sign in again' });
+    }
+
+    const session = await currentSession(payload.sid);
+    if (!session || session.userId !== user.id) {
+      return res.status(401).json({ error: 'This session has been signed out' });
+    }
+    if (session.revokedAt) {
+      return res.status(401).json({ error: 'This device was signed out' });
+    }
+    if (session.expiresAt.getTime() < Date.now()) {
+      return res.status(401).json({ error: 'This session has expired' });
+    }
+
+    touchSession(session);
     // Trust the stored role over the token's copy, so a demotion takes effect
     // without waiting for the token to expire.
     req.user = { ...payload, role: user.role };
@@ -153,6 +237,9 @@ function issueSlidingToken(req, res, payload, user) {
         name: payload.name,
         role: user.role,
         tokenVersion: user.tokenVersion,
+        // The same device, not a new one. Without this a renewal would
+        // orphan the session row and the next request would be refused.
+        sid: payload.sid,
       },
       process.env.JWT_SECRET,
       { expiresIn: config.jwtExpiresIn }

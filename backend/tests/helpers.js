@@ -101,12 +101,15 @@ export async function serverAlive() {
   }
 }
 
-export async function api(method, endpoint, { body, token } = {}) {
+export async function api(method, endpoint, { body, token, headers } = {}) {
   const res = await fetch(BASE + endpoint, {
     method,
     headers: {
       ...(body ? { 'Content-Type': 'application/json' } : {}),
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      // Caller-supplied headers, for the tests that need two sign-ins to look
+      // like two different devices.
+      ...(headers || {}),
     },
     body: body ? JSON.stringify(body) : undefined,
   });

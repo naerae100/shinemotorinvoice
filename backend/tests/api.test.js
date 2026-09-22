@@ -759,6 +759,74 @@ suite('authenticity — records cannot be erased or silently changed', () => {
 });
 
 suite('sessions can be withdrawn', () => {
+  test('one device can be signed out without touching the others', async () => {
+    // The whole point of the feature: a phone left in a driveway should be
+    // endable on its own, not by signing the office out too.
+    const email = `devices-${Date.now()}@example.com`;
+    await api('POST', '/users', {
+      token,
+      body: { name: 'Devices', email, password: 'FirstPassword1', role: 'STAFF' },
+    });
+
+    const phone = (
+      await api('POST', '/auth/login', {
+        body: { email, password: 'FirstPassword1' },
+        headers: { 'user-agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) Version/17.5 Mobile Safari/604.1' },
+      })
+    ).body.token;
+    const desktop = (
+      await api('POST', '/auth/login', {
+        body: { email, password: 'FirstPassword1' },
+        headers: { 'user-agent': 'Mozilla/5.0 (Windows NT 10.0) Chrome/126.0 Safari/537.36' },
+      })
+    ).body.token;
+
+    const listed = await api('GET', '/auth/sessions', { token: desktop });
+    assert.equal(listed.status, 200);
+    assert.equal(listed.body.sessions.length, 2, 'both devices are listed');
+
+    const devices = listed.body.sessions.map((x) => x.device).sort();
+    assert.deepEqual(devices, ['Windows · Chrome', 'iPhone · Safari']);
+
+    // Exactly one is marked as the device doing the looking.
+    assert.equal(listed.body.sessions.filter((x) => x.current).length, 1);
+
+    const phoneSession = listed.body.sessions.find((x) => !x.current);
+    const killed = await api('DELETE', `/auth/sessions/${phoneSession.id}`, { token: desktop });
+    assert.equal(killed.status, 200);
+
+    assert.equal(
+      (await api('GET', '/auth/me', { token: phone })).status,
+      401,
+      'the signed-out device stops working'
+    );
+    assert.equal(
+      (await api('GET', '/auth/me', { token: desktop })).status,
+      200,
+      'and the other one carries on'
+    );
+  });
+
+  test('a session belonging to somebody else cannot be ended', async () => {
+    const email = `other-${Date.now()}@example.com`;
+    await api('POST', '/users', {
+      token,
+      body: { name: 'Other', email, password: 'FirstPassword1', role: 'STAFF' },
+    });
+    const theirs = (
+      await api('POST', '/auth/login', { body: { email, password: 'FirstPassword1' } })
+    ).body.token;
+
+    const mine = await api('GET', '/auth/sessions', { token });
+    const mySession = mine.body.sessions.find((x) => x.current);
+
+    // 404 rather than 403: a different answer would confirm that this id
+    // belongs to somebody.
+    const attempt = await api('DELETE', `/auth/sessions/${mySession.id}`, { token: theirs });
+    assert.equal(attempt.status, 404);
+    assert.equal((await api('GET', '/auth/me', { token })).status, 200, 'and mine survives');
+  });
+
   test('changing a password signs out other devices but not this one', async () => {
     const email = `rotate-${Date.now()}@example.com`;
     const created = await api('POST', '/users', {
@@ -1543,6 +1611,11 @@ suite('sessions slide, so the yard tablet is not signed out mid-shift', () => {
     // Minted as if ten days into a fourteen-day window. The tablet is used
     // every day, so this is the ordinary case, not an edge one.
     const me = await api('GET', '/auth/me', { token });
+    // A token has to name a live session now, so the aged one is minted
+    // against the session this test's own sign-in created.
+    const sid = JSON.parse(
+      Buffer.from(token.split('.')[1], 'base64url').toString()
+    ).sid;
     const iat = Math.floor(Date.now() / 1000) - 10 * 86400;
     const aged = jwt.sign(
       {
@@ -1551,6 +1624,7 @@ suite('sessions slide, so the yard tablet is not signed out mid-shift', () => {
         name: me.body.user.name,
         role: me.body.user.role,
         tokenVersion: 0,
+        sid,
         iat,
         exp: iat + 14 * 86400,
       },
@@ -1567,6 +1641,13 @@ suite('sessions slide, so the yard tablet is not signed out mid-shift', () => {
     // The renewal must be usable, or the tablet swaps in something dead.
     const withNew = await api('GET', '/dockets?pageSize=1', { token: renewed });
     assert.equal(withNew.status, 200);
+
+    // And it must still be the same device. A renewal that dropped the
+    // session id would pass the line above and fail on the one after it.
+    const renewedSid = JSON.parse(
+      Buffer.from(renewed.split('.')[1], 'base64url').toString()
+    ).sid;
+    assert.equal(renewedSid, sid, 'the renewed token names the same session');
   });
 
   test('an expired token is refused rather than renewed', async () => {
